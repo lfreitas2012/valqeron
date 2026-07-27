@@ -5,9 +5,9 @@ use ftracker_identifiers::CountryCode;
 use std::str::FromStr;
 use uuid::Uuid;
 
-mod error;
-mod patch;
-mod repository;
+pub mod error;
+pub mod patch;
+pub mod repository;
 
 const ISSUER_NAME_MAX_LEN: usize = 200;
 

@@ -1,5 +1,5 @@
 use crate::common::{CnpjIdentifier, LeiIdentifier, Versioned};
-use crate::db::{SharedConnection, lock};
+use crate::db::DbHandle;
 use crate::issuer::error::IssuerRepositoryError;
 use crate::issuer::patch::IssuerPatch;
 use crate::issuer::repository::IssuerRepository;
@@ -9,13 +9,15 @@ use ftracker_identifiers::CountryCode;
 use rusqlite::{OptionalExtension, Row, params};
 use std::str::FromStr;
 
+/// [`IssuerRepository`] backed by SQLite. Reads using the connection pool; writes using the serialized writer.
 pub struct SqliteIssuerRepository {
-    conn: SharedConnection,
+    db: DbHandle,
 }
 
 impl SqliteIssuerRepository {
-    pub fn new(conn: SharedConnection) -> Self {
-        Self { conn }
+    /// Create a repository over the given database handle.
+    pub fn new(db: DbHandle) -> Self {
+        Self { db }
     }
 }
 
@@ -24,7 +26,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         &self,
         id: &IssuerId,
     ) -> Result<Option<Versioned<Issuer>>, IssuerRepositoryError> {
-        let conn = lock(&self.conn);
+        let conn = self.db.read();
         let mut stmt = conn
             .prepare_cached(
                 "SELECT id, name, status, created_at, cnpj, lei, country_code, version
@@ -38,7 +40,7 @@ impl IssuerRepository for SqliteIssuerRepository {
     }
 
     fn exists(&self, id: &IssuerId) -> Result<bool, IssuerRepositoryError> {
-        let conn = lock(&self.conn);
+        let conn = self.db.read();
         let mut stmt = conn
             .prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")
             .map_err(infra)?;
@@ -50,7 +52,7 @@ impl IssuerRepository for SqliteIssuerRepository {
     }
 
     fn insert(&self, issuer: &Issuer) -> Result<(), IssuerRepositoryError> {
-        let conn = lock(&self.conn);
+        let conn = self.db.write();
         let mut stmt = conn
             .prepare_cached(
                 "INSERT INTO issuer (id, name, status, created_at, cnpj, lei, country_code)
@@ -84,7 +86,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         expected_version: u32,
         patch: IssuerPatch,
     ) -> Result<(), IssuerRepositoryError> {
-        let conn = lock(&self.conn);
+        let conn = self.db.write();
         let mut stmt = conn
             .prepare_cached(
                 "UPDATE issuer SET
@@ -109,26 +111,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         ]);
 
         match result {
-            Ok(0) => {
-                let mut check_stmt = conn
-                    .prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")
-                    .map_err(infra)?;
-
-                let id_exists = check_stmt
-                    .query_row(params![id.as_bytes()], |_| Ok(()))
-                    .optional()
-                    .map_err(infra)?
-                    .is_some();
-
-                if id_exists {
-                    Err(IssuerRepositoryError::Conflict(format!(
-                        "version mismatch: issuer {} was modified by another process",
-                        id.value()
-                    )))
-                } else {
-                    Err(not_found(id))
-                }
-            }
+            Ok(0) => Err(conflict_or_not_found(&conn, id)),
             Ok(_) => Ok(()),
             Err(e) if is_constraint_violation(&e) => Err(IssuerRepositoryError::Conflict(format!(
                 "patch on issuer {} would violate a unique constraint (CNPJ/LEI already in use)",
@@ -138,16 +121,56 @@ impl IssuerRepository for SqliteIssuerRepository {
         }
     }
 
-    fn delete(&self, id: &IssuerId) -> Result<(), IssuerRepositoryError> {
-        let conn = lock(&self.conn);
+    fn update(&self, issuer: &Issuer, expected_version: u32) -> Result<(), IssuerRepositoryError> {
+        let id = issuer.id();
+        let conn = self.db.write();
+
         let mut stmt = conn
-            .prepare_cached("DELETE FROM issuer WHERE id = ?1")
+            .prepare_cached(
+                "UPDATE issuer SET
+                name = ?2,
+                status = ?3,
+                cnpj = ?4,
+                lei = ?5,
+                country_code = ?6,
+                version = version + 1
+             WHERE id = ?1 AND version = ?7",
+            )
             .map_err(infra)?;
 
-        let rows = stmt.execute(params![id.as_bytes()]).map_err(infra)?;
+        let result = stmt.execute(params![
+            id.as_bytes(),
+            issuer.name().map(IssuerName::as_str),
+            status_as_str(issuer.status()),
+            issuer.cnpj().map(|c| c.as_str()),
+            issuer.lei().map(|l| l.as_str()),
+            issuer.country_code().map(|c| c.as_str()),
+            expected_version
+        ]);
+
+        match result {
+            Ok(0) => Err(conflict_or_not_found(&conn, id)),
+            Ok(_) => Ok(()),
+            Err(e) if is_constraint_violation(&e) => Err(IssuerRepositoryError::Conflict(format!(
+                "update on issuer {} would violate a unique constraint (CNPJ/LEI already in use)",
+                id.value()
+            ))),
+            Err(e) => Err(infra(e)),
+        }
+    }
+
+    fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), IssuerRepositoryError> {
+        let conn = self.db.write();
+        let mut stmt = conn
+            .prepare_cached("DELETE FROM issuer WHERE id = ?1 AND version = ?2")
+            .map_err(infra)?;
+
+        let rows = stmt
+            .execute(params![id.as_bytes(), expected_version])
+            .map_err(infra)?;
 
         if rows == 0 {
-            return Err(not_found(id));
+            return Err(conflict_or_not_found(&conn, id));
         }
         Ok(())
     }
@@ -159,6 +182,27 @@ fn infra(e: impl Into<anyhow::Error>) -> IssuerRepositoryError {
 
 fn not_found(id: &IssuerId) -> IssuerRepositoryError {
     IssuerRepositoryError::NotFound(*id)
+}
+
+/// After a versioned write affects 0 rows, decide whether the row exists with a different version
+/// (`Conflict`) or is absent (`NotFound`). Must be called while still holding the writer lock so
+/// the check is race-free.
+fn conflict_or_not_found(conn: &rusqlite::Connection, id: &IssuerId) -> IssuerRepositoryError {
+    let exists = conn
+        .prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")
+        .and_then(|mut stmt| {
+            stmt.query_row(params![id.as_bytes()], |_| Ok(()))
+                .optional()
+        });
+
+    match exists {
+        Ok(Some(_)) => IssuerRepositoryError::Conflict(format!(
+            "version mismatch: issuer {} was modified by another process",
+            id.value()
+        )),
+        Ok(None) => not_found(id),
+        Err(e) => infra(e),
+    }
 }
 
 fn is_constraint_violation(err: &rusqlite::Error) -> bool {
@@ -224,14 +268,15 @@ mod tests {
     use super::*;
     use crate::db::Database;
 
-    fn test_repo() -> SqliteIssuerRepository {
+    fn test_repo() -> (Database, SqliteIssuerRepository) {
         let db = Database::open_in_memory().unwrap();
-        SqliteIssuerRepository::new(db.connection())
+        let repo = SqliteIssuerRepository::new(db.handle());
+        (db, repo)
     }
 
     #[test]
     fn insert_then_find_round_trips_and_defaults_to_version_1() {
-        let repo = test_repo();
+        let (_db, repo) = test_repo();
         let issuer = Issuer::builder()
             .name(IssuerName::new("Acme Corp").unwrap())
             .build()
@@ -252,7 +297,7 @@ mod tests {
 
     #[test]
     fn apply_patch_bumps_version_on_success() {
-        let repo = test_repo();
+        let (_db, repo) = test_repo();
         let issuer = Issuer::builder().build().unwrap();
         repo.insert(&issuer).unwrap();
 
@@ -268,7 +313,7 @@ mod tests {
 
     #[test]
     fn apply_patch_fails_on_stale_version() {
-        let repo = test_repo();
+        let (_db, repo) = test_repo();
         let issuer = Issuer::builder().build().unwrap();
         repo.insert(&issuer).unwrap();
 
@@ -285,7 +330,7 @@ mod tests {
 
     #[test]
     fn apply_patch_on_missing_id_returns_not_found() {
-        let repo = test_repo();
+        let (_db, repo) = test_repo();
         let patch = IssuerPatch::builder().status(IssuerStatus::Retired).build();
 
         let result = repo.apply_patch(&IssuerId::new(), 1, patch);
@@ -294,12 +339,168 @@ mod tests {
 
     #[test]
     fn insert_duplicate_id_is_a_conflict_not_an_infra_error() {
-        let repo = test_repo();
+        let (_db, repo) = test_repo();
         let issuer = Issuer::builder().build().unwrap();
 
         repo.insert(&issuer).unwrap();
         let result = repo.insert(&issuer);
 
+        assert!(matches!(result, Err(IssuerRepositoryError::Conflict(_))));
+    }
+
+    #[test]
+    fn delete_with_correct_version_removes_the_row() {
+        let (_db, repo) = test_repo();
+        let issuer = Issuer::builder().build().unwrap();
+        repo.insert(&issuer).unwrap();
+
+        repo.delete(issuer.id(), 1).unwrap();
+        assert!(repo.find_by_id(issuer.id()).unwrap().is_none());
+    }
+
+    #[test]
+    fn delete_with_stale_version_is_a_conflict() {
+        let (_db, repo) = test_repo();
+        let issuer = Issuer::builder().build().unwrap();
+        repo.insert(&issuer).unwrap();
+
+        let result = repo.delete(issuer.id(), 99);
+        assert!(
+            matches!(result, Err(IssuerRepositoryError::Conflict(msg)) if msg.contains("version mismatch")),
+            "stale-version delete should be a Conflict, not a silent no-op"
+        );
+        // Row must still be present.
+        assert!(repo.find_by_id(issuer.id()).unwrap().is_some());
+    }
+
+    #[test]
+    fn delete_missing_id_returns_not_found() {
+        let (_db, repo) = test_repo();
+        let result = repo.delete(&IssuerId::new(), 1);
+        assert!(matches!(result, Err(IssuerRepositoryError::NotFound(_))));
+    }
+
+    #[test]
+    fn dry_run_repository_writes_are_rolled_back() {
+        let db = Database::open_in_memory().unwrap();
+        let issuer = Issuer::builder().build().unwrap();
+
+        db.dry_run(|h| {
+            let repo = SqliteIssuerRepository::new(h.clone());
+            repo.insert(&issuer).unwrap();
+            assert!(repo.find_by_id(issuer.id()).unwrap().is_some());
+        })
+        .unwrap();
+
+        let repo = SqliteIssuerRepository::new(db.handle());
+        assert!(
+            repo.find_by_id(issuer.id()).unwrap().is_none(),
+            "dry-run insert must not persist"
+        );
+    }
+
+    #[test]
+    fn update_replaces_all_fields_and_clears_optionals_to_null() {
+        let (_db, repo) = test_repo();
+        let id = IssuerId::new();
+
+        // Insert with name + lei set.
+        let original = Issuer::builder()
+            .id(id)
+            .name(IssuerName::new("Acme Corp").unwrap())
+            .lei(LeiIdentifier::new("LEI-ORIGINAL"))
+            .build()
+            .unwrap();
+        repo.insert(&original).unwrap();
+
+        // Full replace: rename and drop the lei entirely.
+        let replacement = Issuer::builder()
+            .id(id)
+            .name(IssuerName::new("Renamed Corp").unwrap())
+            .status(IssuerStatus::Retired)
+            .build()
+            .unwrap();
+        repo.update(&replacement, 1).unwrap();
+
+        let found = repo.find_by_id(&id).unwrap().unwrap();
+        assert_eq!(found.version, 2, "version should bump");
+        assert_eq!(found.data.name().unwrap().as_str(), "Renamed Corp");
+        assert!(found.data.status().is_retired());
+        assert!(
+            found.data.lei().is_none(),
+            "unset lei must be cleared to NULL (full replace, not patch)"
+        );
+    }
+
+    #[test]
+    fn update_preserves_id_and_created_at() {
+        let (_db, repo) = test_repo();
+        let id = IssuerId::new();
+        let original = Issuer::builder().id(id).build().unwrap();
+        let created_at = original.created_at();
+        repo.insert(&original).unwrap();
+
+        let replacement = Issuer::builder()
+            .id(id)
+            .status(IssuerStatus::Retired)
+            .build()
+            .unwrap();
+        repo.update(&replacement, 1).unwrap();
+
+        let found = repo.find_by_id(&id).unwrap().unwrap();
+        assert_eq!(found.data.id(), &id);
+        assert_eq!(
+            found.data.created_at(),
+            created_at,
+            "created_at is immutable and must survive a full replace"
+        );
+    }
+
+    #[test]
+    fn update_with_stale_version_is_a_conflict() {
+        let (_db, repo) = test_repo();
+        let issuer = Issuer::builder().build().unwrap();
+        repo.insert(&issuer).unwrap();
+
+        let result = repo.update(&issuer, 99);
+        assert!(
+            matches!(result, Err(IssuerRepositoryError::Conflict(msg)) if msg.contains("version mismatch")),
+            "stale-version update should be a Conflict"
+        );
+    }
+
+    #[test]
+    fn update_on_missing_id_returns_not_found() {
+        let (_db, repo) = test_repo();
+        let issuer = Issuer::builder().build().unwrap();
+        let result = repo.update(&issuer, 1);
+        assert!(matches!(result, Err(IssuerRepositoryError::NotFound(_))));
+    }
+
+    #[test]
+    fn update_unique_collision_is_a_conflict() {
+        let (_db, repo) = test_repo();
+
+        let a = Issuer::builder()
+            .lei(LeiIdentifier::new("LEI-A"))
+            .build()
+            .unwrap();
+        let b_id = IssuerId::new();
+        let b = Issuer::builder()
+            .id(b_id)
+            .lei(LeiIdentifier::new("LEI-B"))
+            .build()
+            .unwrap();
+        repo.insert(&a).unwrap();
+        repo.insert(&b).unwrap();
+
+        // Try to update b's lei to a's lei → UNIQUE violation.
+        let clash = Issuer::builder()
+            .id(b_id)
+            .lei(LeiIdentifier::new("LEI-A"))
+            .build()
+            .unwrap();
+        let result = repo.update(&clash, 1);
         assert!(matches!(result, Err(IssuerRepositoryError::Conflict(_))));
     }
 }
