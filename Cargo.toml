@@ -2,5 +2,23 @@
 name = "valqeron-core"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+
 
 [dependencies]
+thiserror = "2"
+uuid = { version = "1", features = ["v7"] }
+chrono = { version = "0.4" }
+ftracker-identifiers = { version = "0.0.3" }
+anyhow = "1.0.104"
+tracing = "0.1"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+
+
+[dev-dependencies]
+mockall = "0.15.0"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
