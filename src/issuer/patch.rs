@@ -3,7 +3,7 @@ use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
-pub(crate) struct IssuerPatch {
+pub struct IssuerPatch {
     pub(crate) name: Option<IssuerName>,
     pub(crate) status: Option<IssuerStatus>,
     pub(crate) cnpj: Option<Cnpj>,
