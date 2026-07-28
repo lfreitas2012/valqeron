@@ -50,6 +50,13 @@ pub enum EngineError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    /// A dry-run's isolated connection could not be started.
+    #[error("failed to start dry-run")]
+    DryRun {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     /// The on-disk schema is newer than this build understands.
     #[error(
         "the database schema (version {found}) is newer than this build supports (knows {known}) — upgrade the application"
@@ -68,7 +75,7 @@ impl From<SqliteDataDriverError> for EngineError {
             | SqliteDataDriverError::Pragma { source } => EngineError::Open {
                 source: Box::new(source),
             },
-            SqliteDataDriverError::DryRun { source } => EngineError::Open {
+            SqliteDataDriverError::DryRun { source } => EngineError::DryRun {
                 source: Box::new(source),
             },
             SqliteDataDriverError::Migration { source } => EngineError::Migration { source },

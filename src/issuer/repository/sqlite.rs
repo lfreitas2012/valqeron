@@ -72,10 +72,10 @@ impl IssuerRepository for SqliteIssuerRepository {
 
         match result {
             Ok(_) => Ok(()),
-            Err(e) if is_constraint_violation(&e) => Err(IssuerRepositoryError::Conflict(format!(
-                "issuer {} already exists (id or unique CNPJ/LEI collision)",
-                issuer.id().value()
-            ))),
+            Err(e) if is_constraint_violation(&e) => Err(handle_constraint_error(
+                &e,
+                &format!("insert on issuer {}", issuer.id().value()),
+            )),
             Err(e) => Err(infra(e)),
         }
     }
@@ -113,10 +113,10 @@ impl IssuerRepository for SqliteIssuerRepository {
         match result {
             Ok(0) => Err(conflict_or_not_found(&conn, id)),
             Ok(_) => Ok(()),
-            Err(e) if is_constraint_violation(&e) => Err(IssuerRepositoryError::Conflict(format!(
-                "patch on issuer {} would violate a unique constraint (CNPJ/LEI already in use)",
-                id.value()
-            ))),
+            Err(e) if is_constraint_violation(&e) => Err(handle_constraint_error(
+                &e,
+                &format!("patch on issuer {}", id.value()),
+            )),
             Err(e) => Err(infra(e)),
         }
     }
@@ -151,10 +151,10 @@ impl IssuerRepository for SqliteIssuerRepository {
         match result {
             Ok(0) => Err(conflict_or_not_found(&conn, id)),
             Ok(_) => Ok(()),
-            Err(e) if is_constraint_violation(&e) => Err(IssuerRepositoryError::Conflict(format!(
-                "update on issuer {} would violate a unique constraint (CNPJ/LEI already in use)",
-                id.value()
-            ))),
+            Err(e) if is_constraint_violation(&e) => Err(handle_constraint_error(
+                &e,
+                &format!("update on issuer {}", id.value()),
+            )),
             Err(e) => Err(infra(e)),
         }
     }
@@ -210,6 +210,30 @@ fn is_constraint_violation(err: &rusqlite::Error) -> bool {
         err,
         rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation
     )
+}
+
+fn handle_constraint_error(err: &rusqlite::Error, entity_desc: &str) -> IssuerRepositoryError {
+    let default_msg = format!("{} violated a database constraint", entity_desc);
+
+    let msg = if let rusqlite::Error::SqliteFailure(_, Some(sqlite_msg)) = err {
+        if sqlite_msg.contains("CHECK") {
+            format!(
+                "{} violated a CHECK constraint (e.g., CNPJ requires country_code 'BR')",
+                entity_desc
+            )
+        } else if sqlite_msg.contains("UNIQUE") {
+            format!(
+                "{} violated a UNIQUE constraint (e.g., id or CNPJ/LEI collision)",
+                entity_desc
+            )
+        } else {
+            default_msg
+        }
+    } else {
+        default_msg
+    };
+
+    IssuerRepositoryError::Conflict(msg)
 }
 
 fn status_as_str(status: IssuerStatus) -> String {
@@ -502,5 +526,54 @@ mod tests {
             .unwrap();
         let result = repo.update(&clash, 1);
         assert!(matches!(result, Err(IssuerRepositoryError::Conflict(_))));
+    }
+
+    #[test]
+    fn insert_reconstituted_issuer_with_cnpj_and_non_br_country_fails() {
+        let (_db, repo) = test_repo();
+        let id = IssuerId::new();
+
+        let issuer = Issuer::reconstitute(
+            id,
+            IssuerStatus::Active,
+            Utc::now(),
+            Some(IssuerName::new("Foreign CNPJ Corp").unwrap()),
+            Some(CnpjIdentifier::new("12345678000195")),
+            None,
+            Some(CountryCode::from_str("US").unwrap()),
+        );
+
+        let result = repo.insert(&issuer);
+
+        assert!(
+            matches!(result, Err(IssuerRepositoryError::Conflict(ref msg)) if msg.contains("CHECK constraint")),
+            "Expected CHECK constraint violation for CNPJ with US country code, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn apply_patch_setting_non_br_country_on_issuer_with_cnpj_fails() {
+        let (_db, repo) = test_repo();
+
+        let issuer = Issuer::builder()
+            .cnpj(CnpjIdentifier::new("12345678000195"))
+            .country_code(CountryCode::from_str("BR").unwrap())
+            .build()
+            .unwrap();
+
+        repo.insert(&issuer).unwrap();
+
+        let patch = IssuerPatch::builder()
+            .country_code(CountryCode::from_str("US").unwrap())
+            .build();
+
+        let result = repo.apply_patch(issuer.id(), 1, patch);
+
+        assert!(
+            matches!(result, Err(IssuerRepositoryError::Conflict(ref msg)) if msg.contains("CHECK constraint")),
+            "Expected CHECK constraint violation when patching country to US on an issuer holding a CNPJ, got: {:?}",
+            result
+        );
     }
 }

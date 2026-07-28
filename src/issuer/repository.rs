@@ -42,89 +42,47 @@ pub trait IssuerRepository {
     fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), IssuerRepositoryError>;
 }
 
-impl<R: IssuerRepository + ?Sized> IssuerRepository for Box<R> {
-    fn find_by_id(
-        &self,
-        id: &IssuerId,
-    ) -> Result<Option<Versioned<Issuer>>, IssuerRepositoryError> {
-        (**self).find_by_id(id)
-    }
-    fn exists(&self, id: &IssuerId) -> Result<bool, IssuerRepositoryError> {
-        (**self).exists(id)
-    }
-    fn insert(&self, issuer: &Issuer) -> Result<(), IssuerRepositoryError> {
-        (**self).insert(issuer)
-    }
-    fn apply_patch(
-        &self,
-        id: &IssuerId,
-        expected_version: u32,
-        patch: IssuerPatch,
-    ) -> Result<(), IssuerRepositoryError> {
-        (**self).apply_patch(id, expected_version, patch)
-    }
-    fn update(&self, issuer: &Issuer, expected_version: u32) -> Result<(), IssuerRepositoryError> {
-        (**self).update(issuer, expected_version)
-    }
-    fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), IssuerRepositoryError> {
-        (**self).delete(id, expected_version)
-    }
+macro_rules! delegate_issuer_repository {
+    ($ty:ty) => {
+        impl<R: IssuerRepository + ?Sized> IssuerRepository for $ty {
+            fn find_by_id(
+                &self,
+                id: &IssuerId,
+            ) -> Result<Option<Versioned<Issuer>>, IssuerRepositoryError> {
+                (**self).find_by_id(id)
+            }
+            fn exists(&self, id: &IssuerId) -> Result<bool, IssuerRepositoryError> {
+                (**self).exists(id)
+            }
+            fn insert(&self, issuer: &Issuer) -> Result<(), IssuerRepositoryError> {
+                (**self).insert(issuer)
+            }
+            fn apply_patch(
+                &self,
+                id: &IssuerId,
+                expected_version: u32,
+                patch: IssuerPatch,
+            ) -> Result<(), IssuerRepositoryError> {
+                (**self).apply_patch(id, expected_version, patch)
+            }
+            fn update(
+                &self,
+                issuer: &Issuer,
+                expected_version: u32,
+            ) -> Result<(), IssuerRepositoryError> {
+                (**self).update(issuer, expected_version)
+            }
+            fn delete(
+                &self,
+                id: &IssuerId,
+                expected_version: u32,
+            ) -> Result<(), IssuerRepositoryError> {
+                (**self).delete(id, expected_version)
+            }
+        }
+    };
 }
 
-impl<R: IssuerRepository + ?Sized> IssuerRepository for Rc<R> {
-    fn find_by_id(
-        &self,
-        id: &IssuerId,
-    ) -> Result<Option<Versioned<Issuer>>, IssuerRepositoryError> {
-        (**self).find_by_id(id)
-    }
-    fn exists(&self, id: &IssuerId) -> Result<bool, IssuerRepositoryError> {
-        (**self).exists(id)
-    }
-    fn insert(&self, issuer: &Issuer) -> Result<(), IssuerRepositoryError> {
-        (**self).insert(issuer)
-    }
-    fn apply_patch(
-        &self,
-        id: &IssuerId,
-        expected_version: u32,
-        patch: IssuerPatch,
-    ) -> Result<(), IssuerRepositoryError> {
-        (**self).apply_patch(id, expected_version, patch)
-    }
-    fn update(&self, issuer: &Issuer, expected_version: u32) -> Result<(), IssuerRepositoryError> {
-        (**self).update(issuer, expected_version)
-    }
-    fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), IssuerRepositoryError> {
-        (**self).delete(id, expected_version)
-    }
-}
-
-impl<R: IssuerRepository + ?Sized> IssuerRepository for Arc<R> {
-    fn find_by_id(
-        &self,
-        id: &IssuerId,
-    ) -> Result<Option<Versioned<Issuer>>, IssuerRepositoryError> {
-        (**self).find_by_id(id)
-    }
-    fn exists(&self, id: &IssuerId) -> Result<bool, IssuerRepositoryError> {
-        (**self).exists(id)
-    }
-    fn insert(&self, issuer: &Issuer) -> Result<(), IssuerRepositoryError> {
-        (**self).insert(issuer)
-    }
-    fn apply_patch(
-        &self,
-        id: &IssuerId,
-        expected_version: u32,
-        patch: IssuerPatch,
-    ) -> Result<(), IssuerRepositoryError> {
-        (**self).apply_patch(id, expected_version, patch)
-    }
-    fn update(&self, issuer: &Issuer, expected_version: u32) -> Result<(), IssuerRepositoryError> {
-        (**self).update(issuer, expected_version)
-    }
-    fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), IssuerRepositoryError> {
-        (**self).delete(id, expected_version)
-    }
-}
+delegate_issuer_repository!(Box<R>);
+delegate_issuer_repository!(Rc<R>);
+delegate_issuer_repository!(Arc<R>);

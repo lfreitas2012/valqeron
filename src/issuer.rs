@@ -10,6 +10,7 @@ pub mod patch;
 pub mod repository;
 
 const ISSUER_NAME_MAX_LEN: usize = 200;
+const BRAZIL_COUNTRY_CODE: &str = "BR";
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct IssuerName(String);
@@ -61,8 +62,15 @@ impl IssuerId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+impl Default for IssuerId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum IssuerStatus {
+    #[default]
     Active,
     Retired,
 }
@@ -98,12 +106,7 @@ impl From<IssuerStatus> for String {
     }
 }
 
-impl Default for IssuerStatus {
-    fn default() -> Self {
-        IssuerStatus::Active
-    }
-}
-
+#[derive(Debug)]
 pub struct Issuer {
     id: IssuerId,
     status: IssuerStatus,
@@ -174,8 +177,6 @@ pub struct IssuerBuilder {
     country_code: Option<CountryCode>,
 }
 
-const BRAZIL_COUNTRY_CODE: &'static str = "BR";
-
 impl IssuerBuilder {
     pub fn new() -> Self {
         Self::default()
@@ -217,7 +218,7 @@ impl IssuerBuilder {
     }
 
     pub fn build(self) -> Result<Issuer, IssuerBuilderError> {
-        let id = self.id.unwrap_or_else(IssuerId::new);
+        let id = self.id.unwrap_or_default();
         let status = self.status.unwrap_or_default();
         let created_at = self.created_at.unwrap_or_else(Utc::now);
 
