@@ -1,3 +1,8 @@
 /target
-
 .idea
+/_scm_dev/
+
+# test_app bin artifacts
+/test_app.db
+/test_app.db-wal
+/test_app.db-shm
