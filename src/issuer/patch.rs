@@ -1,14 +1,13 @@
-use crate::common::{CnpjIdentifier, LeiIdentifier};
 use crate::issuer::{IssuerName, IssuerStatus};
-use ftracker_identifiers::CountryCode;
+use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use std::marker::PhantomData;
 
 #[derive(Debug, Default, Clone)]
 pub struct IssuerPatch {
     pub name: Option<IssuerName>,
     pub status: Option<IssuerStatus>,
-    pub cnpj: Option<CnpjIdentifier>,
-    pub lei: Option<LeiIdentifier>,
+    pub cnpj: Option<Cnpj>,
+    pub lei: Option<Lei>,
     pub country_code: Option<CountryCode>,
 }
 
@@ -56,7 +55,7 @@ impl<State> IssuerPatchBuilder<State> {
         }
     }
 
-    pub fn cnpj(self, cnpj: CnpjIdentifier) -> IssuerPatchBuilder<NonEmpty> {
+    pub fn cnpj(self, cnpj: Cnpj) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
                 cnpj: Some(cnpj),
@@ -66,7 +65,7 @@ impl<State> IssuerPatchBuilder<State> {
         }
     }
 
-    pub fn lei(self, lei: LeiIdentifier) -> IssuerPatchBuilder<NonEmpty> {
+    pub fn lei(self, lei: Lei) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
                 lei: Some(lei),

@@ -18,6 +18,6 @@ pub use issuer::patch::IssuerPatch;
 #[doc(hidden)]
 pub use issuer::patch::{Empty, IssuerPatchBuilder, NonEmpty};
 
-pub use common::{CnpjIdentifier, LeiIdentifier, Versioned};
+pub use common::Versioned;
 
-pub use ftracker_identifiers::CountryCode;
+pub use ftracker_identifiers::{Cnpj, CountryCode, Lei};

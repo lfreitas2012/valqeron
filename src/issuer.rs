@@ -1,7 +1,6 @@
-use crate::common::{CnpjIdentifier, LeiIdentifier};
 use crate::issuer::error::{IssuerBuilderError, IssuerNameError, IssuerStatusError};
 use chrono::{DateTime, Utc};
-use ftracker_identifiers::CountryCode;
+use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -113,8 +112,8 @@ pub struct Issuer {
     created_at: DateTime<Utc>,
 
     name: Option<IssuerName>,
-    cnpj: Option<CnpjIdentifier>,
-    lei: Option<LeiIdentifier>,
+    cnpj: Option<Cnpj>,
+    lei: Option<Lei>,
     country_code: Option<CountryCode>,
 }
 
@@ -135,10 +134,10 @@ impl Issuer {
     pub fn name(&self) -> Option<&IssuerName> {
         self.name.as_ref()
     }
-    pub fn cnpj(&self) -> Option<&CnpjIdentifier> {
+    pub fn cnpj(&self) -> Option<&Cnpj> {
         self.cnpj.as_ref()
     }
-    pub fn lei(&self) -> Option<&LeiIdentifier> {
+    pub fn lei(&self) -> Option<&Lei> {
         self.lei.as_ref()
     }
     pub fn country_code(&self) -> Option<&CountryCode> {
@@ -150,8 +149,8 @@ impl Issuer {
         status: IssuerStatus,
         created_at: DateTime<Utc>,
         name: Option<IssuerName>,
-        cnpj: Option<CnpjIdentifier>,
-        lei: Option<LeiIdentifier>,
+        cnpj: Option<Cnpj>,
+        lei: Option<Lei>,
         country_code: Option<CountryCode>,
     ) -> Self {
         Self {
@@ -172,8 +171,8 @@ pub struct IssuerBuilder {
     status: Option<IssuerStatus>,
     created_at: Option<DateTime<Utc>>,
     name: Option<IssuerName>,
-    cnpj: Option<CnpjIdentifier>,
-    lei: Option<LeiIdentifier>,
+    cnpj: Option<Cnpj>,
+    lei: Option<Lei>,
     country_code: Option<CountryCode>,
 }
 
@@ -202,12 +201,12 @@ impl IssuerBuilder {
         self
     }
 
-    pub fn cnpj(mut self, cnpj: CnpjIdentifier) -> Self {
+    pub fn cnpj(mut self, cnpj: Cnpj) -> Self {
         self.cnpj = Some(cnpj);
         self
     }
 
-    pub fn lei(mut self, lei: LeiIdentifier) -> Self {
+    pub fn lei(mut self, lei: Lei) -> Self {
         self.lei = Some(lei);
         self
     }
@@ -354,7 +353,7 @@ mod tests {
     fn test_builder_with_all_valid_fields() {
         let custom_time = Utc::now();
         let name = IssuerName::new("Tech Global").unwrap();
-        let lei = LeiIdentifier::new("5493001R7TCG5YONX123");
+        let lei = Lei::new("5493000IBP32UQZ0KL24").unwrap();
         let country = CountryCode::from_str("US").unwrap();
 
         let issuer = Issuer::builder()
@@ -374,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_builder_cnpj_validation_success_without_country() {
-        let cnpj = CnpjIdentifier::new("12.345.678/0001-90");
+        let cnpj = Cnpj::new("12.345.678/0001-95").unwrap();
 
         let issuer = Issuer::builder()
             .cnpj(cnpj)
@@ -386,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_builder_cnpj_validation_success_with_br() {
-        let cnpj = CnpjIdentifier::new("12.345.678/0001-90");
+        let cnpj = Cnpj::new("12.345.678/0001-95").unwrap();
         let country_br = CountryCode::from_str("BR").unwrap();
 
         let issuer = Issuer::builder()
@@ -400,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_builder_cnpj_validation_fails_with_foreign_country() {
-        let cnpj = CnpjIdentifier::new("12.345.678/0001-90");
+        let cnpj = Cnpj::new("12.345.678/0001-95").unwrap();
         let country_us = CountryCode::from_str("US").unwrap();
 
         let result = Issuer::builder()

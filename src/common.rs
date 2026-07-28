@@ -19,17 +19,6 @@ impl<T> Identifier<T> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CnpjMarker;
-#[derive(Debug, Clone)]
-pub struct LeiMarker;
-#[derive(Debug, Clone)]
-pub struct IsinMarker;
-
-pub type CnpjIdentifier = Identifier<CnpjMarker>;
-pub type LeiIdentifier = Identifier<LeiMarker>;
-pub type IsinIdentifier = Identifier<IsinMarker>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Versioned<T> {
     pub data: T,

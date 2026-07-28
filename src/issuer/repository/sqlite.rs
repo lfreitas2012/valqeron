@@ -1,11 +1,11 @@
-use crate::common::{CnpjIdentifier, LeiIdentifier, Versioned};
+use crate::common::Versioned;
 use crate::db::DbHandle;
 use crate::issuer::error::IssuerRepositoryError;
 use crate::issuer::patch::IssuerPatch;
 use crate::issuer::repository::IssuerRepository;
 use crate::issuer::{Issuer, IssuerId, IssuerName, IssuerStatus};
 use chrono::{DateTime, Utc};
-use ftracker_identifiers::CountryCode;
+use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use rusqlite::{OptionalExtension, Row, params};
 use std::str::FromStr;
 
@@ -264,10 +264,14 @@ fn row_to_versioned_issuer(row: &Row) -> rusqlite::Result<Versioned<Issuer>> {
     })?;
 
     let cnpj: Option<String> = row.get("cnpj")?;
-    let cnpj = cnpj.map(CnpjIdentifier::new);
+    let cnpj = cnpj.map(|s| Cnpj::new(&s)).transpose().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
+    })?;
 
     let lei: Option<String> = row.get("lei")?;
-    let lei = lei.map(LeiIdentifier::new);
+    let lei = lei.map(|s| Lei::new(&s)).transpose().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(e))
+    })?;
 
     let country_code: Option<String> = row.get("country_code")?;
     let country_code = country_code
@@ -432,7 +436,7 @@ mod tests {
         let original = Issuer::builder()
             .id(id)
             .name(IssuerName::new("Acme Corp").unwrap())
-            .lei(LeiIdentifier::new("LEI-ORIGINAL"))
+            .lei(Lei::new("5493000IBP32UQZ0KL24").unwrap())
             .build()
             .unwrap();
         repo.insert(&original).unwrap();
@@ -440,7 +444,7 @@ mod tests {
         // Full replace: rename and drop the lei entirely.
         let replacement = Issuer::builder()
             .id(id)
-            .name(IssuerName::new("Renamed Corp").unwrap())
+            .name(IssuerName::new("HWUPKR0MPOU8FGXBT394").unwrap())
             .status(IssuerStatus::Retired)
             .build()
             .unwrap();
@@ -448,7 +452,7 @@ mod tests {
 
         let found = repo.find_by_id(&id).unwrap().unwrap();
         assert_eq!(found.version, 2, "version should bump");
-        assert_eq!(found.data.name().unwrap().as_str(), "Renamed Corp");
+        assert_eq!(found.data.name().unwrap().as_str(), "HWUPKR0MPOU8FGXBT394");
         assert!(found.data.status().is_retired());
         assert!(
             found.data.lei().is_none(),
@@ -506,22 +510,21 @@ mod tests {
         let (_db, repo) = test_repo();
 
         let a = Issuer::builder()
-            .lei(LeiIdentifier::new("LEI-A"))
+            .lei(Lei::new("5493000IBP32UQZ0KL24").unwrap())
             .build()
             .unwrap();
         let b_id = IssuerId::new();
         let b = Issuer::builder()
             .id(b_id)
-            .lei(LeiIdentifier::new("LEI-B"))
+            .lei(Lei::new("213800WSGIIZCXF1P572").unwrap())
             .build()
             .unwrap();
         repo.insert(&a).unwrap();
         repo.insert(&b).unwrap();
 
-        // Try to update b's lei to a's lei → UNIQUE violation.
         let clash = Issuer::builder()
             .id(b_id)
-            .lei(LeiIdentifier::new("LEI-A"))
+            .lei(Lei::new("5493000IBP32UQZ0KL24").unwrap())
             .build()
             .unwrap();
         let result = repo.update(&clash, 1);
@@ -538,7 +541,7 @@ mod tests {
             IssuerStatus::Active,
             Utc::now(),
             Some(IssuerName::new("Foreign CNPJ Corp").unwrap()),
-            Some(CnpjIdentifier::new("12345678000195")),
+            Some(Cnpj::new("12345678000195").unwrap()),
             None,
             Some(CountryCode::from_str("US").unwrap()),
         );
@@ -557,7 +560,7 @@ mod tests {
         let (_db, repo) = test_repo();
 
         let issuer = Issuer::builder()
-            .cnpj(CnpjIdentifier::new("12345678000195"))
+            .cnpj(Cnpj::new("12345678000195").unwrap())
             .country_code(CountryCode::from_str("BR").unwrap())
             .build()
             .unwrap();
