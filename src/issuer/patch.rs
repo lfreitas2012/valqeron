@@ -2,18 +2,28 @@ use crate::issuer::{IssuerName, IssuerStatus};
 use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use std::marker::PhantomData;
 
-#[derive(Debug, Default, Clone)]
-pub struct IssuerPatch {
-    pub name: Option<IssuerName>,
-    pub status: Option<IssuerStatus>,
-    pub cnpj: Option<Cnpj>,
-    pub lei: Option<Lei>,
-    pub country_code: Option<CountryCode>,
+#[derive(Debug, Clone)]
+pub(crate) struct IssuerPatch {
+    pub(crate) name: Option<IssuerName>,
+    pub(crate) status: Option<IssuerStatus>,
+    pub(crate) cnpj: Option<Cnpj>,
+    pub(crate) lei: Option<Lei>,
+    pub(crate) country_code: Option<CountryCode>,
 }
 
 impl IssuerPatch {
     pub fn builder() -> IssuerPatchBuilder<Empty> {
         IssuerPatchBuilder::new()
+    }
+
+    fn empty() -> Self {
+        Self {
+            name: None,
+            status: None,
+            cnpj: None,
+            lei: None,
+            country_code: None,
+        }
     }
 }
 
@@ -28,7 +38,7 @@ pub struct IssuerPatchBuilder<State> {
 impl IssuerPatchBuilder<Empty> {
     fn new() -> Self {
         Self {
-            inner: IssuerPatch::default(),
+            inner: IssuerPatch::empty(),
             _state: PhantomData,
         }
     }

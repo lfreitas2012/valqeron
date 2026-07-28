@@ -4,6 +4,7 @@ default:
 
 # Run all tests
 test:
+    cargo install cargo-llvm-cov --locked
     cargo llvm-cov
 
 # Check Rust code formatting without modifying files
