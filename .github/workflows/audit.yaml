@@ -8,15 +8,11 @@ on:
     branches:
       - main
     paths:
-      # Run if workflow changes
       - '.github/workflows/audit.yaml'
-      # Run on changed dependencies
       - '**/Cargo.toml'
       - '**/Cargo.lock'
-  # Rerun periodically to pick up new advisories
   schedule:
     - cron: '0 0 * * *'
-  # Run manually
   workflow_dispatch:
 
 concurrency:
@@ -35,5 +31,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions-rust-lang/audit@
-        name: Audit Rust Dependencies
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Audit Rust Dependencies
+        run: cargo audit
