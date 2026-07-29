@@ -25,6 +25,26 @@ impl IssuerPatch {
             country_code: None,
         }
     }
+
+    pub fn name(&self) -> Option<&IssuerName> {
+        self.name.as_ref()
+    }
+
+    pub fn status(&self) -> Option<IssuerStatus> {
+        self.status
+    }
+
+    pub fn cnpj(&self) -> Option<&Cnpj> {
+        self.cnpj.as_ref()
+    }
+
+    pub fn lei(&self) -> Option<&Lei> {
+        self.lei.as_ref()
+    }
+
+    pub fn country_code(&self) -> Option<&CountryCode> {
+        self.country_code.as_ref()
+    }
 }
 
 pub struct Empty;

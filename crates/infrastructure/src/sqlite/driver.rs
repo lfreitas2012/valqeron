@@ -6,18 +6,12 @@
 //! its own isolated connection and is always rolled back, so it never affects
 //! writes on other threads.
 
-use rusqlite::{Connection, OpenFlags, TransactionBehavior};
+use rusqlite::{Connection, OpenFlags};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
-pub mod error;
-pub mod models;
-pub mod queries;
-
-const MIGRATIONS: &[&str] = &[include_str!(
-    "../../../migrations/001_create_initial_issuer_schema.sql"
-)];
+use crate::sqlite::migrations;
 
 /// Default number of read connections in the pool.
 pub const DEFAULT_READER_POOL_SIZE: usize = 4;
@@ -124,7 +118,7 @@ impl ReaderPool {
 }
 
 /// RAII handle to a checked-out read connection. Returns the connection to the pool on a drop.
-pub(crate) struct PooledReader {
+pub struct PooledReader {
     pool: Arc<ReaderPool>,
     conn: Option<Connection>,
 }
@@ -146,7 +140,7 @@ impl Drop for PooledReader {
 
 /// A read guard: either a pooled reader connection (normal operation) or the writer connection
 /// itself (inside a dry-run, where all work shares one private connection).
-pub(crate) enum ReadGuard<'a> {
+pub enum ReadGuard<'a> {
     Pooled(PooledReader),
     Writer(MutexGuard<'a, Connection>),
 }
@@ -174,14 +168,14 @@ pub struct DbHandle {
 impl DbHandle {
     /// Access the single writer connection (serialized via mutex). Use for any statement that
     /// mutates data.
-    pub(crate) fn write(&self) -> MutexGuard<'_, Connection> {
+    pub fn write(&self) -> MutexGuard<'_, Connection> {
         lock(&self.writer)
     }
 
     /// Acquire a read connection. In normal operation this checks one out from the pool; inside a
     /// dry-run (no pool) reads run on the writer connection so they observe the dry-run
     /// transaction's uncommitted state.
-    pub(crate) fn read(&self) -> ReadGuard<'_> {
+    pub fn read(&self) -> ReadGuard<'_> {
         match &self.readers {
             Some(pool) => ReadGuard::Pooled(pool.checkout()),
             None => ReadGuard::Writer(lock(&self.writer)),
@@ -248,7 +242,7 @@ impl Database {
         // Writer: run migrations here, once, before readers are usable.
         let mut writer = open_connection(&path, ConnectionRole::Writer)?;
         configure(&writer, ConnectionRole::Writer, is_memory)?;
-        run_migrations(&mut writer)?;
+        migrations::run(&mut writer)?;
 
         // Readers: independent connections, query-only.
         let mut readers = Vec::with_capacity(config.reader_pool_size);
@@ -416,50 +410,10 @@ fn configure(
     Ok(())
 }
 
-fn run_migrations(connection: &mut Connection) -> Result<(), SqliteDataDriverError> {
-    fn migration_err(
-        source: impl std::error::Error + Send + Sync + 'static,
-    ) -> SqliteDataDriverError {
-        SqliteDataDriverError::Migration {
-            source: Box::new(source),
-        }
-    }
-
-    let current_version: i64 = connection
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .map_err(migration_err)?;
-
-    if current_version as usize > MIGRATIONS.len() {
-        return Err(SqliteDataDriverError::UnknownSchemaVersion {
-            found: current_version,
-            known: MIGRATIONS.len(),
-        });
-    }
-
-    for (index, sql) in MIGRATIONS.iter().enumerate() {
-        let migration_version = (index + 1) as i64;
-        if migration_version <= current_version {
-            continue;
-        }
-
-        let tx = connection
-            .transaction_with_behavior(TransactionBehavior::Exclusive)
-            .map_err(migration_err)?;
-
-        tx.execute_batch(sql).map_err(migration_err)?;
-
-        tx.pragma_update(None, "user_version", migration_version)
-            .map_err(migration_err)?;
-
-        tx.commit().map_err(migration_err)?;
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sqlite::migrations::MIGRATIONS;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
 
@@ -505,7 +459,7 @@ mod tests {
         conn.pragma_update(None, "user_version", (MIGRATIONS.len() as i64) + 5)
             .unwrap();
 
-        let result = run_migrations(&mut conn);
+        let result = migrations::run(&mut conn);
         assert!(matches!(
             result,
             Err(SqliteDataDriverError::UnknownSchemaVersion { .. })
