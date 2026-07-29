@@ -1,5 +1,3 @@
-use crate::issuer::IssuerId;
-
 #[derive(thiserror::Error, Debug)]
 pub enum IssuerNameError {
     #[error("issuer name cannot be empty")]
@@ -22,16 +20,4 @@ pub enum IssuerBuilderError {
 
     #[error("Issuer name validation failed: {0}")]
     NameError(#[from] IssuerNameError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum IssuerRepositoryError {
-    #[error("constraint violation: {0}")]
-    Conflict(String),
-
-    #[error(transparent)]
-    Infrastructure(#[from] anyhow::Error),
-
-    #[error("issuer {0:?} not found")]
-    NotFound(IssuerId),
 }

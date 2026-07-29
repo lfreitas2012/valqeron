@@ -11,8 +11,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
+pub mod error;
+pub mod models;
+pub mod queries;
+
 const MIGRATIONS: &[&str] = &[include_str!(
-    "../migrations/001_create_initial_issuer_schema.sql"
+    "../../../migrations/001_create_initial_issuer_schema.sql"
 )];
 
 /// Default number of read connections in the pool.

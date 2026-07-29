@@ -1,11 +1,23 @@
-[package]
-name = "valqeron-core"
-version = "0.1.0"
+[workspace]
+resolver = "3"
+members = ["crates/cli",
+    "crates/core",
+    "crates/infrastructure",
+    "crates/cli"
+]
+
+[workspace.package]
 edition = "2024"
+rust-version = "1.93.0"
 license = "MIT OR Apache-2.0"
+authors = ["Leonardo Freitas"]
+version = "0.1.0"
 
+[workspace.dependencies]
+valqeron-core = { path = "crates/core" }
+valqeron-cli = { path = "crates/cli" }
+valqeron-infrastructure = { path = "crates/infrastructure" }
 
-[dependencies]
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
 chrono = { version = "0.4" }
@@ -14,9 +26,6 @@ anyhow = "1.0.104"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
-
-
-[dev-dependencies]
 mockall = "0.15.0"
 tempfile = "3"
 

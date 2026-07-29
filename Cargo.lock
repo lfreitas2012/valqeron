@@ -80,6 +80,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cli"
+version = "0.1.0"
+dependencies = [
+ "valqeron-core",
+ "valqeron-infrastructure",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -845,6 +853,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "valqeron-infrastructure"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "ftracker-identifiers",
+ "rusqlite",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "uuid",
+ "valqeron-core",
 ]
 
 [[package]]

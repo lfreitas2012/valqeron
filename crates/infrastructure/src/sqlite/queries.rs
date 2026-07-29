@@ -1,13 +1,11 @@
-use crate::common::Versioned;
-use crate::db::DbHandle;
-use crate::issuer::error::IssuerRepositoryError;
-use crate::issuer::patch::IssuerPatch;
-use crate::issuer::repository::IssuerRepository;
-use crate::issuer::{Issuer, IssuerId, IssuerName, IssuerStatus};
-use chrono::{DateTime, Utc};
+use crate::sqlite::DbHandle;
+use crate::sqlite::error::IssuerRepositoryError;
 use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use rusqlite::{OptionalExtension, Row, params};
 use std::str::FromStr;
+use valqeron_core::{
+    Issuer, IssuerId, IssuerName, IssuerPatch, IssuerRepository, IssuerStatus, Versioned,
+};
 
 /// [`IssuerRepository`] backed by SQLite. Reads using the connection pool; writes using the serialized writer.
 pub struct SqliteIssuerRepository {
@@ -22,10 +20,7 @@ impl SqliteIssuerRepository {
 }
 
 impl IssuerRepository for SqliteIssuerRepository {
-    fn find_by_id(
-        &self,
-        id: &IssuerId,
-    ) -> Result<Option<Versioned<Issuer>>, IssuerRepositoryError> {
+    fn find_by_id(&self, id: &IssuerId) -> anyhow::Result<Option<Versioned<Issuer>>> {
         let conn = self.db.read();
         let mut stmt = conn
             .prepare_cached(
@@ -39,7 +34,7 @@ impl IssuerRepository for SqliteIssuerRepository {
             .map_err(infra)
     }
 
-    fn exists(&self, id: &IssuerId) -> Result<bool, IssuerRepositoryError> {
+    fn exists(&self, id: &IssuerId) -> anyhow::Result<bool> {
         let conn = self.db.read();
         let mut stmt = conn
             .prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")
@@ -51,7 +46,7 @@ impl IssuerRepository for SqliteIssuerRepository {
             .map_err(infra)
     }
 
-    fn insert(&self, issuer: &Issuer) -> Result<(), IssuerRepositoryError> {
+    fn insert(&self, issuer: &Issuer) -> anyhow::Result<()> {
         let conn = self.db.write();
         let mut stmt = conn
             .prepare_cached(
@@ -85,7 +80,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         id: &IssuerId,
         expected_version: u32,
         patch: IssuerPatch,
-    ) -> Result<(), IssuerRepositoryError> {
+    ) -> anyhow::Result<()> {
         let conn = self.db.write();
         let mut stmt = conn
             .prepare_cached(
@@ -121,7 +116,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         }
     }
 
-    fn update(&self, issuer: &Issuer, expected_version: u32) -> Result<(), IssuerRepositoryError> {
+    fn update(&self, issuer: &Issuer, expected_version: u32) -> Result<(), anyhow::Error> {
         let id = issuer.id();
         let conn = self.db.write();
 
@@ -159,7 +154,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         }
     }
 
-    fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), IssuerRepositoryError> {
+    fn delete(&self, id: &IssuerId, expected_version: u32) -> Result<(), anyhow::Error> {
         let conn = self.db.write();
         let mut stmt = conn
             .prepare_cached("DELETE FROM issuer WHERE id = ?1 AND version = ?2")
@@ -176,8 +171,8 @@ impl IssuerRepository for SqliteIssuerRepository {
     }
 }
 
-fn infra(e: impl Into<anyhow::Error>) -> IssuerRepositoryError {
-    IssuerRepositoryError::Infrastructure(e.into())
+fn infra(e: impl Into<anyhow::Error>) -> anyhow::Error {
+    IssuerRepositoryError::Infrastructure(e.into()).into()
 }
 
 fn not_found(id: &IssuerId) -> IssuerRepositoryError {
@@ -187,7 +182,7 @@ fn not_found(id: &IssuerId) -> IssuerRepositoryError {
 /// After a versioned write affects 0 rows, decide whether the row exists with a different version
 /// (`Conflict`) or is absent (`NotFound`). Must be called while still holding the writer lock so
 /// the check is race-free.
-fn conflict_or_not_found(conn: &rusqlite::Connection, id: &IssuerId) -> IssuerRepositoryError {
+fn conflict_or_not_found(conn: &rusqlite::Connection, id: &IssuerId) -> anyhow::Error {
     let exists = conn
         .prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")
         .and_then(|mut stmt| {
@@ -199,8 +194,9 @@ fn conflict_or_not_found(conn: &rusqlite::Connection, id: &IssuerId) -> IssuerRe
         Ok(Some(_)) => IssuerRepositoryError::Conflict(format!(
             "version mismatch: issuer {} was modified by another process",
             id.value()
-        )),
-        Ok(None) => not_found(id),
+        ))
+        .into(),
+        Ok(None) => not_found(id).into(),
         Err(e) => infra(e),
     }
 }
@@ -212,7 +208,7 @@ fn is_constraint_violation(err: &rusqlite::Error) -> bool {
     )
 }
 
-fn handle_constraint_error(err: &rusqlite::Error, entity_desc: &str) -> IssuerRepositoryError {
+fn handle_constraint_error(err: &rusqlite::Error, entity_desc: &str) -> anyhow::Error {
     let default_msg = format!("{} violated a database constraint", entity_desc);
 
     let msg = if let rusqlite::Error::SqliteFailure(_, Some(sqlite_msg)) = err {
@@ -233,7 +229,7 @@ fn handle_constraint_error(err: &rusqlite::Error, entity_desc: &str) -> IssuerRe
         default_msg
     };
 
-    IssuerRepositoryError::Conflict(msg)
+    IssuerRepositoryError::Conflict(msg).into()
 }
 
 fn status_as_str(status: IssuerStatus) -> String {

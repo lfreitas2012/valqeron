@@ -1,0 +1,25 @@
+[package]
+name = "valqeron-core"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+ftracker-identifiers = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+mockall = { workspace = true }
+tempfile = { workspace = true }
+
+[lib]
+name = "valqeron_core"

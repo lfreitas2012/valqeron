@@ -5,9 +5,7 @@
 
 use std::path::Path;
 
-use crate::db::{Database, DatabaseConfig, SqliteDataDriverError};
 use crate::issuer::repository::IssuerRepository;
-use crate::issuer::repository::sqlite::SqliteIssuerRepository;
 
 /// Engine configuration. Driver-agnostic knobs supplied at open time.
 #[derive(Debug, Clone)]
