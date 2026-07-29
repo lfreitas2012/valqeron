@@ -1,12 +1,3 @@
-//! Valqeron CLI entry point.
-//!
-//! Responsibilities, in order: parse args, resolve configuration, initialize
-//! logging (stderr always; a file layer when requested), dispatch the command,
-//! and render the result. Successful results are written as a JSON success
-//! envelope to stdout (or `--output`); failures are rendered as an RFC 9457-style
-//! [`ProblemDetail`](crate::error::problem::ProblemDetail) on stderr, and the
-//! process exits with a category-specific `sysexits.h` code.
-
 mod cli;
 mod commands;
 mod config;
@@ -27,6 +18,7 @@ use crate::cli::Cli;
 use crate::commands::Commands;
 use crate::config::ValqeronConfig;
 use crate::context::AppContext;
+use crate::error::AppError::InvalidCliFlag;
 use crate::error::AppResult;
 use crate::error::problem::ProblemDetail;
 use crate::io_util::{InputSource, OutputDest};
@@ -35,7 +27,6 @@ use crate::server::Server;
 fn main() {
     let cli = Cli::parse();
 
-    // Keep the file-appender worker guard alive for the whole run.
     let _log_guard = match run(&cli) {
         Ok(guard) => guard,
         Err(err) => {
@@ -46,8 +37,10 @@ fn main() {
     };
 }
 
-/// Execute the CLI. Returns the log worker guard (if a file layer was set up)
-/// so the caller can keep it alive until the process exits.
+/// Executes the command, logging and handling errors.
+///
+/// Returns the log worker guard (if a file layer was set up) so the caller can keep it alive until
+/// the process exits.
 fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuard>> {
     let config = ValqeronConfig::resolve(
         cli.db_path.clone(),
@@ -86,6 +79,12 @@ fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
     // `init` opens the engine itself (to create/migrate); it does not run
     // against an already-open repository.
     if let Commands::Init(args) = &cli.command {
+        if cli.dry_run {
+            return Err(InvalidCliFlag {
+                flag: "--dry-run".to_string(),
+                command: "init".to_string(),
+            });
+        }
         args.run(config, &ctx)?;
         return Ok(());
     }
@@ -98,8 +97,6 @@ fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
         "dispatching command"
     );
 
-    // Dry-run rehearses the real write path on an isolated, always-rolled-back
-    // connection; otherwise we run against the live engine.
     let payload = if cli.dry_run {
         server.dry_run(|repo| cli.command.execute(repo, &ctx))?
     } else {
@@ -109,15 +106,6 @@ fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
     ctx.write_success(&payload)
 }
 
-/// Initialize tracing with two independently-filtered layers:
-///
-/// * a **stderr** layer at the `-v`/`RUST_LOG` level (default WARN) for the
-///   human at the terminal — never writes to stdout, so piped JSON stays clean;
-/// * a **file** layer (JSON, non-blocking) at INFO/`VALQERON_LOG_LEVEL` so the
-///   full operation trail is persisted regardless of `-v`.
-///
-/// File logging is best-effort: if the log directory or file cannot be opened
-/// we warn on stderr and continue without it rather than failing the command.
 fn init_logging(
     cli: &Cli,
     config: &ValqeronConfig,
@@ -152,9 +140,7 @@ fn init_logging(
 
     match file {
         Some((non_blocking, guard)) => {
-            // file: always captures operations at INFO+ (VALQERON_LOG_LEVEL / RUST_LOG override).
-            let file_filter = EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(config.file_log_level()));
+            let file_filter = EnvFilter::new(config.file_log_level());
 
             let file_layer = fmt::layer()
                 .with_writer(non_blocking)

@@ -43,7 +43,9 @@ fn conversion_failure(
 /// Read a 16-byte BLOB `id` column into an [`IssuerId`].
 pub fn column_issuer_id(row: &Row, name: &str) -> rusqlite::Result<IssuerId> {
     let bytes: Vec<u8> = row.get(name)?;
-    let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| conversion_failure(0, Type::Blob, e))?;
+    let idx = row.as_ref().column_index(name).unwrap_or(0);
+    let uuid =
+        uuid::Uuid::from_slice(&bytes).map_err(|e| conversion_failure(idx, Type::Blob, e))?;
     Ok(IssuerId::from_uuid(uuid))
 }
 

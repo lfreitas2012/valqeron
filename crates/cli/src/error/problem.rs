@@ -12,6 +12,7 @@
 
 use serde::Serialize;
 use serde_json::{Map, Value};
+use std::borrow::Cow;
 
 /// A single, serializable problem description.
 ///
@@ -80,7 +81,7 @@ pub trait IntoProblem: std::error::Error {
     fn problem_type(&self) -> &'static str;
 
     /// Human-readable category title.
-    fn title(&self) -> &'static str;
+    fn title(&self) -> Cow<'static, str>;
 
     /// Category status / process exit code. Defaults to `1` (generic failure).
     fn status(&self) -> u16 {
@@ -138,8 +139,8 @@ mod tests {
         fn problem_type(&self) -> &'static str {
             "test/outer"
         }
-        fn title(&self) -> &'static str {
-            "Outer"
+        fn title(&self) -> Cow<'static, str> {
+            Cow::Borrowed("Outer")
         }
         fn status(&self) -> u16 {
             65
@@ -173,8 +174,8 @@ mod tests {
             fn problem_type(&self) -> &'static str {
                 "test/bare"
             }
-            fn title(&self) -> &'static str {
-                "Bare"
+            fn title(&self) -> Cow<'static, str> {
+                Cow::Borrowed("Bare")
             }
         }
 

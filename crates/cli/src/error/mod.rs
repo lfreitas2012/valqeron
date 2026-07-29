@@ -8,10 +8,10 @@
 
 pub mod problem;
 
+use ftracker_identifiers::{CnpjError, CountryCodeError, LeiError};
 use problem::{IntoProblem, ProblemDetail};
 use serde_json::{Map, Value};
-
-use ftracker_identifiers::{CnpjError, CountryCodeError, LeiError};
+use std::borrow::Cow;
 use valqeron_core::{
     IssuerBuilderError, IssuerNameError, IssuerStatusError, RepositoryError, StorageError,
 };
@@ -116,9 +116,12 @@ pub enum AppError {
     #[error("failed to serialize output: {0}")]
     Serialize(String),
 
-    /// A configuration problem (e.g. no home directory to resolve paths).
+    /// A configuration problem (e.g., no home directory to resolve paths).
     #[error("configuration error: {0}")]
     Config(String),
+
+    #[error("Command line flag `{flag}` is not valid for `{command}`.")]
+    InvalidCliFlag { flag: String, command: String },
 }
 
 impl AppError {
@@ -208,32 +211,39 @@ impl IntoProblem for AppError {
             AppError::Io(_) => "io/failed",
             AppError::Serialize(_) => "io/serialize-failed",
             AppError::Config(_) => "config/invalid",
+            AppError::InvalidCliFlag { .. } => "cli/invalid-flag",
         }
     }
 
-    fn title(&self) -> &'static str {
+    fn title(&self) -> Cow<'static, str> {
         match self {
             AppError::Storage(e) => match e {
-                StorageError::Open { .. } | StorageError::DryRun { .. } => "Storage unavailable",
-                StorageError::Migration { .. } => "Schema migration failed",
-                StorageError::SchemaTooNew { .. } => "Schema too new",
-                StorageError::Config(_) => "Invalid configuration",
-                StorageError::Backend(_) => "Storage error",
+                StorageError::Open { .. } | StorageError::DryRun { .. } => {
+                    Cow::Borrowed("Storage unavailable")
+                }
+                StorageError::Migration { .. } => Cow::Borrowed("Schema migration failed"),
+                StorageError::SchemaTooNew { .. } => Cow::Borrowed("Schema too new"),
+                StorageError::Config(_) => Cow::Borrowed("Invalid configuration"),
+                StorageError::Backend(_) => Cow::Borrowed("Storage error"),
             },
             AppError::Repository(e) => match e {
-                RepositoryError::NotFound(_) => "Issuer not found",
-                RepositoryError::Conflict(_) => "Conflict",
-                RepositoryError::Backend(_) => "Storage error",
+                RepositoryError::NotFound(_) => Cow::Borrowed("Issuer not found"),
+                RepositoryError::Conflict(_) => Cow::Borrowed("Conflict"),
+                RepositoryError::Backend(_) => Cow::Borrowed("Storage error"),
             },
             AppError::IssuerBuilder(_) | AppError::IssuerName(_) | AppError::IssuerStatus(_) => {
-                "Issuer validation failed"
+                Cow::Borrowed("Issuer validation failed")
             }
-            AppError::Identifier { .. } => "Invalid identifier",
-            AppError::InvalidId(_) => "Invalid issuer id",
-            AppError::Input(_) => "Invalid input",
-            AppError::Io(_) => "I/O error",
-            AppError::Serialize(_) => "Serialization error",
-            AppError::Config(_) => "Invalid configuration",
+            AppError::Identifier { .. } => Cow::Borrowed("Invalid identifier"),
+            AppError::InvalidId(_) => Cow::Borrowed("Invalid issuer id"),
+            AppError::Input(_) => Cow::Borrowed("Invalid input"),
+            AppError::Io(_) => Cow::Borrowed("I/O error"),
+            AppError::Serialize(_) => Cow::Borrowed("Serialization error"),
+            AppError::Config(_) => Cow::Borrowed("Invalid configuration"),
+
+            AppError::InvalidCliFlag { flag, command } => {
+                Cow::Owned(format!("Invalid command-line flag `{flag}`"))
+            }
         }
     }
 
@@ -261,6 +271,7 @@ impl IntoProblem for AppError {
             AppError::Io(_) => exit::IOERR,
             AppError::Serialize(_) => exit::SOFTWARE,
             AppError::Config(_) => exit::CONFIG,
+            AppError::InvalidCliFlag { .. } => exit::DATAERR,
         }
     }
 
