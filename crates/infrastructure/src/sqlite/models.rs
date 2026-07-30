@@ -55,7 +55,7 @@ mod tests {
     use std::str::FromStr;
     use valqeron_core::{IssuerId, IssuerStatus};
 
-    /// Insert a fully-populated issuer directly, then round-trip it back through
+    /// Insert a fully populated issuer directly, then round-trip it back through
     /// [`IssuerRow::from_row`] to prove every column maps correctly.
     #[test]
     fn issuer_row_round_trips_all_columns() {

@@ -1,11 +1,3 @@
-//! SQLite storage driver.
-//!
-//! Concurrency model: a single writer connection serialized behind a mutex plus
-//! a fixed pool of `query_only` reader connections. On disk this runs in WAL
-//! mode, so readers never block the writer or each other. A dry-run executes on
-//! its own isolated connection and is always rolled back, so it never affects
-//! writes on other threads.
-
 use rusqlite::{Connection, OpenFlags};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -16,10 +8,10 @@ use crate::sqlite::migrations;
 /// Default number of read connections in the pool.
 pub const DEFAULT_READER_POOL_SIZE: usize = 4;
 
-/// A connection shared behind a mutex; used for the serialized writer.
+/// A shared connection to the database.
 pub type SharedConnection = Arc<Mutex<Connection>>;
 
-/// Errors from opening, configuring, migrating, or running a dry-run on the database.
+/// Errors that can occur when opening or using a database.
 #[derive(Debug, thiserror::Error)]
 pub enum SqliteDataDriverError {
     #[error("failed to open sqlite connection")]
@@ -53,6 +45,9 @@ pub enum SqliteDataDriverError {
 
     #[error("reader pool size must be at least 1")]
     InvalidPoolSize,
+
+    #[error("a DbHandle from a dry-run outlived the dry-run closure")]
+    DryRunHandleEscaped,
 }
 
 /// Configuration for opening a [`Database`].
@@ -70,8 +65,13 @@ impl Default for DatabaseConfig {
     }
 }
 
-/// Poison-tolerant lock helper: if another thread panicked while holding the lock, we recover the
-/// guard rather than propagating the panic.
+/// Poison-tolerant lock helper: recovers the guard instead of propagating a panic from another thread.
+///
+/// Invariant this relies on: every `DbHandle::write()` critical section that mutates more than one
+/// statement wraps itself in a SQL transaction (`BEGIN`/`COMMIT`/`ROLLBACK`), so a panic
+/// mid-section leaves at worst an open, uncommitted transaction, never partially applied
+/// statements outside one. Callers must not rely on multi-statement atomicity without an explicit
+/// transaction.
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -166,8 +166,7 @@ pub struct DbHandle {
 }
 
 impl DbHandle {
-    /// Access the single writer connection (serialized via mutex). Use for any statement that
-    /// mutates data.
+    /// Access the single writer connection (serialized via mutex). Use for any statement that mutates data.
     pub fn write(&self) -> MutexGuard<'_, Connection> {
         lock(&self.writer)
     }
@@ -267,16 +266,6 @@ impl Database {
         self.handle.clone()
     }
 
-    /// Run `f` inside a dry-run: `f` receives a [`DbHandle`] bound to a private, isolated connection
-    /// with an open transaction. Whatever `f` does is **always rolled back** and never persisted,
-    /// and, because it uses its own connection, it never affects writes happening on other threads.
-    ///
-    /// The dry-run holds SQLite's write lock (`BEGIN IMMEDIATE`) for its duration; concurrent writers
-    /// (including other processes) wait up to `busy_timeout`.
-    ///
-    /// The rollback is best-effort but safe: even if the explicit `ROLLBACK` errored, dropping the
-    /// private connection discards any uncommitted transaction, so nothing can leak into the
-    /// persisted database.
     pub fn dry_run<F, T>(&self, f: F) -> Result<T, SqliteDataDriverError>
     where
         F: FnOnce(&DbHandle) -> T,
@@ -303,9 +292,10 @@ impl Database {
 
         // Reclaim the connection (the handle holds the only other Arc; drop it).
         drop(handle);
-        let conn = Arc::try_unwrap(shared)
-            .map(|m| m.into_inner().unwrap_or_else(|p| p.into_inner()))
-            .expect("dry-run connection is uniquely owned after the closure returns");
+        let conn = match Arc::try_unwrap(shared) {
+            Ok(m) => m.into_inner().unwrap_or_else(|p| p.into_inner()),
+            Err(_) => return Err(SqliteDataDriverError::DryRunHandleEscaped),
+        };
 
         if let Err(e) = conn.execute_batch("ROLLBACK") {
             tracing::error!(error = %e, "dry-run explicit ROLLBACK failed; connection drop will discard the transaction");

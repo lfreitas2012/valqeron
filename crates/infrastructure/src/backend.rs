@@ -29,6 +29,7 @@ fn map_driver_error(err: SqliteDataDriverError) -> StorageError {
         SqliteDataDriverError::InvalidPoolSize => {
             StorageError::Config("reader pool size must be at least 1".into())
         }
+        SqliteDataDriverError::DryRunHandleEscaped => StorageError::Backend(err.into()),
     }
 }
 

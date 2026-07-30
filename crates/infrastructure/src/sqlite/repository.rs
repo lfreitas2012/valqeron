@@ -1,13 +1,3 @@
-//! SQLite-backed [`IssuerRepository`] implementation.
-//!
-//! This is the orchestration layer: it acquires the appropriate connection
-//! guard from the [`DbHandle`], delegates the SQL to [`crate::sqlite::queries`],
-//! reconstitutes domain objects from [`crate::sqlite::models`], and translates
-//! raw rusqlite outcomes into the domain error policy
-//! ([`RepositoryError`]) — optimistic-locking conflicts, not-found, and
-//! constraint violations. Raw driver errors are hidden behind
-//! [`RepositoryError::Backend`], so no SQLite types leak to callers.
-
 use rusqlite::{Connection, OptionalExtension, params};
 use valqeron_core::{
     Issuer, IssuerId, IssuerPatch, IssuerRepository, RepositoryError, RepositoryResult, Versioned,
