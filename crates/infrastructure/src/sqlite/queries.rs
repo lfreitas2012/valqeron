@@ -28,6 +28,14 @@ pub fn find_by_id(conn: &Connection, id: &IssuerId) -> rusqlite::Result<Option<I
         .optional()
 }
 
+/// Fetch all issuers, ordered by ID.
+pub fn list_all(conn: &Connection) -> rusqlite::Result<Vec<IssuerRow>> {
+    let sql = format!("SELECT {ISSUER_COLUMNS} FROM issuer ORDER BY id");
+    let mut stmt = conn.prepare_cached(&sql)?;
+
+    stmt.query_map([], IssuerRow::from_row)?.collect()
+}
+
 /// Whether an issuer with `id` exists.
 pub fn exists(conn: &Connection, id: &IssuerId) -> rusqlite::Result<bool> {
     let mut stmt = conn.prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")?;

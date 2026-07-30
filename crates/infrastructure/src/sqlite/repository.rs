@@ -36,6 +36,14 @@ impl IssuerRepository for SqliteIssuerRepository {
             .map_err(backend)
     }
 
+    fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+        let conn = self.db.read();
+
+        queries::list_all(&conn)
+            .map(|rows| rows.into_iter().map(|row| row.into_inner()).collect())
+            .map_err(backend)
+    }
+
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
         let conn = self.db.read();
         queries::exists(&conn, id).map_err(backend)

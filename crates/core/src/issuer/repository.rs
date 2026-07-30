@@ -15,6 +15,9 @@ pub trait IssuerRepository {
     /// Fetch an issuer with its current version, or `None` if absent.
     fn find_by_id(&self, id: &IssuerId) -> RepositoryResult<Option<Versioned<Issuer>>>;
 
+    /// List all registered issuers.
+    fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>>;
+
     /// Whether an issuer with `id` exists.
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool>;
 
@@ -47,6 +50,9 @@ macro_rules! delegate_issuer_repository {
         impl<R: IssuerRepository + ?Sized> IssuerRepository for $ty {
             fn find_by_id(&self, id: &IssuerId) -> RepositoryResult<Option<Versioned<Issuer>>> {
                 (**self).find_by_id(id)
+            }
+            fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+                (**self).list_all()
             }
             fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
                 (**self).exists(id)

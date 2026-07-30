@@ -19,10 +19,6 @@ pub struct InfoArgs {
 }
 
 impl Command for InfoArgs {
-    fn access_mode(&self) -> AccessMode {
-        AccessMode::ReadOnly
-    }
-
     fn execute(&self, repo: &dyn IssuerRepository, _ctx: &AppContext) -> AppResult<Value> {
         let uuid = Uuid::from_str(&self.id).map_err(|e| AppError::InvalidId(e.to_string()))?;
         let id = IssuerId::from_uuid(uuid);
@@ -42,5 +38,9 @@ impl Command for InfoArgs {
             "items": items,
             "count": items.len(),
         }))
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::ReadOnly
     }
 }

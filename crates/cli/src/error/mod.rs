@@ -25,6 +25,8 @@ mod exit {
     pub const NOTFOUND: u16 = 4;
     /// A uniqueness / optimistic-lock conflict.
     pub const CONFLICT: u16 = 9;
+    /// Wrong command line arguments.
+    pub const USAGE: u16 = 64;
     /// The input data was incorrect in some way (validation).
     pub const DATAERR: u16 = 65;
     /// An input file could not be read / parsed.
@@ -242,7 +244,7 @@ impl IntoProblem for AppError {
             AppError::Config(_) => Cow::Borrowed("Invalid configuration"),
 
             AppError::InvalidCliFlag { flag, command } => {
-                Cow::Owned(format!("Invalid command-line flag `{flag}`"))
+                Cow::Owned(format!("Invalid flag `{flag}` for `{command}`"))
             }
         }
     }
@@ -271,7 +273,7 @@ impl IntoProblem for AppError {
             AppError::Io(_) => exit::IOERR,
             AppError::Serialize(_) => exit::SOFTWARE,
             AppError::Config(_) => exit::CONFIG,
-            AppError::InvalidCliFlag { .. } => exit::DATAERR,
+            AppError::InvalidCliFlag { .. } => exit::USAGE,
         }
     }
 

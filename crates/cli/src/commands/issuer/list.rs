@@ -8,54 +8,43 @@
 //! JSON array of 0 or 1 items — the shape is already list-friendly, so adding
 //! full enumeration later is backwards compatible.
 //!
-//! TODO(core): switch to a `find_all`/paged query once the core repository
+//!
 //! provides one, and make `--id` an optional filter.
-
-use std::str::FromStr;
 
 use clap::Args;
 use serde_json::{Value, json};
-use uuid::Uuid;
 
-use valqeron_core::{IssuerId, IssuerRepository};
+use valqeron_core::IssuerRepository;
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
 use crate::dto::IssuerView;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 
 /// Arguments for `issuer list`.
 #[derive(Args, Debug)]
-pub struct ListArgs {
-    /// Issuer id (UUID) to look up. Required until the core supports full
-    /// enumeration.
-    #[arg(long)]
-    pub id: String,
-}
+pub struct ListArgs {}
 
+// TODO(core): switch to a `find_all`/paged query once the core repository
 impl Command for ListArgs {
-    fn access_mode(&self) -> AccessMode {
-        AccessMode::ReadOnly
-    }
-
     fn execute(&self, repo: &dyn IssuerRepository, _ctx: &AppContext) -> AppResult<Value> {
-        let uuid = Uuid::from_str(&self.id).map_err(|e| AppError::InvalidId(e.to_string()))?;
-        let id = IssuerId::from_uuid(uuid);
-
-        let found = repo.find_by_id(&id)?;
+        let found = repo.list_all()?;
         let items: Vec<IssuerView> = found.iter().map(IssuerView::from).collect();
 
         tracing::info!(
             target: "valqeron::audit",
-            operation = "issuer.get",
-            id = %self.id,
+            operation = "issuer.list",
             found = !items.is_empty(),
-            "issuer lookup"
+            "list all registered issuers"
         );
 
         Ok(json!({
             "items": items,
             "count": items.len(),
         }))
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::ReadOnly
     }
 }
