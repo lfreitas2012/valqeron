@@ -353,6 +353,21 @@ fn open_connection(
     }
 }
 
+/// Configures Sqlite database connection for the given role.
+///
+/// | PRAGMA NAME / API | PRAGMA VALUE | Description |
+/// |: --- |: --- |: --- |
+/// | journal_mode | WAL | Enables Sqlite WAL mode. Skip for in-memory databases. Check [the Sqlite docs](https://www.sqlite.org/wal.html) for more information. |
+/// | synchronous | NORMAL | The WAL file is synchronized before each checkpoint, and the database file is synchronized after each completed checkpoint, and the WAL file header is synchronized when a WAL file begins to be reused after a checkpoint, but no sync operations occur during most transactions <br><br>**It does not recover from power loss.**. <br><br>See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_synchronous) for more information. |
+/// | foreign_keys | ON | Enforce foreign key constraints. See [the Sqlite docs](https://www.sqlite.org/foreignkeys.html) for more information. |
+/// | busy_timeout | 5000 | Abort any operation that takes longer than 5 seconds to complete. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout) for more information. |
+/// | cache_size | -64000 | The database connection cache is limited to 64MB (64,000 KiB). See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_cache_size) for more information. |
+/// | temp_store | MEMORY | Forces temporary tables, indices, and views to be held purely in volatile RAM instead of spilling to disk files. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_temp_store) for more information. |
+/// | mmap_size | 268,435,456 | Sets the maximum memory-mapped I/O budget to 256MB to significantly speed up data read operations. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_mmap_size) for more information. <br><br>Skip for in-memory databases |
+/// | wal_autocheckpoint | 1000 | Automatically runs a PASSIVE checkpoint when the WAL log equals or exceeds 1,000 pages. Skip for in-memory databases. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_wal_autocheckpoint) for more information |
+/// | statement_cache | 64 | Set the maximum number of cached prepared statements this connection will hold. See [rusqlite docs](https://docs.rs/rusqlite/latest/src/rusqlite/cache.rs.html#48) |
+/// | query_only | ON / OFF | Activates strict read-only mode (`SQLITE_READONLY`) exclusively if the current connection's assigned role is `ConnectionRole::Reader`.  See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_query_only) for more information. |
+///
 fn configure(
     conn: &Connection,
     role: ConnectionRole,
@@ -360,8 +375,6 @@ fn configure(
 ) -> Result<(), SqliteDataDriverError> {
     let pragma_err = |source| SqliteDataDriverError::Pragma { source };
 
-    // In-memory shared-cache databases do not support WAL; skip journal-mode and WAL-autocheckpoint there.
-    // On-disk databases use WAL for concurrent readers.
     if !is_memory {
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(pragma_err)?;
@@ -382,7 +395,12 @@ fn configure(
     conn.pragma_update(None, "temp_store", "MEMORY")
         .map_err(pragma_err)?;
 
-    conn.pragma_update(None, "mmap_size", 256i64 * 1024 * 1024)
+    let targeted_mmap_bytes = if is_memory {
+        0i64
+    } else {
+        256i64 * 1024 * 1024
+    };
+    conn.pragma_update(None, "mmap_size", targeted_mmap_bytes)
         .map_err(pragma_err)?;
 
     if !is_memory {

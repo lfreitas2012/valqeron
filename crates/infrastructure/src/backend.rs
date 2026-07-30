@@ -1,9 +1,8 @@
 //! SQLite implementation of the core [`StorageBackend`] abstraction.
 //!
-//! [`SqliteBackend`] adapts the low-level [`Database`](crate::sqlite::Database)
-//! driver (writer connection + reader pool + migrations) onto the backend-neutral
-//! contract defined in `valqeron-core`, so applications talk only to
-//! [`Store`](valqeron_core::Store) and the domain repository traits.
+//! [`SqliteBackend`] adapts the low-level [`Database`] driver (writer connection + reader pool +
+//! migrations) onto the backend-neutral contract defined in `valqeron-core`, so applications talk
+//! only to [`Store`] and the domain repository traits.
 
 use std::path::Path;
 
