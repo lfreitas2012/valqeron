@@ -17,8 +17,7 @@ pub trait IssuerRepository {
 
     /// List all registered issuers.
     ///
-    /// Intended for small tables / administrative use: this loads the entire table into memory. For
-    /// large or unbounded datasets prefer [`list_paged`](Self::list_paged).
+    /// For large or unbounded datasets prefer [`list_paged`](Self::list_paged).
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>>;
 
     /// List a single page of issuers ordered by id, using keyset (seek) pagination.
@@ -36,11 +35,12 @@ pub trait IssuerRepository {
     /// Whether an issuer with `id` exists.
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool>;
 
-    /// Insert a new issuer. Returns `Conflict` on a duplicate id or CNPJ/LEI.
+    /// Insert a new issuer.
     fn insert(&self, issuer: &Issuer) -> RepositoryResult<()>;
 
-    /// Apply a partial update, bumping the version. Returns `Conflict` if `expected_version` is
-    /// stale, `NotFound` if the issuer is absent.
+    /// Apply a partial update, bumping the version.
+    ///
+    /// Returns `Conflict` if `expected_version` is stale, `NotFound` if the issuer is absent.
     fn apply_patch(
         &self,
         id: &IssuerId,

@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OpenFlags};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::sqlite::migrations;
 
@@ -33,9 +33,15 @@ pub const DEFAULT_READER_POOL_SIZE: usize = 4;
 /// A leaked or long-held [`ReadGuard`] would otherwise hang every future read with no signal;
 /// after this threshold we log and keep waiting rather than failing the read.
 ///
-/// Only used by the non-loom wait path (loom models blocking directly and has no timeout wait).
+/// Only used by the non-loom wait path (loom models blocking directly and have no timeout wait).
 #[cfg(not(loom))]
 const READER_CHECKOUT_WARN_AFTER: Duration = Duration::from_secs(5);
+
+/// Maximum duration a single SQL query is allowed to run before being aborted.
+const MAX_QUERY_EXECUTION_TIME: Duration = Duration::from_secs(15);
+
+/// Minimum idle gap between progress checks to detect a new query invocation.
+const IDLE_RESET_THRESHOLD: Duration = Duration::from_millis(50);
 
 /// A shared connection to the database.
 pub type SharedConnection = Arc<Mutex<Connection>>;
@@ -78,15 +84,19 @@ pub enum SqliteDataDriverError {
 
 /// Writer `synchronous` pragma level.
 ///
-/// Controls how aggressively the writer flushes to durable storage on commit. Readers are
-/// unaffected (they never write). See the durability tradeoff documented on [`configure`].
+/// Controls how aggressively the writer flushes to durable storage on commit. Readers are unaffected
+/// (they never write). See the durability tradeoff documented on [`configure`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Synchronous {
-    /// `synchronous=NORMAL`: fast; a committed transaction can be lost on power/OS crash, but the
-    /// database is never corrupted. The default for the embedded single-app use case.
+    /// `synchronous=NORMAL`.
+    ///
+    /// Fast. A committed transaction can be lost in a power/OS crash, but the database is never corrupted.
     #[default]
     Normal,
-    /// `synchronous=FULL`: a committed transaction survives power loss, at the cost of write latency.
+
+    /// `synchronous=FULL`:
+    ///
+    /// Slower. A committed transaction survives power loss.
     Full,
 }
 
@@ -119,24 +129,24 @@ impl Default for DatabaseConfig {
     }
 }
 
-/// Poison-tolerant lock helper for state where a recovered guard is always safe to reuse.
+/// Poison-tolerant lock helper for a state where a recovered guard is always safe to reuse.
 ///
-/// Used for the reader pool's idle list: a panic there can leave a `Connection` un-returned, but
-/// reads cannot corrupt on-disk state, so recovering the remaining connections is harmless.
-/// The single writer connection does NOT use this — see [`lock_writer`], which additionally clears
-/// any transaction stranded by a panicking prior writer.
+/// Used for the reader pool's idle list: a panic there can leave a `Connection` unreturned, but
+/// reads cannot corrupt on-disk state, so recovering the remaining connections is harmless. The
+/// single writer connection does NOT use this; see [`lock_writer`], which additionally clears any
+/// transaction stranded by a panicking prior writer.
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Acquire the writer connection, healing it if a prior writer panicked mid-transaction.
 ///
-/// The fast path (uncontended, unpoisoned) is a plain `lock()` with no extra SQLite calls. Only when
-/// the mutex is poisoned — i.e. a thread panicked while holding the writer — do we recover the guard
-/// and, if the connection is left inside a transaction (`!is_autocommit()`), force a `ROLLBACK` to
-/// discard the partially-applied work before handing the connection to the next writer. This keeps a
-/// long-lived process alive after a mid-write panic without ever surfacing a stranded, half-open
-/// transaction to subsequent callers.
+/// The fast path (uncontended, unpoisoned) is a plain `lock()` with no extra SQLite calls. Only
+/// when the mutex is poisoned (i.e., a thread panicked while holding the writer) do we recover the
+/// guard and, if the connection is left inside a transaction (`!is_autocommit()`), force a
+/// `ROLLBACK` to discard the partially applied work before handing the connection to the next writer.
+/// This keeps a long-lived process alive after a mid-write panic without ever surfacing a stranded,
+/// half-open transaction to subsequent callers.
 fn lock_writer(m: &Mutex<Connection>) -> MutexGuard<'_, Connection> {
     match m.lock() {
         Ok(guard) => guard,
@@ -198,7 +208,7 @@ impl<T> WaitPool<T> {
     /// Under `loom` this is a plain `wait` (loom has no `wait_timeout_while` and models the blocking
     /// directly). In normal builds it waits with a diagnostic threshold: if no item frees up within
     /// [`READER_CHECKOUT_WARN_AFTER`] it logs a warning (a leaked handle is the usual cause) and
-    /// keeps waiting — a take never fails, it only surfaces a stall.
+    /// keeps waiting; A take never fails, it only surfaces a stall.
     #[cfg(loom)]
     fn wait_for_item<'a>(&self, idle: MutexGuard<'a, Vec<T>>) -> MutexGuard<'a, Vec<T>> {
         self.available
@@ -635,7 +645,43 @@ fn configure(
             .map_err(pragma_err)?;
     }
 
+    configure_sqlite_progress_handler(conn);
+
     Ok(())
+}
+
+/// Configures a progress handler on `conn` to enforce a wall-clock timeout on individual SQL queries.
+///
+/// Registers a callback invoked every 5,000 SQLite VM instructions:
+/// - Resets the statement timer if elapsed time since the last callback exceeds [`IDLE_RESET_THRESHOLD`],
+///   indicating the connection was idle between pool uses.
+/// - Aborts the current query with `SQLITE_INTERRUPT` if execution exceeds [`MAX_QUERY_EXECUTION_TIME`].
+fn configure_sqlite_progress_handler(conn: &Connection) {
+    let mut query_start = Instant::now();
+    let mut last_check = Instant::now();
+
+    let _ = conn.progress_handler(
+        5_000,
+        Some(move || {
+            let now = Instant::now();
+
+            // Reset query_start if the connection was idle in the pool
+            if now.duration_since(last_check) > IDLE_RESET_THRESHOLD {
+                query_start = now;
+            }
+            last_check = now;
+
+            if now.duration_since(query_start) > MAX_QUERY_EXECUTION_TIME {
+                tracing::error!(
+                    "SQLite query interrupted: execution exceeded time limit of {:?}",
+                    MAX_QUERY_EXECUTION_TIME
+                );
+                true // Returns SQLITE_INTERRUPT to rusqlite
+            } else {
+                false
+            }
+        }),
+    );
 }
 
 #[cfg(test)]

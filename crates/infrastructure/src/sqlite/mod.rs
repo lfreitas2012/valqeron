@@ -2,7 +2,7 @@
 //!
 //! Architecture invariants
 //! 1. All processes using a database must be on the same host computer; WAL does not work over a network filesystem.
-//! 2. Supported multi-process shape is **one writing process + any number of reading processes**.
+//! 2. A supported multi-process shape is **one writing process plus any number of reading processes**.
 //!    The app-level writer mutex serializes writers only *within* a process; concurrent writers
 //!    across processes are not a supported/tested configuration (they would contend at SQLite's own
 //!    write lock, bounded by `busy_timeout`).
