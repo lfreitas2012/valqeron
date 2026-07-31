@@ -16,7 +16,22 @@ pub trait IssuerRepository {
     fn find_by_id(&self, id: &IssuerId) -> RepositoryResult<Option<Versioned<Issuer>>>;
 
     /// List all registered issuers.
+    ///
+    /// Intended for small tables / administrative use: this loads the entire table into memory. For
+    /// large or unbounded datasets prefer [`list_paged`](Self::list_paged).
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>>;
+
+    /// List a single page of issuers ordered by id, using keyset (seek) pagination.
+    ///
+    /// Returns up to `limit` issuers whose id sorts strictly after `after` (or from the beginning
+    /// when `after` is `None`), in ascending id order. To fetch the next page, pass the id of the
+    /// last item from the previous page as `after`. A returned page shorter than `limit` (or empty)
+    /// signals the end of the data.
+    fn list_paged(
+        &self,
+        after: Option<IssuerId>,
+        limit: u32,
+    ) -> RepositoryResult<Vec<Versioned<Issuer>>>;
 
     /// Whether an issuer with `id` exists.
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool>;
@@ -53,6 +68,13 @@ macro_rules! delegate_issuer_repository {
             }
             fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>> {
                 (**self).list_all()
+            }
+            fn list_paged(
+                &self,
+                after: Option<IssuerId>,
+                limit: u32,
+            ) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+                (**self).list_paged(after, limit)
             }
             fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
                 (**self).exists(id)

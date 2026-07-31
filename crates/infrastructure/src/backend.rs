@@ -6,9 +6,13 @@
 
 use std::path::Path;
 
-use valqeron_core::{IssuerRepository, StorageBackend, StorageConfig, StorageError, Store};
+use valqeron_core::{
+    Durability, IssuerRepository, StorageBackend, StorageConfig, StorageError, Store,
+};
 
-use crate::sqlite::{Database, DatabaseConfig, SqliteDataDriverError, SqliteIssuerRepository};
+use crate::sqlite::{
+    Database, DatabaseConfig, SqliteDataDriverError, SqliteIssuerRepository, Synchronous,
+};
 
 /// Map the SQLite driver's error type onto the driver-neutral [`StorageError`].
 fn map_driver_error(err: SqliteDataDriverError) -> StorageError {
@@ -28,7 +32,6 @@ fn map_driver_error(err: SqliteDataDriverError) -> StorageError {
         SqliteDataDriverError::InvalidPoolSize => {
             StorageError::Config("reader pool size must be at least 1".into())
         }
-        SqliteDataDriverError::DryRunHandleEscaped => StorageError::Backend(err.into()),
     }
 }
 
@@ -36,6 +39,10 @@ impl From<StorageConfig> for DatabaseConfig {
     fn from(cfg: StorageConfig) -> Self {
         DatabaseConfig {
             reader_pool_size: cfg.reader_pool_size,
+            synchronous: match cfg.durability {
+                Durability::Relaxed => Synchronous::Normal,
+                Durability::Strict => Synchronous::Full,
+            },
         }
     }
 }
@@ -73,7 +80,7 @@ impl StorageBackend for SqliteBackend {
     fn dry_run(&self, f: &mut dyn FnMut(&dyn IssuerRepository)) -> Result<(), StorageError> {
         self.db
             .dry_run(|handle| {
-                let repo = SqliteIssuerRepository::new(handle.clone());
+                let repo = SqliteIssuerRepository::new(*handle);
                 f(&repo);
             })
             .map_err(map_driver_error)

@@ -11,6 +11,7 @@
 //! Functions take `&rusqlite::Connection`, which both a pooled reader guard and
 //! the writer guard dereference to, so the same query works for reads and writes.
 
+use chrono::SecondsFormat;
 use rusqlite::{Connection, OptionalExtension, params};
 use valqeron_core::{Issuer, IssuerId, IssuerName, IssuerPatch};
 
@@ -19,6 +20,15 @@ use crate::sqlite::models::IssuerRow;
 
 /// Columns projected for every issuer selection, in [`IssuerRow`]'s expected order.
 const ISSUER_COLUMNS: &str = "id, name, status, created_at, cnpj, lei, country_code, version";
+
+/// Render a UTC timestamp in the canonical storage form: always `Z`-suffixed, fixed millisecond
+/// precision, so stored `created_at` values are lexicographically sortable and directly comparable.
+///
+/// (Reads remain tolerant of the older `+00:00`/variable-precision form via
+/// [`crate::sqlite::mapping::column_datetime`], so pre-existing rows still parse.)
+fn canonical_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
+    dt.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
 
 /// Fetch an issuer with its version, or `None` if absent.
 pub fn find_by_id(conn: &Connection, id: &IssuerId) -> rusqlite::Result<Option<IssuerRow>> {
@@ -34,6 +44,28 @@ pub fn list_all(conn: &Connection) -> rusqlite::Result<Vec<IssuerRow>> {
     let mut stmt = conn.prepare_cached(&sql)?;
 
     stmt.query_map([], IssuerRow::from_row)?.collect()
+}
+
+/// Fetch one keyset page of issuers ordered by id.
+///
+/// Returns up to `limit` rows whose `id` sorts strictly after `after` (all rows when `after` is
+/// `None`). Ordering is by the `id` primary key, so this is index-backed (no full scan). Callers
+/// paginate by passing the last returned id as `after` on the next call.
+pub fn list_paged(
+    conn: &Connection,
+    after: Option<&IssuerId>,
+    limit: u32,
+) -> rusqlite::Result<Vec<IssuerRow>> {
+    // `?1 IS NULL` short-circuits the id filter for the first page; otherwise seek past `after`.
+    let sql = format!(
+        "SELECT {ISSUER_COLUMNS} FROM issuer \
+         WHERE ?1 IS NULL OR id > ?1 \
+         ORDER BY id LIMIT ?2"
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let after_bytes = after.map(|id| id.as_bytes());
+    stmt.query_map(params![after_bytes, limit], IssuerRow::from_row)?
+        .collect()
 }
 
 /// Whether an issuer with `id` exists.
@@ -54,7 +86,7 @@ pub fn insert(conn: &Connection, issuer: &Issuer) -> rusqlite::Result<usize> {
         issuer.id().as_bytes(),
         issuer.name().map(IssuerName::as_str),
         status_as_str(issuer.status()),
-        issuer.created_at().to_rfc3339(),
+        canonical_timestamp(issuer.created_at()),
         issuer.cnpj().map(|c| c.as_str()),
         issuer.lei().map(|l| l.as_str()),
         issuer.country_code().map(|c| c.as_str()),

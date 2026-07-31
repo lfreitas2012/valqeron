@@ -36,6 +36,8 @@ use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
 
+use valqeron_core::Durability;
+
 use crate::error::{AppError, AppResult};
 
 const QUALIFIER: &str = "io";
@@ -57,6 +59,7 @@ pub struct ValqeronConfig {
     db_path: PathBuf,
     log_file: Option<PathBuf>,
     reader_pool_size: usize,
+    durable: bool,
 }
 
 impl ValqeronConfig {
@@ -69,11 +72,14 @@ impl ValqeronConfig {
     /// * `no_log_file` — value of `--no-log-file`; when `true`, file logging is
     ///   disabled regardless of the other inputs.
     /// * `reader_pool_size` — value of `--reader-pool-size`.
+    /// * `durable` — value of `--durable`; when `true`, the writer uses the
+    ///   strict (power-loss-safe) durability level.
     pub fn resolve(
         db_path_flag: Option<PathBuf>,
         log_file_flag: Option<Option<PathBuf>>,
         no_log_file: bool,
         reader_pool_size: usize,
+        durable: bool,
     ) -> AppResult<Self> {
         let db_path = resolve_db_path(db_path_flag)?;
         let log_file = resolve_log_file(log_file_flag, no_log_file)?;
@@ -81,6 +87,7 @@ impl ValqeronConfig {
             db_path,
             log_file,
             reader_pool_size,
+            durable,
         })
     }
 
@@ -105,6 +112,18 @@ impl ValqeronConfig {
     /// The configured reader-pool size for the engine.
     pub fn reader_pool_size(&self) -> usize {
         self.reader_pool_size
+    }
+
+    /// The configured writer durability level for the engine.
+    ///
+    /// `--durable` selects [`Durability::Strict`] (committed writes survive power loss, slower);
+    /// the default is [`Durability::Relaxed`] (faster, may lose the last commit on a crash).
+    pub fn durability(&self) -> Durability {
+        if self.durable {
+            Durability::Strict
+        } else {
+            Durability::Relaxed
+        }
     }
 
     /// Ensure the parent directory of the database exists, creating it if
@@ -193,10 +212,11 @@ mod tests {
 
     #[test]
     fn explicit_db_flag_wins() {
-        let cfg =
-            ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), None, false, 4).unwrap();
+        let cfg = ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), None, false, 4, false)
+            .unwrap();
         assert_eq!(cfg.db_path(), Path::new("/tmp/x.db"));
         assert_eq!(cfg.reader_pool_size(), 4);
+        assert_eq!(cfg.durability(), Durability::Relaxed);
     }
 
     #[test]
@@ -206,6 +226,7 @@ mod tests {
             Some(Some(PathBuf::from("/tmp/out.log"))),
             false,
             2,
+            false,
         )
         .unwrap();
         assert_eq!(cfg.log_file(), Some(Path::new("/tmp/out.log")));
@@ -213,8 +234,14 @@ mod tests {
 
     #[test]
     fn log_file_flag_without_path_uses_default_location() {
-        let cfg = ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), Some(None), false, 4)
-            .unwrap();
+        let cfg = ValqeronConfig::resolve(
+            Some(PathBuf::from("/tmp/x.db")),
+            Some(None),
+            false,
+            4,
+            false,
+        )
+        .unwrap();
         let log = cfg.log_file().expect("default log path");
         assert!(log.ends_with(LOG_FILE_NAME));
     }
@@ -222,8 +249,8 @@ mod tests {
     #[test]
     fn file_logging_is_on_by_default_when_flag_absent() {
         // Absent flag (and no opt-out) resolves to the default log location.
-        let cfg =
-            ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), None, false, 4).unwrap();
+        let cfg = ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), None, false, 4, false)
+            .unwrap();
         let log = cfg.log_file().expect("default log path when flag absent");
         assert!(log.ends_with(LOG_FILE_NAME));
     }
@@ -236,9 +263,17 @@ mod tests {
             Some(Some(PathBuf::from("/tmp/out.log"))),
             true,
             4,
+            false,
         )
         .unwrap();
         assert!(cfg.log_file().is_none());
+    }
+
+    #[test]
+    fn durable_flag_selects_strict_durability() {
+        let cfg = ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), None, false, 4, true)
+            .unwrap();
+        assert_eq!(cfg.durability(), Durability::Strict);
     }
 
     #[test]

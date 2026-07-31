@@ -1,6 +1,6 @@
 //! Thin server layer over `valqeron-core`.
 //!
-//! Today this is an in-process facade that wraps [`valqeron_core::Store`]. It
+//! Today this is an in-process facade that wraps [`Store`]. It
 //! exists to draw a stable boundary: everything above it (commands, I/O,
 //! rendering) depends only on [`Server`], never on `Store` directly. When
 //! Valqeron grows a real `valqeron-server` daemon (systemd/launchd) with an IPC
@@ -19,16 +19,17 @@
 //!    [`Server::with_issuers`].
 //!
 //! 2. **Read-only pool** — a fixed pool of `query_only` connections (size =
-//!    [`ValqeronConfig::reader_pool_size`](crate::config::ValqeronConfig::reader_pool_size)).
+//!    [`ValqeronConfig::reader_pool_size`](ValqeronConfig::reader_pool_size)).
 //!    Under WAL these never block the writer or one another, giving real read
 //!    concurrency. Used by read methods (`find_by_id`, `exists`), also reached
 //!    via [`Server::with_issuers`].
 //!
-//! 3. **Dry-run connection** — a private, isolated connection that takes
-//!    `BEGIN IMMEDIATE` up front and is **always rolled back**. It rehearses the
-//!    real write path (so validation and constraint checks fire) but persists
-//!    nothing, and never affects concurrent writers. Reached via
-//!    [`Server::dry_run`], engaged by the global `--dry-run` flag.
+//! 3. **Dry-run** — rehearses the real write path on the writer connection inside
+//!    a `SAVEPOINT` that is **always rolled back**. It holds the writer lock for
+//!    the whole operation (so concurrent writers queue behind it rather than
+//!    racing at the SQLite layer), fires all validation and constraint checks, but
+//!    persists nothing. Reached via [`Server::dry_run`], engaged by the global
+//!    `--dry-run` flag.
 
 use valqeron_core::{IssuerRepository, StorageConfig, Store};
 use valqeron_infrastructure::open_sqlite;
@@ -47,6 +48,7 @@ impl Server {
     pub fn open(config: &ValqeronConfig) -> AppResult<Self> {
         let storage_config = StorageConfig {
             reader_pool_size: config.reader_pool_size(),
+            durability: config.durability(),
         };
         let store = open_sqlite(config.db_path(), storage_config)?;
         Ok(Self { store })

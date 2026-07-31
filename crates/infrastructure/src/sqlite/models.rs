@@ -50,7 +50,7 @@ impl FromRow for IssuerRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sqlite::driver::Database;
+    use crate::sqlite::driver::{Database, Db};
     use ftracker_identifiers::{Cnpj, CountryCode};
     use std::str::FromStr;
     use valqeron_core::{IssuerId, IssuerStatus};

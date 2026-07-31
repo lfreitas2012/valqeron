@@ -7,6 +7,20 @@
 
 use crate::issuer::repository::IssuerRepository;
 
+/// Durability level for committed writes.
+///
+/// Driver-neutral knob mapped by each backend onto its native setting (for SQLite, the
+/// `synchronous` pragma).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Durability {
+    /// Favor throughput/latency. Committed transactions can be lost on a power/OS crash, but the
+    /// database is never corrupted. Suitable for the embedded single-app use case.
+    #[default]
+    Relaxed,
+    /// Favor durability. Committed transactions survive a power loss, at the cost of write latency.
+    Strict,
+}
+
 /// Driver-agnostic configuration supplied when opening a backend.
 #[derive(Debug, Clone)]
 pub struct StorageConfig {
@@ -14,12 +28,17 @@ pub struct StorageConfig {
     /// queuing. Higher values help read-heavy multithreaded UIs. Backends that
     /// do not pool readers may ignore this.
     pub reader_pool_size: usize,
+
+    /// Durability level for committed writes (see [`Durability`]). Defaults to
+    /// [`Durability::Relaxed`].
+    pub durability: Durability,
 }
 
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
             reader_pool_size: 4,
+            durability: Durability::default(),
         }
     }
 }

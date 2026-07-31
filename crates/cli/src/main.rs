@@ -47,6 +47,7 @@ fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuar
         cli.log_file_arg(),
         cli.no_log_file,
         cli.reader_pool_size,
+        cli.durable,
     )?;
 
     let guard = init_logging(cli, &config)?;

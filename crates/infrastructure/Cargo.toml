@@ -18,3 +18,15 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+# `loom` is only compiled under `--cfg loom` (see the `sync` shim in `sqlite::driver`).
+# Gated as a normal (target-cfg) dependency so both the lib and its tests can see it under the
+# flag; with the flag absent it is never pulled into the dependency graph. Run the model tests via:
+#   RUSTFLAGS="--cfg loom" cargo test -p valqeron-infrastructure --lib loom_tests
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true }
+
+[lints.rust]
+# `loom` is an opt-in cfg gate exercised via `RUSTFLAGS="--cfg loom"`; silence the
+# unexpected-cfg lint for normal builds where the flag is absent.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }

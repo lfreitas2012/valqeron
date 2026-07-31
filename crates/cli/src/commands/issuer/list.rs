@@ -1,46 +1,66 @@
-//! `valqeron issuer list` — list issuers.
+//! `valqeron issuer list` — list issuers with keyset pagination.
 //!
-//! # Current scope
-//!
-//! `valqeron-core`'s `IssuerRepository` exposes lookups (`find_by_id`,
-//! `exists`) but **no** bulk listing (`find_all`) yet. Until the core grows one,
-//! this command lists by looking up a single issuer via `--id` and returning a
-//! JSON array of 0 or 1 items — the shape is already list-friendly, so adding
-//! full enumeration later is backwards compatible.
-//!
-//!
-//! provides one, and make `--id` an optional filter.
+//! Lists issuers ordered by id in pages. Use `--limit` to bound the page size and
+//! `--after <id>` to fetch the next page (pass the id of the last item from the
+//! previous page). A page shorter than `--limit` (or empty) signals the end.
+
+use std::str::FromStr;
 
 use clap::Args;
 use serde_json::{Value, json};
+use uuid::Uuid;
 
-use valqeron_core::IssuerRepository;
+use valqeron_core::{IssuerId, IssuerRepository};
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
 use crate::dto::IssuerView;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+
+/// Default page size when `--limit` is not supplied.
+const DEFAULT_LIMIT: u32 = 50;
 
 /// Arguments for `issuer list`.
 #[derive(Args, Debug)]
-pub struct ListArgs {}
+pub struct ListArgs {
+    /// Maximum number of issuers to return in this page.
+    #[arg(long, default_value_t = DEFAULT_LIMIT)]
+    pub limit: u32,
 
-// TODO(core): switch to a `find_all`/paged query once the core repository
+    /// Return only issuers whose id sorts after this one (UUID); use the last id
+    /// of the previous page to fetch the next page.
+    #[arg(long)]
+    pub after: Option<String>,
+}
+
 impl Command for ListArgs {
     fn execute(&self, repo: &dyn IssuerRepository, _ctx: &AppContext) -> AppResult<Value> {
-        let found = repo.list_all()?;
+        let after: Option<IssuerId> = match &self.after {
+            Some(raw) => {
+                let uuid = Uuid::from_str(raw).map_err(|e| AppError::InvalidId(e.to_string()))?;
+                Some(IssuerId::from_uuid(uuid))
+            }
+            None => None,
+        };
+
+        let found = repo.list_paged(after, self.limit)?;
         let items: Vec<IssuerView> = found.iter().map(IssuerView::from).collect();
+
+        // Cursor for the next page: the last id in this page, if any.
+        let next_after: Option<String> = found.last().map(|v| v.data.id().value());
 
         tracing::info!(
             target: "valqeron::audit",
             operation = "issuer.list",
-            found = !items.is_empty(),
-            "list all registered issuers"
+            count = items.len(),
+            limit = self.limit,
+            "list registered issuers (paged)"
         );
 
         Ok(json!({
             "items": items,
             "count": items.len(),
+            "next_after": next_after,
         }))
     }
 

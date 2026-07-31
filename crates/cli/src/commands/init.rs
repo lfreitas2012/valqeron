@@ -36,6 +36,7 @@ impl InitArgs {
         let payload = json!({
             "db_path": config.db_path().display().to_string(),
             "reader_pool_size": config.reader_pool_size(),
+            "durability": format!("{:?}", config.durability()),
             "initialized": true,
         });
 

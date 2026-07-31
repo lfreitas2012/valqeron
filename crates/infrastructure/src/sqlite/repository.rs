@@ -1,24 +1,36 @@
+use std::time::Duration;
+
 use rusqlite::{Connection, OptionalExtension, params};
 use valqeron_core::{
     Issuer, IssuerId, IssuerPatch, IssuerRepository, RepositoryError, RepositoryResult, Versioned,
 };
 
-use crate::sqlite::driver::DbHandle;
+use crate::sqlite::driver::{Db, DbHandle};
 use crate::sqlite::queries;
 
+/// Maximum number of attempts a write makes when SQLite reports the database as busy/locked.
+const BUSY_MAX_ATTEMPTS: u32 = 5;
+
+/// Base backoff between busy retries; grows linearly per attempt.
+const BUSY_BACKOFF_BASE: Duration = Duration::from_millis(10);
+
 /// [`IssuerRepository`] backed by SQLite. Reads use the connection pool; writes use the serialized writer.
-pub struct SqliteIssuerRepository {
-    db: DbHandle,
+///
+/// Generic over the connection source `D`: the normal path uses [`DbHandle`] (the default), while
+/// [`crate::sqlite::Database::dry_run`] instantiates it with a borrowed dry-run handle so the same
+/// code runs inside a rolled-back savepoint without opening a second connection.
+pub struct SqliteIssuerRepository<D: Db = DbHandle> {
+    db: D,
 }
 
-impl SqliteIssuerRepository {
+impl<D: Db> SqliteIssuerRepository<D> {
     /// Create a repository over the given database handle.
-    pub fn new(db: DbHandle) -> Self {
+    pub fn new(db: D) -> Self {
         Self { db }
     }
 }
 
-impl IssuerRepository for SqliteIssuerRepository {
+impl<D: Db> IssuerRepository for SqliteIssuerRepository<D> {
     fn find_by_id(&self, id: &IssuerId) -> RepositoryResult<Option<Versioned<Issuer>>> {
         let conn = self.db.read();
         queries::find_by_id(&conn, id)
@@ -34,21 +46,35 @@ impl IssuerRepository for SqliteIssuerRepository {
             .map_err(backend)
     }
 
+    fn list_paged(
+        &self,
+        after: Option<IssuerId>,
+        limit: u32,
+    ) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+        let conn = self.db.read();
+
+        queries::list_paged(&conn, after.as_ref(), limit)
+            .map(|rows| rows.into_iter().map(|row| row.into_inner()).collect())
+            .map_err(backend)
+    }
+
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
         let conn = self.db.read();
         queries::exists(&conn, id).map_err(backend)
     }
 
     fn insert(&self, issuer: &Issuer) -> RepositoryResult<()> {
-        let conn = self.db.write();
-        match queries::insert(&conn, issuer) {
-            Ok(_) => Ok(()),
-            Err(e) if is_constraint_violation(&e) => Err(constraint_conflict(
-                &e,
-                &format!("insert on issuer {}", issuer.id().value()),
-            )),
-            Err(e) => Err(backend(e)),
-        }
+        with_busy_retry(|| {
+            let conn = self.db.write();
+            match queries::insert(&conn, issuer) {
+                Ok(_) => Ok(()),
+                Err(e) if is_constraint_violation(&e) => Err(constraint_conflict(
+                    &e,
+                    &format!("insert on issuer {}", issuer.id().value()),
+                )),
+                Err(e) => Err(backend(e)),
+            }
+        })
     }
 
     fn apply_patch(
@@ -57,45 +83,95 @@ impl IssuerRepository for SqliteIssuerRepository {
         expected_version: u32,
         patch: IssuerPatch,
     ) -> RepositoryResult<()> {
-        let conn = self.db.write();
-        match queries::apply_patch(&conn, id, expected_version, &patch) {
-            Ok(0) => Err(conflict_or_not_found(&conn, id)),
-            Ok(_) => Ok(()),
-            Err(e) if is_constraint_violation(&e) => Err(constraint_conflict(
-                &e,
-                &format!("patch on issuer {}", id.value()),
-            )),
-            Err(e) => Err(backend(e)),
-        }
+        with_busy_retry(|| {
+            let conn = self.db.write();
+            match queries::apply_patch(&conn, id, expected_version, &patch) {
+                Ok(0) => Err(conflict_or_not_found(&conn, id)),
+                Ok(_) => Ok(()),
+                Err(e) if is_constraint_violation(&e) => Err(constraint_conflict(
+                    &e,
+                    &format!("patch on issuer {}", id.value()),
+                )),
+                Err(e) => Err(backend(e)),
+            }
+        })
     }
 
     fn update(&self, issuer: &Issuer, expected_version: u32) -> RepositoryResult<()> {
         let id = issuer.id();
-        let conn = self.db.write();
-        match queries::update(&conn, issuer, expected_version) {
-            Ok(0) => Err(conflict_or_not_found(&conn, id)),
-            Ok(_) => Ok(()),
-            Err(e) if is_constraint_violation(&e) => Err(constraint_conflict(
-                &e,
-                &format!("update on issuer {}", id.value()),
-            )),
-            Err(e) => Err(backend(e)),
-        }
+        with_busy_retry(|| {
+            let conn = self.db.write();
+            match queries::update(&conn, issuer, expected_version) {
+                Ok(0) => Err(conflict_or_not_found(&conn, id)),
+                Ok(_) => Ok(()),
+                Err(e) if is_constraint_violation(&e) => Err(constraint_conflict(
+                    &e,
+                    &format!("update on issuer {}", id.value()),
+                )),
+                Err(e) => Err(backend(e)),
+            }
+        })
     }
 
     fn delete(&self, id: &IssuerId, expected_version: u32) -> RepositoryResult<()> {
-        let conn = self.db.write();
-        match queries::delete(&conn, id, expected_version) {
-            Ok(0) => Err(conflict_or_not_found(&conn, id)),
-            Ok(_) => Ok(()),
-            Err(e) => Err(backend(e)),
-        }
+        with_busy_retry(|| {
+            let conn = self.db.write();
+            match queries::delete(&conn, id, expected_version) {
+                Ok(0) => Err(conflict_or_not_found(&conn, id)),
+                Ok(_) => Ok(()),
+                Err(e) => Err(backend(e)),
+            }
+        })
     }
 }
 
 /// Wrap a raw driver error as a driver-agnostic [`RepositoryError::Backend`].
 fn backend(e: rusqlite::Error) -> RepositoryError {
     RepositoryError::Backend(anyhow::Error::new(e))
+}
+
+/// Whether a rusqlite error is a transient busy/locked condition worth retrying.
+///
+/// `SQLITE_BUSY` can still surface after `busy_timeout` (e.g. cross-process writers), and
+/// `SQLITE_LOCKED` is not covered by `busy_timeout` at all — both are transient and safe to retry
+/// for an idempotent, self-contained write attempt.
+fn is_busy_or_locked(err: &rusqlite::Error) -> bool {
+    matches!(
+        err,
+        rusqlite::Error::SqliteFailure(e, _)
+            if e.code == rusqlite::ErrorCode::DatabaseBusy
+                || e.code == rusqlite::ErrorCode::DatabaseLocked
+    )
+}
+
+/// Run a write operation, retrying with a short linear backoff while SQLite reports the database as
+/// busy/locked.
+///
+/// The operation closure must (re)acquire the writer guard on each attempt so the lock is not held
+/// across the backoff sleep. Only raw busy/locked driver errors are retried; every other outcome —
+/// success, `Conflict`, `NotFound`, constraint violations, or any other backend error — returns
+/// immediately without retry.
+fn with_busy_retry<T>(op: impl Fn() -> RepositoryResult<T>) -> RepositoryResult<T> {
+    let mut attempt = 0u32;
+    loop {
+        match op() {
+            Err(RepositoryError::Backend(e))
+                if attempt + 1 < BUSY_MAX_ATTEMPTS
+                    && e.downcast_ref::<rusqlite::Error>()
+                        .is_some_and(is_busy_or_locked) =>
+            {
+                attempt += 1;
+                let backoff = BUSY_BACKOFF_BASE * attempt;
+                tracing::warn!(
+                    attempt,
+                    backoff_ms = backoff.as_millis() as u64,
+                    "database busy/locked; retrying write after backoff"
+                );
+                std::thread::sleep(backoff);
+            }
+            other => return other,
+        }
+    }
 }
 
 /// After a versioned write affects 0 rows, decide whether the row exists with a different version
@@ -279,7 +355,7 @@ mod tests {
         let issuer = Issuer::builder().build().unwrap();
 
         db.dry_run(|h| {
-            let repo = SqliteIssuerRepository::new(h.clone());
+            let repo = SqliteIssuerRepository::new(*h);
             repo.insert(&issuer).unwrap();
             assert!(repo.find_by_id(issuer.id()).unwrap().is_some());
         })
@@ -325,10 +401,15 @@ mod tests {
 
     #[test]
     fn update_preserves_id_and_created_at() {
+        use chrono::SubsecRound;
+
         let (_db, repo) = test_repo();
         let id = IssuerId::new();
         let original = Issuer::builder().id(id).build().unwrap();
-        let created_at = original.created_at();
+        // Stored timestamps are canonicalized to millisecond precision (truncated), so compare
+        // against the millis-truncated instant (the invariant under test is immutability across a
+        // full replace, not sub-millisecond fidelity).
+        let created_at = original.created_at().trunc_subsecs(3);
         repo.insert(&original).unwrap();
 
         let replacement = Issuer::builder()
@@ -441,5 +522,207 @@ mod tests {
             "Expected CHECK constraint violation when patching country to US on an issuer holding a CNPJ, got: {:?}",
             err
         );
+    }
+
+    // ---- list_paged (keyset pagination) -------------------------------------------------------
+
+    /// Insert `n` issuers and return their ids sorted ascending (the order `list_paged` yields).
+    fn insert_sorted_ids(repo: &SqliteIssuerRepository, n: usize) -> Vec<IssuerId> {
+        let mut ids: Vec<IssuerId> = Vec::with_capacity(n);
+        for _ in 0..n {
+            let issuer = Issuer::builder().build().unwrap();
+            repo.insert(&issuer).unwrap();
+            ids.push(*issuer.id());
+        }
+        ids.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        ids
+    }
+
+    // ---- created_at canonicalization ----------------------------------------------------------
+
+    #[test]
+    fn insert_stores_created_at_in_canonical_utc_form() {
+        use chrono::{SubsecRound, TimeZone, Utc};
+
+        let (db, repo) = test_repo();
+        // A non-UTC-looking instant with sub-millisecond precision to prove canonicalization.
+        let ts = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap()
+            + chrono::Duration::microseconds(123_456);
+        let issuer = Issuer::builder().created_at(ts).build().unwrap();
+        repo.insert(&issuer).unwrap();
+
+        // Read the raw stored TEXT value.
+        let handle = db.handle();
+        let conn = handle.read();
+        let raw: String = conn
+            .query_row(
+                "SELECT created_at FROM issuer WHERE id = ?1",
+                params![issuer.id().as_bytes()],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        assert!(
+            raw.ends_with('Z'),
+            "stored timestamp must be Z-suffixed, got {raw:?}"
+        );
+        assert_eq!(
+            raw, "2026-01-02T03:04:05.123Z",
+            "stored timestamp must be canonical millisecond UTC"
+        );
+
+        // And it round-trips back to the same instant (truncated to millis).
+        let found = repo.find_by_id(issuer.id()).unwrap().unwrap();
+        assert_eq!(found.data.created_at(), ts.trunc_subsecs(3));
+        // (`ts` had .123456s; canonical storage truncates to .123.)
+    }
+
+    #[test]
+    fn legacy_created_at_offset_format_still_reads() {
+        // Rows written by an older build used `+00:00` and variable precision. The read path must
+        // still parse them (no data migration required).
+        let (db, repo) = test_repo();
+        let id = IssuerId::new();
+
+        {
+            let handle = db.handle();
+            let conn = handle.write();
+            conn.execute(
+                "INSERT INTO issuer (id, status, created_at) VALUES (?1, 'ACTIVE', ?2)",
+                params![id.as_bytes(), "2026-01-02T03:04:05+00:00"],
+            )
+            .unwrap();
+        }
+
+        let found = repo
+            .find_by_id(&id)
+            .unwrap()
+            .expect("legacy row must parse");
+        assert_eq!(
+            found.data.created_at().to_rfc3339(),
+            "2026-01-02T03:04:05+00:00"
+        );
+    }
+
+    // ---- busy/locked retry --------------------------------------------------------------------
+
+    use std::cell::Cell;
+
+    /// Build a `RepositoryError::Backend` wrapping a SQLITE_BUSY failure (as the retry helper sees).
+    fn busy_backend_error() -> RepositoryError {
+        let ffi = rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY);
+        backend(rusqlite::Error::SqliteFailure(
+            ffi,
+            Some("database is locked".into()),
+        ))
+    }
+
+    #[test]
+    fn with_busy_retry_succeeds_after_transient_busy() {
+        let attempts = Cell::new(0u32);
+        let result = with_busy_retry(|| {
+            let n = attempts.get() + 1;
+            attempts.set(n);
+            if n < 3 {
+                Err(busy_backend_error()) // busy on the first two attempts
+            } else {
+                Ok(42)
+            }
+        });
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(attempts.get(), 3, "should have retried until success");
+    }
+
+    #[test]
+    fn with_busy_retry_gives_up_after_max_attempts() {
+        let attempts = Cell::new(0u32);
+        let result: RepositoryResult<()> = with_busy_retry(|| {
+            attempts.set(attempts.get() + 1);
+            Err(busy_backend_error()) // always busy
+        });
+        assert!(matches!(result, Err(RepositoryError::Backend(_))));
+        assert_eq!(
+            attempts.get(),
+            BUSY_MAX_ATTEMPTS,
+            "should stop after BUSY_MAX_ATTEMPTS"
+        );
+    }
+
+    #[test]
+    fn with_busy_retry_does_not_retry_non_busy_errors() {
+        let attempts = Cell::new(0u32);
+        let result: RepositoryResult<()> = with_busy_retry(|| {
+            attempts.set(attempts.get() + 1);
+            Err(RepositoryError::Conflict("nope".into())) // not a busy/locked condition
+        });
+        assert!(matches!(result, Err(RepositoryError::Conflict(_))));
+        assert_eq!(attempts.get(), 1, "non-busy errors must not be retried");
+    }
+
+    #[test]
+    fn list_paged_on_empty_table_is_empty() {
+        let (_db, repo) = test_repo();
+        let page = repo.list_paged(None, 10).unwrap();
+        assert!(page.is_empty());
+    }
+
+    #[test]
+    fn list_paged_first_page_respects_limit_and_order() {
+        let (_db, repo) = test_repo();
+        let ids = insert_sorted_ids(&repo, 5);
+
+        let page = repo.list_paged(None, 2).unwrap();
+        let page_ids: Vec<IssuerId> = page.iter().map(|v| *v.data.id()).collect();
+
+        assert_eq!(
+            page_ids,
+            ids[0..2],
+            "first page must be the two smallest ids in order"
+        );
+    }
+
+    #[test]
+    fn list_paged_walks_all_pages_via_keyset_without_gaps_or_dupes() {
+        let (_db, repo) = test_repo();
+        let ids = insert_sorted_ids(&repo, 5);
+
+        // Page through with limit 2: [0,1], [2,3], [4], [].
+        let mut collected: Vec<IssuerId> = Vec::new();
+        let mut after: Option<IssuerId> = None;
+        loop {
+            let page = repo.list_paged(after, 2).unwrap();
+            if page.is_empty() {
+                break;
+            }
+            for v in &page {
+                collected.push(*v.data.id());
+            }
+            after = collected.last().copied();
+        }
+
+        assert_eq!(
+            collected, ids,
+            "keyset walk must yield every id exactly once, in order"
+        );
+    }
+
+    #[test]
+    fn list_paged_after_last_id_is_empty() {
+        let (_db, repo) = test_repo();
+        let ids = insert_sorted_ids(&repo, 3);
+
+        let page = repo.list_paged(ids.last().copied(), 10).unwrap();
+        assert!(page.is_empty(), "seeking past the last id yields no rows");
+    }
+
+    #[test]
+    fn list_paged_middle_seek_returns_strictly_after() {
+        let (_db, repo) = test_repo();
+        let ids = insert_sorted_ids(&repo, 5);
+
+        // Seek after ids[1] → should return ids[2], ids[3] (limit 2).
+        let page = repo.list_paged(Some(ids[1]), 2).unwrap();
+        let page_ids: Vec<IssuerId> = page.iter().map(|v| *v.data.id()).collect();
+        assert_eq!(page_ids, ids[2..4]);
     }
 }

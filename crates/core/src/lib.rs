@@ -4,7 +4,7 @@ mod storage;
 
 pub use common::Versioned;
 
-pub use storage::{StorageBackend, StorageConfig, StorageError, Store};
+pub use storage::{Durability, StorageBackend, StorageConfig, StorageError, Store};
 
 pub use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 

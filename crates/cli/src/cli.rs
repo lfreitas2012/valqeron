@@ -74,6 +74,12 @@ pub struct Cli {
     /// Number of concurrent read connections in the engine's reader pool.
     #[arg(long, global = true, value_name = "N", default_value_t = 4)]
     pub reader_pool_size: usize,
+
+    /// Use strict, power-loss-safe durability for writes (slower). By default,
+    /// writes use relaxed durability: faster, and the database is never
+    /// corrupted, but the most recent commit may be lost on a power/OS crash.
+    #[arg(long, global = true)]
+    pub durable: bool,
 }
 
 impl Cli {
