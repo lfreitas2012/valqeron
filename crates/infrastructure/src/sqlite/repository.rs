@@ -1,23 +1,22 @@
 use std::time::Duration;
 
+use crate::sqlite::db::{Db, DbHandle};
+use crate::sqlite::queries;
 use rusqlite::{Connection, OptionalExtension, params};
 use valqeron_core::{
     Issuer, IssuerId, IssuerPatch, IssuerRepository, RepositoryError, RepositoryResult, Versioned,
 };
 
-use crate::sqlite::driver::{Db, DbHandle};
-use crate::sqlite::queries;
-
-/// Maximum number of attempts a write makes when SQLite reports the database as busy/locked.
+/// Maximum number of attempts a 'write' makes when SQLite reports the database as busy/locked.
 const BUSY_MAX_ATTEMPTS: u32 = 5;
 
 /// Base backoff between busy retries; grows linearly per attempt.
 const BUSY_BACKOFF_BASE: Duration = Duration::from_millis(10);
 
-/// [`IssuerRepository`] backed by SQLite. Reads use the connection pool; writes use the serialized writer.
+/// [`IssuerRepository`] backed by SQLite. 'Reads' use the connection pool; 'writes' use the serialized writer.
 ///
 /// Generic over the connection source `D`: the normal path uses [`DbHandle`] (the default), while
-/// [`crate::sqlite::Database::dry_run`] instantiates it with a borrowed dry-run handle so the same
+/// [`crate::sqlite::DatabaseConnection::dry_run`] instantiates it with a borrowed dry-run handle so the same
 /// code runs inside a rolled-back savepoint without opening a second connection.
 pub struct SqliteIssuerRepository<D: Db = DbHandle> {
     db: D,
@@ -125,9 +124,9 @@ impl<D: Db> IssuerRepository for SqliteIssuerRepository<D> {
     }
 }
 
-/// Wrap a raw driver error as a driver-agnostic [`RepositoryError::Backend`].
+/// Wrap a raw driver error as a driver-agnostic [`RepositoryError::DatabaseError`].
 fn backend(e: rusqlite::Error) -> RepositoryError {
-    RepositoryError::Backend(anyhow::Error::new(e))
+    RepositoryError::DatabaseError(anyhow::Error::new(e))
 }
 
 /// Whether a rusqlite error is a transient busy/locked condition worth retrying.
@@ -155,7 +154,7 @@ fn with_busy_retry<T>(op: impl Fn() -> RepositoryResult<T>) -> RepositoryResult<
     let mut attempt = 0u32;
     loop {
         match op() {
-            Err(RepositoryError::Backend(e))
+            Err(RepositoryError::DatabaseError(e))
                 if attempt + 1 < BUSY_MAX_ATTEMPTS
                     && e.downcast_ref::<rusqlite::Error>()
                         .is_some_and(is_busy_or_locked) =>
@@ -229,7 +228,6 @@ fn constraint_conflict(err: &rusqlite::Error, entity_desc: &str) -> RepositoryEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sqlite::driver::Database;
     use chrono::Utc;
     use ftracker_identifiers::{Cnpj, CountryCode, Lei};
     use std::str::FromStr;
@@ -543,25 +541,22 @@ mod tests {
     #[test]
     fn insert_stores_created_at_in_canonical_utc_form() {
         use chrono::{SubsecRound, TimeZone, Utc};
-
         let (db, repo) = test_repo();
-        // A non-UTC-looking instant with sub-millisecond precision to prove canonicalization.
         let ts = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap()
             + chrono::Duration::microseconds(123_456);
         let issuer = Issuer::builder().created_at(ts).build().unwrap();
         repo.insert(&issuer).unwrap();
 
-        // Read the raw stored TEXT value.
         let handle = db.handle();
-        let conn = handle.read();
-        let raw: String = conn
-            .query_row(
+        let raw: String = {
+            let conn = handle.read();
+            conn.query_row(
                 "SELECT created_at FROM issuer WHERE id = ?1",
                 params![issuer.id().as_bytes()],
                 |r| r.get(0),
             )
-            .unwrap();
-
+            .unwrap()
+        };
         assert!(
             raw.ends_with('Z'),
             "stored timestamp must be Z-suffixed, got {raw:?}"
@@ -571,16 +566,12 @@ mod tests {
             "stored timestamp must be canonical millisecond UTC"
         );
 
-        // And it round-trips back to the same instant (truncated to millis).
         let found = repo.find_by_id(issuer.id()).unwrap().unwrap();
         assert_eq!(found.data.created_at(), ts.trunc_subsecs(3));
-        // (`ts` had .123456s; canonical storage truncates to .123.)
     }
 
     #[test]
     fn legacy_created_at_offset_format_still_reads() {
-        // Rows written by an older build used `+00:00` and variable precision. The read path must
-        // still parse them (no data migration required).
         let (db, repo) = test_repo();
         let id = IssuerId::new();
 
@@ -606,6 +597,7 @@ mod tests {
 
     // ---- busy/locked retry --------------------------------------------------------------------
 
+    use crate::sqlite::db::Database;
     use std::cell::Cell;
 
     /// Build a `RepositoryError::Backend` wrapping a SQLITE_BUSY failure (as the retry helper sees).
@@ -640,7 +632,7 @@ mod tests {
             attempts.set(attempts.get() + 1);
             Err(busy_backend_error()) // always busy
         });
-        assert!(matches!(result, Err(RepositoryError::Backend(_))));
+        assert!(matches!(result, Err(RepositoryError::DatabaseError(_))));
         assert_eq!(
             attempts.get(),
             BUSY_MAX_ATTEMPTS,

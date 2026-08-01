@@ -1,8 +1,6 @@
 use rusqlite::{Connection, OpenFlags};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
-use crate::sqlite::migrations;
 
 /// Synchronization primitive shim.
 ///
@@ -23,6 +21,7 @@ pub(crate) mod sync {
     pub(crate) use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 }
 
+use crate::sqlite::db::PooledReader;
 use sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Default number of read connections in the pool.
@@ -46,46 +45,10 @@ const IDLE_RESET_THRESHOLD: Duration = Duration::from_millis(50);
 /// A shared connection to the database.
 pub type SharedConnection = Arc<Mutex<Connection>>;
 
-/// Errors that can occur when opening or using a database.
-#[derive(Debug, thiserror::Error)]
-pub enum SqliteDataDriverError {
-    #[error("failed to open sqlite connection")]
-    Connection {
-        #[source]
-        source: rusqlite::Error,
-    },
-
-    #[error("failed to configure connection")]
-    Pragma {
-        #[source]
-        source: rusqlite::Error,
-    },
-
-    #[error("migration failed")]
-    Migration {
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    #[error(
-        "database schema version {found} is newer than the {known} migration(s) this binary knows about — upgrade the binary"
-    )]
-    UnknownSchemaVersion { found: i64, known: usize },
-
-    #[error("failed to open dry-run transaction")]
-    DryRun {
-        #[source]
-        source: rusqlite::Error,
-    },
-
-    #[error("reader pool size must be at least 1")]
-    InvalidPoolSize,
-}
-
 /// Writer `synchronous` pragma level.
 ///
 /// Controls how aggressively the writer flushes to durable storage on commit. Readers are unaffected
-/// (they never write). See the durability tradeoff documented on [`configure`].
+/// (they never write). See the durability tradeoff documented on [`crate::sqlite::driver::configure`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Synchronous {
     /// `synchronous=NORMAL`.
@@ -110,25 +73,6 @@ impl Synchronous {
     }
 }
 
-/// Configuration for opening a [`Database`].
-#[derive(Debug, Clone)]
-pub struct DatabaseConfig {
-    /// Number of read-only connections held in the reader pool.
-    pub reader_pool_size: usize,
-
-    /// Writer durability level (`synchronous` pragma). Defaults to [`Synchronous::Normal`].
-    pub synchronous: Synchronous,
-}
-
-impl Default for DatabaseConfig {
-    fn default() -> Self {
-        Self {
-            reader_pool_size: DEFAULT_READER_POOL_SIZE,
-            synchronous: Synchronous::default(),
-        }
-    }
-}
-
 /// Poison-tolerant lock helper for a state where a recovered guard is always safe to reuse.
 ///
 /// Used for the reader pool's idle list: a panic there can leave a `Connection` unreturned, but
@@ -146,39 +90,36 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// guard and, if the connection is left inside a transaction (`!is_autocommit()`), force a
 /// `ROLLBACK` to discard the partially applied work before handing the connection to the next writer.
 /// This keeps a long-lived process alive after a mid-write panic without ever surfacing a stranded,
-/// half-open transaction to subsequent callers.
-fn lock_writer(m: &Mutex<Connection>) -> MutexGuard<'_, Connection> {
-    match m.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            let guard = poisoned.into_inner();
-            if !guard.is_autocommit() {
-                tracing::warn!(
-                    "recovered a poisoned writer mutex with an open transaction; forcing ROLLBACK"
+/// half-open transaction to later callers.
+pub(crate) fn lock_writer(m: &Mutex<Connection>) -> MutexGuard<'_, Connection> {
+    m.lock().unwrap_or_else(|poisoned| {
+        let guard = poisoned.into_inner();
+        if !guard.is_autocommit() {
+            tracing::warn!(
+                "recovered a poisoned writer mutex with an open transaction; forcing ROLLBACK"
+            );
+            if let Err(e) = guard.execute_batch("ROLLBACK") {
+                tracing::error!(
+                    error = %e,
+                    "failed to ROLLBACK a stranded transaction after writer poison recovery"
                 );
-                if let Err(e) = guard.execute_batch("ROLLBACK") {
-                    tracing::error!(
-                        error = %e,
-                        "failed to ROLLBACK a stranded transaction after writer poison recovery"
-                    );
-                }
-            } else {
-                tracing::warn!("recovered a poisoned writer mutex (connection was in autocommit)");
             }
-            guard
+        } else {
+            tracing::warn!("recovered a poisoned writer mutex (connection was in autocommit)");
         }
-    }
+        guard
+    })
 }
 
 /// A fixed-size pool of items handed out one at a time, blocking when exhausted.
 ///
 /// This is the concurrency core behind [`ReaderPool`], extracted and made generic over the pooled
-/// item `T` so its interleavings can be exercised under `loom` with a trivial payload (loom cannot
+/// item `T` so its interleaving can be exercised under `loom` with a trivial payload (loom cannot
 /// model a real [`Connection`]). Callers `take()` an item and `put()` it back; when none are idle,
 /// `take()` blocks on the [`Condvar`] until a `put()` notifies it.
 ///
-/// Invariants loom checks: no lost wakeups (a `put()` always eventually wakes a blocked `take()`),
-/// no deadlock, and no item duplication or loss across arbitrary take/put interleavings.
+/// Invariants' loom checks: no lost wakeup (a `put()` always eventually wakes a blocked `take()`),
+/// no deadlock, and no item duplication or loss across arbitrary take/put interleaving.
 pub(crate) struct WaitPool<T> {
     idle: Mutex<Vec<T>>,
     available: Condvar,
@@ -250,293 +191,46 @@ impl ReaderPool {
     ///
     /// Takes the pool by `&Arc` explicitly (rather than `self: &Arc<Self>`) so the body is agnostic
     /// to whether `Arc` is `std`'s or `loom`'s under the sync shim.
-    fn checkout(pool: &Arc<Self>) -> PooledReader {
+    pub(crate) fn checkout(pool: &Arc<Self>) -> PooledReader {
         PooledReader {
             pool: Arc::clone(pool),
             conn: Some(pool.take()),
         }
     }
 
-    fn checkin(&self, conn: Connection) {
+    pub(crate) fn checkin(&self, conn: Connection) {
         self.put(conn);
     }
 }
 
-/// RAII handle to a checked-out read connection. Returns the connection to the pool on a drop.
-pub struct PooledReader {
-    pool: Arc<ReaderPool>,
-    conn: Option<Connection>,
-}
-
-impl std::ops::Deref for PooledReader {
-    type Target = Connection;
-    fn deref(&self) -> &Connection {
-        self.conn.as_ref().expect("connection present until drop")
-    }
-}
-
-impl Drop for PooledReader {
-    fn drop(&mut self) {
-        if let Some(conn) = self.conn.take() {
-            self.pool.checkin(conn);
-        }
-    }
-}
-
-/// A read guard: either a pooled reader connection (normal operation) or a borrowed connection
-/// (inside a dry-run, where all work shares the already-locked writer connection).
-pub enum ReadGuard<'a> {
-    Pooled(PooledReader),
-    Borrowed(&'a Connection),
-}
-
-impl std::ops::Deref for ReadGuard<'_> {
-    type Target = Connection;
-    fn deref(&self) -> &Connection {
-        match self {
-            ReadGuard::Pooled(p) => p,
-            ReadGuard::Borrowed(c) => c,
-        }
-    }
-}
-
-/// A write guard: either the mutex-locked writer connection (normal operation) or a borrowed
-/// connection (inside a dry-run, where the writer mutex is already held by the dry-run driver).
-pub enum WriteGuard<'a> {
-    Locked(MutexGuard<'a, Connection>),
-    Borrowed(&'a Connection),
-}
-
-impl std::ops::Deref for WriteGuard<'_> {
-    type Target = Connection;
-    fn deref(&self) -> &Connection {
-        match self {
-            WriteGuard::Locked(g) => g,
-            WriteGuard::Borrowed(c) => c,
-        }
-    }
-}
-
-/// A source of database connections for repositories.
-///
-/// Implemented by both [`DbHandle`] (the normal pooled/serialized path) and [`DryRunHandle`] (a
-/// borrowed connection running inside a dry-run transaction). Repositories are generic over this
-/// trait so the same code path serves real and dry-run work without a second physical connection.
-pub trait Db {
-    /// Acquire the write connection. Use for any statement that mutates data.
-    fn write(&self) -> WriteGuard<'_>;
-
-    /// Acquire a read connection.
-    fn read(&self) -> ReadGuard<'_>;
-}
-
-/// A shared handle used by repositories to reach the database.
-///
-/// Reads are served from a pool of `query_only` connections; writes are serialized through a
-/// single writer connection guarded by a mutex.
+/// Where a [`DbHandle`] gets its read connections from.
 #[derive(Clone)]
-pub struct DbHandle {
-    writer: SharedConnection,
-    readers: Arc<ReaderPool>,
-}
+pub(crate) enum ReaderSource {
+    /// Independent read-only connections (file-backed, WAL). Real read concurrency.
+    Pool(Arc<ReaderPool>),
 
-impl Db for DbHandle {
-    /// Access the single writer connection (serialized via mutex). Use for any statement that mutates data.
+    /// No separate reader connections. Reads take the writer mutex, same as writes.
     ///
-    /// Healing note: if a prior writer panicked mid-transaction and poisoned the mutex, the guard is
-    /// recovered and any stranded transaction is rolled back before it is handed back — see
-    /// [`lock_writer`].
-    fn write(&self) -> WriteGuard<'_> {
-        WriteGuard::Locked(lock_writer(&self.writer))
-    }
-
-    /// Check a read connection out of the pool, blocking if all are in use.
-    fn read(&self) -> ReadGuard<'_> {
-        ReadGuard::Pooled(ReaderPool::checkout(&self.readers))
-    }
-}
-
-/// A borrowed connection source used only inside [`Database::dry_run`].
-///
-/// Both `write()` and `read()` return the *same* borrowed writer connection, which the dry-run
-/// driver keeps locked for the whole closure. This makes every operation run inside the dry-run's
-/// `SAVEPOINT` (so reads observe uncommitted writes) without re-locking the writer mutex, which
-/// would otherwise self-deadlock.
-#[derive(Clone, Copy)]
-pub struct DryRunHandle<'a> {
-    conn: &'a Connection,
-}
-
-impl Db for DryRunHandle<'_> {
-    fn write(&self) -> WriteGuard<'_> {
-        WriteGuard::Borrowed(self.conn)
-    }
-
-    fn read(&self) -> ReadGuard<'_> {
-        ReadGuard::Borrowed(self.conn)
-    }
-}
-
-/// Owns the writer connection and reader pool. The entry point for opening a database and running
-/// dry-runs.
-pub struct Database {
-    handle: DbHandle,
-    path: DbPath,
+    /// Used for in-memory `Database`s. SQLite cannot share an in-memory database's content across
+    /// independently opened connections without a shared-cache mode. There is no `vfs=memdb`
+    /// escape hatch for this; sharing requires `cache=shared` regardless of VFS. Rather than take
+    /// on shared-cache's separate table-level locking model for the in-memory/test-only path,
+    /// in-memory `Database`s simply don't open extra physical connections: this is fine, since
+    /// `open_in_memory` exists for unit tests, not for the read-concurrency guarantees the
+    /// file+WAL production path provides.
+    SharedWithWriter,
 }
 
 /// Where the database lives; retained so the writer and reader-pool connections can all be opened
 /// against the same location, and so `Drop` knows whether a WAL checkpoint is meaningful.
 #[derive(Clone)]
-enum DbPath {
+pub(crate) enum DbPath {
     File(PathBuf),
-    /// A named shared-cache in-memory database (survives across connections for the lifetime of
-    /// at least one open handle).
-    SharedMemory(String),
-}
-
-impl Database {
-    /// Open (or create) a database at `path` with the default configuration.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, SqliteDataDriverError> {
-        Self::open_with_config(path, DatabaseConfig::default())
-    }
-
-    /// Open (or create) a database at `path` with the given configuration.
-    pub fn open_with_config(
-        path: impl AsRef<Path>,
-        config: DatabaseConfig,
-    ) -> Result<Self, SqliteDataDriverError> {
-        let path = DbPath::File(path.as_ref().to_path_buf());
-        Self::open_inner(path, config)
-    }
-
-    /// Open an isolated in-memory database (default configuration). Backed by a uniquely named shared
-    /// cache so the writer and reader-pool connections all observe the same data.
-    pub fn open_in_memory() -> Result<Self, SqliteDataDriverError> {
-        Self::open_in_memory_with_config(DatabaseConfig::default())
-    }
-
-    /// Open an isolated in-memory database with the given configuration.
-    pub fn open_in_memory_with_config(
-        config: DatabaseConfig,
-    ) -> Result<Self, SqliteDataDriverError> {
-        // A process-unique name keeps independent in-memory databases isolated
-        // from one another while still shared across this handle's connections.
-        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let name = format!("valqeron-mem-{}-{n}", std::process::id());
-        Self::open_inner(DbPath::SharedMemory(name), config)
-    }
-
-    fn open_inner(path: DbPath, config: DatabaseConfig) -> Result<Self, SqliteDataDriverError> {
-        if config.reader_pool_size < 1 {
-            return Err(SqliteDataDriverError::InvalidPoolSize);
-        }
-
-        let is_memory = matches!(path, DbPath::SharedMemory(_));
-
-        // Writer: run migrations here, once, before readers are usable.
-        let mut writer = open_connection(&path, ConnectionRole::Writer)?;
-        configure(
-            &writer,
-            ConnectionRole::Writer,
-            is_memory,
-            config.synchronous,
-        )?;
-        migrations::run(&mut writer)?;
-
-        // Readers: independent connections, query-only. `synchronous` is irrelevant for read-only
-        // connections, so its value is passed through but never applied for readers.
-        let mut readers = Vec::with_capacity(config.reader_pool_size);
-        for _ in 0..config.reader_pool_size {
-            let conn = open_connection(&path, ConnectionRole::Reader)?;
-            configure(&conn, ConnectionRole::Reader, is_memory, config.synchronous)?;
-            readers.push(conn);
-        }
-
-        Ok(Self {
-            handle: DbHandle {
-                writer: Arc::new(Mutex::new(writer)),
-                readers: Arc::new(ReaderPool::new(readers)),
-            },
-            path,
-        })
-    }
-
-    /// An inexpensive, cloneable handle to hand to repositories. Clones share the same writer
-    /// and reader pool.
-    pub fn handle(&self) -> DbHandle {
-        self.handle.clone()
-    }
-
-    /// Run `f` against a dry-run view of the database: every write it performs is rolled back on
-    /// return and never persisted.
-    ///
-    /// Unlike a naive second-connection approach, this reuses the real writer connection: it holds
-    /// the writer mutex for the whole closure (so concurrent real writes queue behind it at the
-    /// app level, exactly as [`DbHandle`] promises, instead of racing for SQLite's write lock) and
-    /// wraps the work in a `SAVEPOINT`. The closure is handed a [`DryRunHandle`] whose `write()` and
-    /// `read()` both borrow this already-locked connection, so its reads observe its own uncommitted
-    /// writes without re-locking the mutex (which would self-deadlock).
-    pub fn dry_run<F, T>(&self, f: F) -> Result<T, SqliteDataDriverError>
-    where
-        F: FnOnce(&DryRunHandle<'_>) -> T,
-    {
-        // Hold the real writer guard for the entire dry-run. This serializes against every other
-        // writer via the app-level mutex, so no concurrent write can slip a committed transaction
-        // *inside* our savepoint and get rolled back with us.
-        let guard = lock_writer(&self.handle.writer);
-
-        guard
-            .execute_batch("SAVEPOINT valqeron_dry_run")
-            .map_err(|source| SqliteDataDriverError::DryRun { source })?;
-
-        let handle = DryRunHandle { conn: &guard };
-        let result = f(&handle);
-
-        // Discard everything done inside the savepoint. ROLLBACK TO rewinds the changes; RELEASE
-        // then pops the (now-empty) savepoint so the connection returns to autocommit.
-        if let Err(e) =
-            guard.execute_batch("ROLLBACK TO valqeron_dry_run; RELEASE valqeron_dry_run")
-        {
-            tracing::error!(
-                error = %e,
-                "dry-run savepoint rollback/release failed; attempting a plain RELEASE"
-            );
-            if let Err(e) = guard.execute_batch("RELEASE valqeron_dry_run") {
-                tracing::error!(error = %e, "dry-run savepoint RELEASE also failed");
-            }
-        }
-
-        Ok(result)
-    }
-}
-
-/// Ownership note: this cleanup (`PRAGMA optimize` + WAL `TRUNCATE`) fires when the owning
-/// [`Database`] value drops, NOT when the last cloned [`DbHandle`] drops. That is correct under the
-/// current model, where a single long-lived `Database` owns the process and outlives every handle it
-/// hands out. If a caller ever drops the `Database` early while cloned handles are still circulating
-/// and writing, this would run a premature checkpoint mid-write — at that point switch to a
-/// reference-counted close (e.g. cleanup on the last `Arc` drop) instead.
-///
-/// Future work (deferred): SQLite recommends running `PRAGMA optimize` periodically (not only at
-/// close) to keep the query planner's statistics fresh on a very long-lived process. This is not
-/// implemented to avoid adding write-counter state to the hot writer path; the close-time optimize
-/// suffices for the current single-long-lived-process model. Revisit if planner drift is observed.
-impl Drop for Database {
-    fn drop(&mut self) {
-        let conn = self.handle.write();
-        if let Err(e) = conn.execute_batch("PRAGMA optimize;") {
-            tracing::warn!(error = %e, "PRAGMA optimize failed on close");
-        }
-        // Truncate the WAL so the -wal file does not grow unbounded across
-        // long-lived sessions while another process may still be reading.
-        // (Only meaningful for on-disk WAL databases.)
-        if matches!(self.path, DbPath::File(_))
-            && let Err(e) = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE")
-        {
-            tracing::warn!(error = %e, "WAL checkpoint(TRUNCATE) failed on close");
-        }
-    }
+    /// A named in-memory database served by SQLite's `memdb` VFS (available since SQLite 3.36.0).
+    /// Multiple connections opened against the same name see the same content for the lifetime of
+    /// at least one open handle — without opting the process into shared-cache mode
+    /// (https://www.sqlite.org/c3ref/enable_shared_cache.html) and its table-level locking quirks.
+    Memory(String),
 }
 
 #[derive(Clone, Copy)]
@@ -562,19 +256,9 @@ fn open_connection(
             };
             Connection::open_with_flags(p, flags).map_err(map_err)
         }
-        DbPath::SharedMemory(name) => {
-            let uri = format!("file:{name}?mode=memory&cache=shared");
-            let flags = match role {
-                ConnectionRole::Writer => {
-                    OpenFlags::SQLITE_OPEN_READ_WRITE
-                        | OpenFlags::SQLITE_OPEN_CREATE
-                        | OpenFlags::SQLITE_OPEN_URI
-                }
-                ConnectionRole::Reader => {
-                    OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI
-                }
-            };
-            Connection::open_with_flags(uri, flags).map_err(map_err)
+        DbPath::Memory(_name) => {
+            let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+            Connection::open_in_memory_with_flags(flags).map_err(map_err)
         }
     }
 }
@@ -583,14 +267,14 @@ fn open_connection(
 ///
 /// | PRAGMA NAME / API | PRAGMA VALUE | Description |
 /// |: --- |: --- |: --- |
-/// | journal_mode | WAL | Enables Sqlite WAL mode. Skip for in-memory databases. Check [the Sqlite docs](https://www.sqlite.org/wal.html) for more information. |
-/// | synchronous | NORMAL (default) or FULL | Configurable via [`DatabaseConfig::synchronous`]. **NORMAL** (default): fast; a committed transaction can be lost on a power/OS crash, though the database is never corrupted. **FULL**: the database file is fully synchronized on commit so committed transactions survive power loss, at the cost of write latency. <br><br>See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_synchronous) for more information. |
-/// | foreign_keys | ON | Enforce foreign key constraints. See [the Sqlite docs](https://www.sqlite.org/foreignkeys.html) for more information. |
-/// | busy_timeout | 5000 | Abort any operation that takes longer than 5 seconds to complete. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout) for more information. |
-/// | cache_size | -64000 | The database connection cache is limited to 64MB (64,000 KiB). See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_cache_size) for more information. |
-/// | temp_store | MEMORY | Forces temporary tables, indices, and views to be held purely in volatile RAM instead of spilling to disk files. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_temp_store) for more information. |
-/// | mmap_size | 268,435,456 | Sets the maximum memory-mapped I/O budget to 256MB to significantly speed up data read operations. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_mmap_size) for more information. <br><br>Skip for in-memory databases |
-/// | wal_autocheckpoint | 1000 | Automatically runs a PASSIVE checkpoint when the WAL log equals or exceeds 1,000 pages. Skip for in-memory databases. See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_wal_autocheckpoint) for more information |
+/// | journal_mode | WAL | Enables Sqlite WAL mode. Skip for in-memory databases. Check [Sqlite docs](https://www.sqlite.org/wal.html) for more information. |
+/// | synchronous | NORMAL (default) or FULL | Configurable via [`DatabaseConfig::synchronous`]. **NORMAL** (default): fast; a committed transaction can be lost in a power/OS crash, though the database is never corrupted. **FULL**: the database file is fully synchronized on commit so committed transactions survive power loss, at the cost of write latency. <br><br>See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_synchronous) for more information. |
+/// | foreign_keys | ON | Enforce foreign key constraints. See [Sqlite docs](https://www.sqlite.org/foreignkeys.html) for more information. |
+/// | busy_timeout | 5000 | Abort any operation that takes longer than 5 seconds to complete. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout) for more information. |
+/// | cache_size | -64000 | The database connection cache is limited to 64MB (64,000 KiB). See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_cache_size) for more information. |
+/// | temp_store | MEMORY | Forces temporary tables, indices, and views to be held purely in volatile RAM instead of spilling to disk files. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_temp_store) for more information. |
+/// | mmap_size | 268,435,456 | Sets the maximum memory-mapped I/O budget to 256MB to significantly speed up data read operations. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_mmap_size) for more information. <br><br>Skip for in-memory databases |
+/// | wal_autocheckpoint | 1000 | Automatically runs a PASSIVE checkpoint when the WAL log equals or exceeds 1,000 pages. Skip for in-memory databases. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_wal_autocheckpoint) for more information |
 /// | statement_cache | 64 | Set the maximum number of cached prepared statements this connection will hold. See [rusqlite docs](https://docs.rs/rusqlite/latest/src/rusqlite/cache.rs.html#48) |
 /// | query_only | ON / OFF | Activates strict read-only mode (`SQLITE_READONLY`) exclusively if the current connection's assigned role is `ConnectionRole::Reader`.  See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_query_only) for more information. |
 ///
@@ -600,6 +284,12 @@ fn configure(
     is_memory: bool,
     synchronous: Synchronous,
 ) -> Result<(), SqliteDataDriverError> {
+    debug_assert!(
+        !(is_memory && matches!(role, ConnectionRole::Reader)),
+        "in-memory databases have no reader pool — reads share the writer connection \
+         (see ReaderSource::SharedWithWriter), so this combination should never occur"
+    );
+
     let pragma_err = |source| SqliteDataDriverError::Pragma { source };
 
     if !is_memory {
@@ -824,26 +514,36 @@ mod tests {
 
     #[test]
     fn concurrent_reads_are_served_while_a_write_lock_is_held() {
-        let db = Database::open_in_memory_with_config(DatabaseConfig {
-            reader_pool_size: 2,
-            ..Default::default()
-        })
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open_with_config(
+            dir.path().join("test.db"),
+            DatabaseConfig {
+                reader_pool_size: 2,
+                ..Default::default()
+            },
+        )
         .unwrap();
         let handle = db.handle();
-
-        // Hold the writer lock on this thread.
         let write_guard = handle.write();
-
-        // A reader on another thread must still make progress (pool of readers).
         let h2 = handle.clone();
         let done = thread::spawn(move || {
             let r = h2.read();
             count(&r)
         });
-
         let n = done.join().unwrap();
         assert_eq!(n, 0);
         drop(write_guard);
+    }
+
+    #[test]
+    fn in_memory_reads_share_the_writer_connection_and_are_not_query_only() {
+        let db = Database::open_in_memory().unwrap();
+        let handle = db.handle();
+        assert_eq!(
+            query_only(&handle.read()),
+            0,
+            "in-memory reads share the writer connection and are never query_only"
+        );
     }
 
     #[test]
@@ -1103,9 +803,9 @@ mod tests {
 
     #[test]
     fn reader_connections_are_query_only_and_writer_is_not() {
-        let db = Database::open_in_memory().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(dir.path().join("test.db")).unwrap();
         let handle = db.handle();
-
         // A pooled reader must report query_only = 1.
         {
             let reader = handle.read();
@@ -1115,8 +815,6 @@ mod tests {
                 "reader pragma query_only must be ON"
             );
         }
-
-        // The writer must report query_only = 0.
         assert_eq!(
             query_only(&handle.write()),
             0,

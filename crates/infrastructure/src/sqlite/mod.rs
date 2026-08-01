@@ -1,22 +1,69 @@
-//! Sqlite-backed data access for the Valqeron infrastructure.
-//!
-//! Architecture invariants
-//! 1. All processes using a database must be on the same host computer; WAL does not work over a network filesystem.
-//! 2. A supported multi-process shape is **one writing process plus any number of reading processes**.
-//!    The app-level writer mutex serializes writers only *within* a process; concurrent writers
-//!    across processes are not a supported/tested configuration (they would contend at SQLite's own
-//!    write lock, bounded by `busy_timeout`).
-//! 3. Writer durability defaults to `synchronous=NORMAL` (fast; the last commit may be lost on a
-//!    power/OS crash, but the database is never corrupted). Opt into power-loss durability via
-//!    `DatabaseConfig::synchronous = Synchronous::Full` (or `StorageConfig::durability`).
-//!
+use crate::sqlite::db::Database;
+use crate::sqlite::driver::Synchronous;
+use crate::sqlite::repository::SqliteIssuerRepository;
+use std::thread;
+use std::time::Duration;
+use valqeron_core::{Repositories, StorageEngine};
 
-pub mod driver;
-pub mod mapping;
-pub mod migrations;
-pub mod models;
-pub mod queries;
-pub mod repository;
+mod db;
+mod driver;
+mod error;
+mod mapping;
+mod migrations;
+mod models;
+mod queries;
+mod repository;
 
-pub use driver::{Database, DatabaseConfig, DbHandle, SqliteDataDriverError, Synchronous};
-pub use repository::SqliteIssuerRepository;
+/// Configuration for opening a [`DatabaseConnection`].
+#[derive(Debug, Clone)]
+pub struct DatabaseConfig {
+    /// Number of read-only connections held in the reader pool.
+    pub reader_pool_size: usize,
+    /// Writer durability level (`synchronous` pragma). Defaults to [`Synchronous::Normal`].
+    pub synchronous: Synchronous,
+    /// SQLite's `busy_timeout` (in milliseconds) for writer connections. Defaults to 5 seconds.
+    pub busy_timeout: Duration,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        let reader_pool_size = get_available_cups();
+        Self {
+            reader_pool_size,
+            synchronous: Synchronous::default(),
+            busy_timeout: Duration::from_secs(5),
+        }
+    }
+}
+
+fn get_available_cups() -> usize {
+    match thread::available_parallelism() {
+        Ok(count) => count.into(),
+        Err(_) => 4,
+    }
+}
+
+pub struct SqliteStorageEngine {
+    db: Database,
+}
+
+impl StorageEngine for SqliteStorageEngine {
+    type Issuers = SqliteIssuerRepository;
+
+    fn repositories(&self) -> Repositories<Self> {
+        Repositories {
+            issuers: SqliteIssuerRepository::new(self.db.handle()),
+        }
+    }
+
+    fn dry_run<F, T>(&self, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(&Repositories<Self>) -> T,
+    {
+        self.db.dry_run(|handle| {
+            f(&Repositories {
+                issuers: SqliteIssuerRepository::new(handle.clone()),
+            })
+        })
+    }
+}

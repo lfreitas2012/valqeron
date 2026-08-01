@@ -1,6 +1,6 @@
 //! Thin server layer over `valqeron-core`.
 //!
-//! Today this is an in-process facade that wraps [`Store`]. It
+//! Today this is an in-process facade that wraps [`PersistenceManager`]. It
 //! exists to draw a stable boundary: everything above it (commands, I/O,
 //! rendering) depends only on [`Server`], never on `Store` directly. When
 //! Valqeron grows a real `valqeron-server` daemon (systemd/launchd) with an IPC
@@ -31,15 +31,14 @@
 //!    persists nothing. Reached via [`Server::dry_run`], engaged by the global
 //!    `--dry-run` flag.
 
-use valqeron_core::{IssuerRepository, StorageConfig, Store};
-use valqeron_infrastructure::open_sqlite;
+use valqeron_core::{IssuerRepository, PersistenceManager};
 
 use crate::config::ValqeronConfig;
 use crate::error::AppResult;
 
 /// An opened Valqeron store, ready to serve repository work.
 pub struct Server {
-    store: Store,
+    store: PersistenceManager,
 }
 
 impl Server {
@@ -64,7 +63,7 @@ impl Server {
     {
         // `Store::issuers` hands back a boxed repository; deref to a `&dyn` so
         // the command closures stay backend-agnostic.
-        let repo = self.store.issuers();
+        let repo = self.store.issuers_repository();
         f(&*repo)
     }
 
