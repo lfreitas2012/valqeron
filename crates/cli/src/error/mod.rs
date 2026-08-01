@@ -12,9 +12,7 @@ use ftracker_identifiers::{CnpjError, CountryCodeError, LeiError};
 use problem::{IntoProblem, ProblemDetail};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
-use valqeron_core::{
-    IssuerBuilderError, IssuerNameError, IssuerStatusError, RepositoryError, StorageError,
-};
+use valqeron_core::{IssuerBuilderError, IssuerNameError, IssuerStatusError, RepositoryError};
 
 /// Convenient result alias for command and plumbing code.
 pub type AppResult<T> = Result<T, AppError>;
@@ -37,6 +35,8 @@ mod exit {
     pub const IOERR: u16 = 74;
     /// Something was misconfigured.
     pub const CONFIG: u16 = 78;
+    /// Storage engine error.
+    pub const STORAGE: u16 = 80;
 }
 
 /// The identifier kind, used to namespace identifier-validation problems.
@@ -74,10 +74,6 @@ impl std::fmt::Display for IdentifierKind {
 /// Every failure the CLI surfaces to the user.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    /// Failed to open, migrate, or dry-run the storage engine.
-    #[error(transparent)]
-    Storage(#[from] StorageError),
-
     /// A repository operation failed (not found, conflict, backend).
     #[error(transparent)]
     Repository(#[from] RepositoryError),
@@ -179,18 +175,9 @@ impl From<CountryCodeError> for AppError {
 impl IntoProblem for AppError {
     fn problem_type(&self) -> &'static str {
         match self {
-            AppError::Storage(e) => match e {
-                StorageError::Open { .. } => "storage/open-failed",
-                StorageError::DryRun { .. } => "storage/dry-run-failed",
-                StorageError::Migration { .. } => "storage/migration-failed",
-                StorageError::SchemaTooNew { .. } => "storage/schema-too-new",
-                StorageError::Config(_) => "config/invalid",
-                StorageError::Backend(_) => "storage/infrastructure",
-            },
             AppError::Repository(e) => match e {
                 RepositoryError::NotFound(_) => "issuer/not-found",
                 RepositoryError::Conflict(_) => "issuer/conflict",
-                RepositoryError::Backend(_) => "storage/infrastructure",
             },
             AppError::IssuerBuilder(e) => match e {
                 IssuerBuilderError::InvalidCountryForCnpj(_) => {
@@ -219,19 +206,9 @@ impl IntoProblem for AppError {
 
     fn title(&self) -> Cow<'static, str> {
         match self {
-            AppError::Storage(e) => match e {
-                StorageError::Open { .. } | StorageError::DryRun { .. } => {
-                    Cow::Borrowed("Storage unavailable")
-                }
-                StorageError::Migration { .. } => Cow::Borrowed("Schema migration failed"),
-                StorageError::SchemaTooNew { .. } => Cow::Borrowed("Schema too new"),
-                StorageError::Config(_) => Cow::Borrowed("Invalid configuration"),
-                StorageError::Backend(_) => Cow::Borrowed("Storage error"),
-            },
             AppError::Repository(e) => match e {
                 RepositoryError::NotFound(_) => Cow::Borrowed("Issuer not found"),
                 RepositoryError::Conflict(_) => Cow::Borrowed("Conflict"),
-                RepositoryError::Backend(_) => Cow::Borrowed("Storage error"),
             },
             AppError::IssuerBuilder(_) | AppError::IssuerName(_) | AppError::IssuerStatus(_) => {
                 Cow::Borrowed("Issuer validation failed")
@@ -251,18 +228,9 @@ impl IntoProblem for AppError {
 
     fn status(&self) -> u16 {
         match self {
-            AppError::Storage(e) => match e {
-                StorageError::Open { .. } | StorageError::DryRun { .. } => exit::IOERR,
-                StorageError::Migration { .. } | StorageError::SchemaTooNew { .. } => {
-                    exit::SOFTWARE
-                }
-                StorageError::Config(_) => exit::CONFIG,
-                StorageError::Backend(_) => exit::IOERR,
-            },
             AppError::Repository(e) => match e {
                 RepositoryError::NotFound(_) => exit::NOTFOUND,
                 RepositoryError::Conflict(_) => exit::CONFLICT,
-                RepositoryError::Backend(_) => exit::IOERR,
             },
             AppError::IssuerBuilder(_)
             | AppError::IssuerName(_)
@@ -280,10 +248,6 @@ impl IntoProblem for AppError {
     fn extensions(&self) -> Map<String, Value> {
         let mut ext = Map::new();
         match self {
-            AppError::Storage(StorageError::SchemaTooNew { found, known }) => {
-                ext.insert("found".into(), Value::from(*found));
-                ext.insert("known".into(), Value::from(*known));
-            }
             AppError::Repository(RepositoryError::NotFound(id)) => {
                 ext.insert("id".into(), Value::from(format!("{id:?}")));
             }
@@ -316,16 +280,6 @@ impl AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn schema_too_new_maps_to_software_exit_with_extensions() {
-        let err = AppError::Storage(StorageError::SchemaTooNew { found: 9, known: 1 });
-        let p = err.problem();
-        assert_eq!(p.r#type, "storage/schema-too-new");
-        assert_eq!(p.status, exit::SOFTWARE);
-        assert_eq!(p.extensions.get("found").unwrap(), 9);
-        assert_eq!(p.extensions.get("known").unwrap(), 1);
-    }
 
     #[test]
     fn conflict_maps_to_conflict_exit_with_constraint() {
