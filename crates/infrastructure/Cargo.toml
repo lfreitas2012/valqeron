@@ -26,7 +26,5 @@ tempfile = { workspace = true }
 [target.'cfg(loom)'.dependencies]
 loom = { workspace = true }
 
-[lints.rust]
-# `loom` is an opt-in cfg gate exercised via `RUSTFLAGS="--cfg loom"`; silence the
-# unexpected-cfg lint for normal builds where the flag is absent.
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+[lints]
+workspace = true

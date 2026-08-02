@@ -25,3 +25,6 @@ ftracker-identifiers = { workspace = true }
 [[bin]]
 name = "valqeron"
 path = "src/main.rs"
+
+[lints]
+workspace = true
