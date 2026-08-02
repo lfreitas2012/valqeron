@@ -1,16 +1,15 @@
-//! Low-level connection primitives: opening connections with role-appropriate flags, applying the
-//! pragma set, and the per-query wall-clock timeout progress handler.
+//! SQLite connection setup and per-query timeout handling.
 //!
-//! This module holds everything about a *single* physical connection. Multi-connection concerns
-//! (the reader pool, the writer mutex) live in [`pool`](crate::sqlite::connection::pool); the
-//! [`Database`](crate::sqlite::connection::Database) lifecycle composes both.
+//! It opens one physical connection, applies its role-specific configuration, and installs the
+//! query timeout handler. Pooling and connection lifecycle management belong to
+//! [`pool`](crate::sqlite::connection::pool) and [`Database`](crate::sqlite::connection::Database).
 
 use rusqlite::{Connection, OpenFlags};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::sqlite::connection::sync::{Arc, Mutex};
-use crate::sqlite::error::SqliteDbError;
+use crate::sqlite::error::SqliteError;
 
 /// Maximum duration a single SQL query is allowed to run before being aborted.
 const MAX_QUERY_EXECUTION_TIME: Duration = Duration::from_secs(15);
@@ -21,7 +20,7 @@ const IDLE_RESET_THRESHOLD: Duration = Duration::from_millis(50);
 /// A shared connection to the database.
 pub(crate) type SharedConnection = Arc<Mutex<Connection>>;
 
-/// Writer `synchronous` pragma level.
+/// SQLite `synchronous` setting used for the writer connection.
 ///
 /// Controls how aggressively the writer flushes to durable storage on commit. Readers are unaffected
 /// (they never write). See the durability tradeoff documented on [`configure`].
@@ -29,13 +28,14 @@ pub(crate) type SharedConnection = Arc<Mutex<Connection>>;
 pub enum Synchronous {
     /// `synchronous=NORMAL`.
     ///
-    /// Fast. A committed transaction can be lost in a power/OS crash, but the database is never corrupted.
+    /// Lower commit latency with the risk of losing a committed transaction after a power or OS
+    /// failure.
     #[default]
     Normal,
 
-    /// `synchronous=FULL`:
+    /// `synchronous=FULL`.
     ///
-    /// Slower. A committed transaction survives power loss.
+    /// Synchronizes commits more durably at higher write latency.
     Full,
 }
 
@@ -49,20 +49,19 @@ impl Synchronous {
     }
 }
 
-/// Where the database lives; retained so the writer and reader-pool connections can all be opened
-/// against the same location, and so `Drop` knows whether a WAL checkpoint is meaningful.
+/// Identifies the SQLite database location.
+///
+/// The value is retained so connections use the same location and lifecycle code can determine
+/// whether WAL checkpointing applies.
 #[derive(Clone)]
 pub(crate) enum DbPath {
     File(PathBuf),
-    /// A named in-memory database served by SQLite's `memdb` VFS (available since SQLite 3.36.0).
-    /// Multiple connections opened against the same name see the same content for the lifetime of
-    /// at least one open handle — without opting the process into shared-cache mode
-    /// (https://www.sqlite.org/c3ref/enable_shared_cache.html) and its table-level locking quirks.
+    /// An in-memory SQLite database.
     Memory(String),
 }
 
 impl DbPath {
-    /// Whether this is an in-memory database.
+    /// Returns `true` for an in-memory database.
     pub(crate) fn is_memory(&self) -> bool {
         matches!(self, DbPath::Memory(_))
     }
@@ -75,16 +74,14 @@ pub(crate) enum ConnectionRole {
     Reader,
 }
 
-/// Open a single connection to `path` with flags appropriate for `role`.
+/// Opens one SQLite connection with flags appropriate for `role`.
 pub(crate) fn open_connection(
     path: &DbPath,
     role: ConnectionRole,
-) -> Result<Connection, SqliteDbError> {
-    let map_err = |source| SqliteDbError::Connection { source };
+) -> Result<Connection, SqliteError> {
+    let map_err = |source| SqliteError::Connection { source };
     match path {
         DbPath::File(p) => {
-            // Enforce read-only at the OS/SQLite layer for readers, not just via the `query_only`
-            // pragma (which is kept as defense-in-depth in `configure`). Writers may create the file.
             let flags = match role {
                 ConnectionRole::Writer => {
                     OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
@@ -100,43 +97,40 @@ pub(crate) fn open_connection(
     }
 }
 
-/// Configures Sqlite database connection for the given role.
+/// Applies the SQLite configuration for a connection role.
 ///
 /// | PRAGMA NAME / API | PRAGMA VALUE | Description |
 /// |: --- |: --- |: --- |
 /// | journal_mode | WAL | Enables Sqlite WAL mode. Skip for in-memory databases. Check [Sqlite docs](https://www.sqlite.org/wal.html) for more information. |
 /// | synchronous | NORMAL (default) or FULL | Configurable via [`DatabaseConfig::synchronous`](crate::sqlite::connection::DatabaseConfig). **NORMAL** (default): fast; a committed transaction can be lost in a power/OS crash, though the database is never corrupted. **FULL**: the database file is fully synchronized on commit so committed transactions survive power loss, at the cost of write latency. <br><br>See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_synchronous) for more information. |
 /// | foreign_keys | ON | Enforce foreign key constraints. See [Sqlite docs](https://www.sqlite.org/foreignkeys.html) for more information. |
-/// | busy_timeout | 5000 | Abort any operation that takes longer than 5 seconds to complete. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout) for more information. |
+/// | busy_timeout | 5000 | Wait up to 5 seconds when a locked database prevents progress. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout). |
 /// | cache_size | -64000 | The database connection cache is limited to 64MB (64,000 KiB). See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_cache_size) for more information. |
 /// | temp_store | MEMORY | Forces temporary tables, indices, and views to be held purely in volatile RAM instead of spilling to disk files. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_temp_store) for more information. |
-/// | mmap_size | 268,435,456 | Sets the maximum memory-mapped I/O budget to 256MB to significantly speed up data read operations. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_mmap_size) for more information. <br><br>Skip for in-memory databases |
-/// | wal_autocheckpoint | 1000 | Automatically runs a PASSIVE checkpoint when the WAL log equals or exceeds 1,000 pages. Skip for in-memory databases. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_wal_autocheckpoint) for more information |
+/// | mmap_size | 268,435,456 | Sets the maximum memory-mapped I/O size to 256 MiB. Skipped for in-memory databases. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_mmap_size). |
+/// | wal_autocheckpoint | 1000 | Runs a PASSIVE checkpoint at 1,000 WAL pages. Skipped for in-memory databases. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_wal_autocheckpoint). |
 /// | statement_cache | 64 | Set the maximum number of cached prepared statements this connection will hold. See [rusqlite docs](https://docs.rs/rusqlite/latest/src/rusqlite/cache.rs.html#48) |
-/// | query_only | ON / OFF | Activates strict read-only mode (`SQLITE_READONLY`) exclusively if the current connection's assigned role is `ConnectionRole::Reader`.  See [the Sqlite docs](https://www.sqlite.org/pragma.html#pragma_query_only) for more information. |
+/// | query_only | ON / OFF | Enables read-only enforcement for `ConnectionRole::Reader`. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_query_only). |
 ///
 pub(crate) fn configure(
     conn: &Connection,
     role: ConnectionRole,
     is_memory: bool,
     synchronous: Synchronous,
-) -> Result<(), SqliteDbError> {
+) -> Result<(), SqliteError> {
     debug_assert!(
         !(is_memory && matches!(role, ConnectionRole::Reader)),
         "in-memory databases have no reader pool — reads share the writer connection \
          (see ReaderSource::SharedWithWriter), so this combination should never occur"
     );
 
-    let pragma_err = |source| SqliteDbError::Pragma { source };
+    let pragma_err = |source| SqliteError::Pragma { source };
 
     if !is_memory {
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(pragma_err)?;
     }
 
-    // Durability knob. NORMAL (the default) is fast but a committed transaction can be lost on a
-    // power/OS crash (the database itself is never corrupted); FULL trades write latency for
-    // power-loss durability. Only meaningful on the writer — readers never write.
     conn.pragma_update(None, "synchronous", synchronous.as_pragma())
         .map_err(pragma_err)?;
 
@@ -177,12 +171,10 @@ pub(crate) fn configure(
     Ok(())
 }
 
-/// Configures a progress handler on `conn` to enforce a wall-clock timeout on individual SQL queries.
+/// Installs a progress handler that limits individual SQL query execution time.
 ///
-/// Registers a callback invoked every 5,000 SQLite VM instructions:
-/// - Resets the statement timer if elapsed time since the last callback exceeds [`IDLE_RESET_THRESHOLD`],
-///   indicating the connection was idle between pool uses.
-/// - Aborts the current query with `SQLITE_INTERRUPT` if execution exceeds [`MAX_QUERY_EXECUTION_TIME`].
+/// The callback runs every 5,000 SQLite VM instructions. It resets the timer after an idle interval
+/// and interrupts the query with `SQLITE_INTERRUPT` after [`MAX_QUERY_EXECUTION_TIME`].
 fn configure_sqlite_progress_handler(conn: &Connection) {
     let mut query_start = Instant::now();
     let mut last_check = Instant::now();
