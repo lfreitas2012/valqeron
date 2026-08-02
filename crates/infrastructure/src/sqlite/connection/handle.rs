@@ -1,37 +1,33 @@
-//! The connection-source abstraction handed to repositories.
+//! Repository access to SQLite connections.
 //!
-//! A single repository type ([`SqliteIssuerRepository`](crate::sqlite::issuer::repository::SqliteIssuerRepository))
-//! holds a [`DbHandle`] and reaches the database only through the [`Db`] trait, so the same code
-//! serves the normal path and a dry-run without opening a second connection.
+//! Repositories use [`DbHandle`] through [`Db`], which supports both live operation and dry-runs
+//! without a second repository implementation.
 
 use crate::sqlite::connection::dry_run::current_dry_run_conn;
 use crate::sqlite::connection::guard::{ReadGuard, WriteGuard};
 use crate::sqlite::connection::pool::{ReaderPool, ReaderSource, lock_writer};
 use crate::sqlite::connection::pragmas::SharedConnection;
 
-/// A source of database connections for repositories.
+/// Provides read and write access to SQLite connections.
 ///
-/// Implemented by [`DbHandle`] in both its operating modes. Repositories depend on this trait so the
-/// same code path serves real and dry-run work.
+/// Implemented by [`DbHandle`] in both its operating modes. Repositories depend on this trait, so
+/// the same code path serves real and dry-run work.
 pub(crate) trait Db {
-    /// Acquire the write connection. Use for any statement that mutates data.
+    /// Acquire the writer connection. Use for any statement that mutates data.
     fn write(&self) -> WriteGuard<'_>;
 
     /// Acquire a read connection.
     fn read(&self) -> ReadGuard<'_>;
 }
 
-/// A shared, cloneable handle used by repositories to reach the database.
+/// A cloneable handle used by repositories to access SQLite.
 ///
-/// A single repository type is generic over [`Db`], and this one handle type serves both operating
+/// A single repository type is generic over [`Db`], and this one-handle type serves both operating
 /// modes so the storage engine can expose a single concrete repository:
 ///
-/// * [`DbHandle::Live`] — the normal path. Reads are served from a pool of `query_only`
-///   connections; writes are serialized through a single writer connection guarded by a mutex.
-/// * [`DbHandle::DryRun`] — used only inside
-///   [`Database::dry_run`](crate::sqlite::connection::Database::dry_run). Every read/write is routed
-///   to the single connection the dry-run pinned for this thread, so all work runs inside the
-///   dry-run `SAVEPOINT` without re-locking the writer mutex.
+/// * [`DbHandle::Live`] uses pooled read connections and one mutex-guarded writer connection.
+/// * [`DbHandle::DryRun`] routes all operations to the connection pinned by
+///   [`Database::dry_run`](crate::sqlite::connection::Database::dry_run).
 #[derive(Clone)]
 pub(crate) enum DbHandle {
     Live {
@@ -42,11 +38,10 @@ pub(crate) enum DbHandle {
 }
 
 impl Db for DbHandle {
-    /// Access the write connection.
+    /// Acquires the writer connection.
     ///
     /// In [`DbHandle::Live`] mode this locks the single writer connection (serialized via mutex).
-    /// Healing note: if a prior writer panicked mid-transaction and poisoned the mutex, the guard is
-    /// recovered and any stranded transaction is rolled back before it is handed back — see
+    /// A poisoned writer mutex is recovered, and any stranded transaction is rolled back; see
     /// [`lock_writer`].
     ///
     /// In [`DbHandle::DryRun`] mode it borrows the thread-pinned dry-run connection (already locked
@@ -58,7 +53,7 @@ impl Db for DbHandle {
         }
     }
 
-    /// Acquire a read connection.
+    /// Acquires a read connection.
     ///
     /// In [`DbHandle::Live`] mode this checks a connection out of the reader pool (blocking if all
     /// are in use), or shares the writer for in-memory databases. In [`DbHandle::DryRun`] mode it

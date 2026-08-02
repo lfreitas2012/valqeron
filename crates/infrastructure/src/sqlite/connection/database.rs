@@ -1,6 +1,3 @@
-//! The [`Database`]: owns the writer connection and reader pool, and is the entry point for opening
-//! a database, handing out repository handles, and running dry-runs.
-
 use std::path::Path;
 use valqeron_core::{StorageError, StorageFault};
 
@@ -10,11 +7,13 @@ use crate::sqlite::connection::handle::DbHandle;
 use crate::sqlite::connection::pool::{ReaderPool, ReaderSource, lock_writer};
 use crate::sqlite::connection::pragmas::{self, ConnectionRole, DbPath, SharedConnection};
 use crate::sqlite::connection::sync::{Arc, Mutex};
-use crate::sqlite::error::SqliteDbError;
+use crate::sqlite::error::SqliteError;
 use crate::sqlite::migrations;
 
-/// Owns the writer connection and reader pool. The entry point for opening a database and running
-/// dry-runs.
+/// SQLite database handle and connection lifecycle owner.
+///
+/// Owns the writer connection, reader source, and database path. Cloned [`DbHandle`] values borrow
+/// these resources through shared synchronization primitives.
 pub(crate) struct Database {
     writer: SharedConnection,
     readers: ReaderSource,
@@ -22,45 +21,37 @@ pub(crate) struct Database {
 }
 
 impl Database {
-    /// Open (or create) a database at `path` with the default configuration.
-    ///
-    /// Convenience wrapper over [`Database::open_with_config`], used by tests and future callers
-    /// that want the default engine configuration.
+    /// Opens or creates a file-backed database with the default configuration.
     #[cfg(test)]
-    pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self, SqliteDbError> {
+    pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self, SqliteError> {
         Self::open_with_config(path, DatabaseConfig::default())
     }
 
-    /// Open (or create) a database at `path` with the given configuration.
+    /// Opens or creates a file-backed database with `config`.
     pub(crate) fn open_with_config(
         path: impl AsRef<Path>,
         config: DatabaseConfig,
-    ) -> Result<Self, SqliteDbError> {
+    ) -> Result<Self, SqliteError> {
         let path = DbPath::File(path.as_ref().to_path_buf());
         Self::open_inner(path, config)
     }
 
-    /// Open an isolated in-memory database (default configuration). Backed by a uniquely named shared
-    /// cache, so the writer and reader-pool connections all observe the same data.
-    pub(crate) fn open_in_memory() -> Result<Self, SqliteDbError> {
+    /// Opens an isolated in-memory database with the default configuration.
+    pub(crate) fn open_in_memory() -> Result<Self, SqliteError> {
         Self::open_in_memory_with_config(DatabaseConfig::default())
     }
 
-    /// Open an isolated in-memory database with the given configuration. Backed by a uniquely
-    /// named `memdb`-VFS database, so the writer and reader-pool connections all observe the same
-    /// data without relying on SQLite's shared-cache mode.
-    pub(crate) fn open_in_memory_with_config(
-        config: DatabaseConfig,
-    ) -> Result<Self, SqliteDbError> {
+    /// Opens an isolated in-memory database with `config`.
+    pub(crate) fn open_in_memory_with_config(config: DatabaseConfig) -> Result<Self, SqliteError> {
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let name = format!("valqeron-mem-{}-{n}", std::process::id());
         Self::open_inner(DbPath::Memory(name), config)
     }
 
-    fn open_inner(path: DbPath, config: DatabaseConfig) -> Result<Self, SqliteDbError> {
+    fn open_inner(path: DbPath, config: DatabaseConfig) -> Result<Self, SqliteError> {
         if config.reader_pool_size < 1 {
-            return Err(SqliteDbError::InvalidPoolSize);
+            return Err(SqliteError::InvalidPoolSize);
         }
 
         let is_memory = path.is_memory();
@@ -93,8 +84,9 @@ impl Database {
         })
     }
 
-    /// An inexpensive, cloneable handle to hand to repositories. Clones share the same writer
-    /// and reader pool.
+    /// Returns an inexpensive, cloneable handle for repositories.
+    ///
+    /// Clones share the writer connection and reader source.
     pub(crate) fn handle(&self) -> DbHandle {
         DbHandle::Live {
             writer: Arc::clone(&self.writer),
@@ -102,15 +94,11 @@ impl Database {
         }
     }
 
-    /// Run `f` against a dry-run view of the database: every write it performs is rolled back on
-    /// return and never persisted.
+    /// Runs `f` inside a savepoint and rolls back its writes before returning.
     ///
-    /// Unlike a naive second-connection approach, this reuses the real writer connection: it holds
-    /// the writer mutex for the whole closure (so concurrent real writes queue behind it at the app
-    /// level instead of racing for SQLite's write lock) and wraps the work in a `SAVEPOINT`. The
-    /// closure receives a [`DbHandle::DryRun`]; every read/write it performs is routed to this same
-    /// already-locked connection via the thread-pinned dry-run slot, so its reads observe its own
-    /// uncommitted writes without re-locking the mutex (which would self-deadlock).
+    /// The writer mutex remains held for the closure. The closure receives a
+    /// [`DbHandle::DryRun`], whose reads and writes use that same connection and see uncommitted
+    /// changes within the savepoint.
     pub(crate) fn dry_run<F, T>(&self, f: F) -> Result<T, StorageError>
     where
         F: FnOnce(&DbHandle) -> T,
@@ -239,7 +227,7 @@ mod tests {
         let result = migrations::run(&mut conn);
         assert!(matches!(
             result,
-            Err(SqliteDbError::UnknownSchemaVersion { .. })
+            Err(SqliteError::UnknownSchemaVersion { .. })
         ));
     }
 
@@ -249,7 +237,7 @@ mod tests {
             reader_pool_size: 0,
             ..Default::default()
         });
-        assert!(matches!(result, Err(SqliteDbError::InvalidPoolSize)));
+        assert!(matches!(result, Err(SqliteError::InvalidPoolSize)));
     }
 
     #[test]

@@ -1,3 +1,8 @@
+//! SQLite implementation of the issuer repository.
+//!
+//! Reads use the configured reader source. Writes use the serialized writer and retry transient
+//! SQLite busy or locked errors before converting failures to [`StorageFault`].
+
 use std::time::Duration;
 
 use crate::sqlite::connection::{Db, DbHandle};
@@ -9,25 +14,22 @@ use valqeron_core::{
     WriteOutcome,
 };
 
-/// Maximum number of attempts a 'write' makes when SQLite reports the database as busy/locked.
+/// Maximum attempts for a writer that encounters a busy or locked database.
 const BUSY_MAX_ATTEMPTS: u32 = 5;
 
-/// Base backoff between busy retries; grows linearly per attempt.
+/// Base delay for busy retries; the delay grows linearly per attempt.
 const BUSY_BACKOFF_BASE: Duration = Duration::from_millis(10);
 
-/// [`IssuerRepository`] backed by SQLite. Reads use the connection pool; writes use the serialized
-/// writer.
+/// [`IssuerRepository`] implementation for SQLite.
 ///
-/// The [`DbHandle`] it holds selects the mode: a normal handle uses the pool/writer, while a
-/// dry-run handle (produced by [`Database::dry_run`](crate::sqlite::connection::Database::dry_run)) routes
-/// every read and write to the same connection inside a rolled-back savepoint — so the identical
-/// code runs for both without opening a second connection.
+/// The [`DbHandle`] selects live or dry-run operation. In a dry-run, all operations use the
+/// connection held by the enclosing savepoint.
 pub struct SqliteIssuerRepository {
     db: DbHandle,
 }
 
 impl SqliteIssuerRepository {
-    /// Create a repository over the given database handle.
+    /// Creates a repository over `db`.
     pub(crate) fn new(db: DbHandle) -> Self {
         Self { db }
     }
@@ -124,7 +126,7 @@ impl IssuerRepository for SqliteIssuerRepository {
     }
 }
 
-/// Wrap a raw driver error as the domain's opaque [`StorageFault`], preserving the source chain.
+/// Wraps a raw SQLite error as the domain's opaque [`StorageFault`].
 ///
 /// This includes constraint violations (`UNIQUE`/`CHECK`): those are domain invariants the domain
 /// layer enforces *before* the store (see [`valqeron_core::register_issuer`]). The DB constraints
@@ -134,7 +136,7 @@ fn backend(e: rusqlite::Error) -> StorageFault {
     StorageFault::new(e)
 }
 
-/// Whether a rusqlite error is a transient busy/locked condition worth retrying.
+/// Returns whether a SQLite error is a transient busy or locked condition.
 ///
 /// `SQLITE_BUSY` can still surface after `busy_timeout` (e.g. cross-process writers), and
 /// `SQLITE_LOCKED` is not covered by `busy_timeout` at all — both are transient and safe to retry
@@ -148,13 +150,12 @@ fn is_busy_or_locked(err: &rusqlite::Error) -> bool {
     )
 }
 
-/// Run a write operation, retrying with a short linear backoff while SQLite reports the database as
-/// busy/locked.
+/// Runs a write operation, retrying transient busy or locked errors with linear backoff.
 ///
 /// The operation closure must (re)acquire the writer guard on each attempt so the lock is not held
 /// across the backoff sleep. Only raw busy/locked driver errors are retried; every other outcome —
 /// success, a [`WriteOutcome`], a constraint violation, or any other driver error — returns
-/// immediately without retry. Retrying happens at the raw `rusqlite::Error` layer so the transient
+/// immediately without a retry. Retrying happens at the raw `rusqlite::Error` layer, so the transient
 /// condition is recognized before it is wrapped into an opaque [`StorageFault`].
 fn with_busy_retry<T>(op: impl Fn() -> rusqlite::Result<T>) -> rusqlite::Result<T> {
     let mut attempt = 0u32;
@@ -175,10 +176,9 @@ fn with_busy_retry<T>(op: impl Fn() -> rusqlite::Result<T>) -> rusqlite::Result<
     }
 }
 
-/// After a version-guarded write affects 0 rows, classify the result: the row exists with a
-/// different version ([`WriteOutcome::VersionMismatch`]) or is absent ([`WriteOutcome::Missing`]).
+/// Classifies a zero-row version-guarded writer as a version mismatch or missing row.
 ///
-/// Must be called while still holding the writer lock so the follow-up read is race-free with the
+/// Must be called while still holding the writer lock, so the follow-up read is race-free with the
 /// preceding write attempt.
 fn write_outcome(
     conn: &Connection,

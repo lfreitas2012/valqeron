@@ -1,8 +1,7 @@
-//! The issuer row model.
+//! Row mapping for the SQLite `issuer` table.
 //!
-//! [`IssuerRow`] wraps a domain [`Issuer`] and implements [`FromRow`], keeping the
-//! row → domain reconstitution in one declarative place (the rusqlite analogue of sqlx's `FromRow`
-//! model structs). Queries select into this model and then unwrap the inner domain value.
+//! [`IssuerRow`] implements [`FromRow`] and reconstructs a versioned domain [`Issuer`] from a
+//! query row.
 
 use rusqlite::Row;
 use valqeron_core::{Issuer, Versioned};
@@ -13,7 +12,7 @@ use crate::sqlite::issuer::mapping::{
 };
 use crate::sqlite::row::FromRow;
 
-/// A row of the `issuer` table, carrying the issuer together with its optimistic-locking version.
+/// An `issuer` row with its optimistic-locking version.
 ///
 /// Selection queries must project the columns:
 /// `id, name, status, created_at, cnpj, lei, country_code, version`.
@@ -21,7 +20,7 @@ use crate::sqlite::row::FromRow;
 pub(crate) struct IssuerRow(pub Versioned<Issuer>);
 
 impl IssuerRow {
-    /// Consume the row, yielding the versioned issuer it wraps.
+    /// Consumes the row and returns the versioned issuer.
     pub(crate) fn into_inner(self) -> Versioned<Issuer> {
         self.0
     }

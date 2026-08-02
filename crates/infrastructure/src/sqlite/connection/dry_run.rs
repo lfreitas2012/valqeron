@@ -1,33 +1,27 @@
-//! Thread-local pinning of the connection a dry-run runs on.
+//! Thread-local pinning for dry-run connections.
 //!
-//! [`Database::dry_run`](crate::sqlite::connection::Database::dry_run) holds the writer lock for the
-//! whole closure and publishes the already-locked `&Connection` here for its duration. A
-//! [`DbHandle::DryRun`](crate::sqlite::connection::DbHandle) reads it so every repository read/write
-//! inside the closure runs on that single connection — inside the dry-run `SAVEPOINT` — without
-//! re-locking the writer mutex (which would self-deadlock).
+//! [`Database::dry_run`](crate::sqlite::connection::Database::dry_run) publishes its locked
+//! connection here for the closure's duration. [`DbHandle::DryRun`](crate::sqlite::connection::DbHandle)
+//! uses it for all repository operations without locking the writer again.
 
 use std::cell::Cell;
 
 use rusqlite::Connection;
 
 thread_local! {
-    /// The connection a dry-run is currently pinned to on this thread, if any.
-    ///
-    /// The pointer is only ever dereferenced on the same thread while the guard that produced it is
-    /// alive, so the borrow is sound.
+    /// The connection currently pinned for a dry-run on this thread, if any.
     static DRY_RUN_CONN: Cell<Option<*const Connection>> = const { Cell::new(None) };
 }
 
-/// Publish `conn` as the active dry-run connection for the current thread for the duration of `f`,
-/// restoring the previous value afterwards (supporting nested dry-runs).
+/// Pins `conn` for `f` on the current thread, then restores the previous value.
 pub(crate) fn with_dry_run_conn<T>(conn: &Connection, f: impl FnOnce() -> T) -> T {
-    let previous = DRY_RUN_CONN.with(|slot| slot.replace(Some(conn as *const Connection)));
+    let previous = DRY_RUN_CONN.replace(Some(conn as *const Connection));
     let result = f();
-    DRY_RUN_CONN.with(|slot| slot.set(previous));
+    DRY_RUN_CONN.set(previous);
     result
 }
 
-/// Fetch the current thread's pinned dry-run connection.
+/// Returns the current thread's pinned dry-run connection.
 ///
 /// # Panics
 ///
@@ -41,7 +35,7 @@ pub(crate) fn with_dry_run_conn<T>(conn: &Connection, f: impl FnOnce() -> T) -> 
 /// connection alive for the whole closure on this thread and clears the slot before returning.
 pub(crate) fn current_dry_run_conn() -> &'static Connection {
     let ptr = DRY_RUN_CONN
-        .with(|slot| slot.get())
+        .get()
         .expect("DbHandle::DryRun used outside an active dry-run");
     // SAFETY: the pointer was published by `with_dry_run_conn` from a live, locked `&Connection`
     // that outlives every access on this thread; the slot is cleared before that connection is
