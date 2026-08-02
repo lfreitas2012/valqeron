@@ -1,8 +1,3 @@
-//! JSON input/output helpers shared by commands.
-//!
-//! Input can come from a file, stdin (`-`), or be absent. Output goes to stdout
-//! or a file, pretty-printed or compact.
-
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -11,17 +6,13 @@ use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
 
-/// Where a command should read its JSON document from.
 #[derive(Debug, Clone)]
 pub enum InputSource {
-    /// Read from the given file path.
     File(PathBuf),
-    /// Read from standard input (the `-` sentinel).
     Stdin,
 }
 
 impl InputSource {
-    /// Interpret a `--input` argument: `-` means stdin, anything else is a path.
     pub fn from_arg(arg: &Path) -> Self {
         if arg.as_os_str() == "-" {
             InputSource::Stdin
@@ -30,7 +21,6 @@ impl InputSource {
         }
     }
 
-    /// Read and parse the source into a JSON value.
     pub fn read_json(&self) -> AppResult<Value> {
         let raw = match self {
             InputSource::File(path) => std::fs::read_to_string(path)
@@ -47,17 +37,13 @@ impl InputSource {
     }
 }
 
-/// Where serialized JSON output should be written.
 #[derive(Debug, Clone)]
 pub enum OutputDest {
-    /// Write to standard output.
     Stdout,
-    /// Write to the given file path.
     File(PathBuf),
 }
 
 impl OutputDest {
-    /// Build from an optional `--output` argument.
     pub fn from_arg(arg: Option<&Path>) -> Self {
         match arg {
             Some(path) => OutputDest::File(path.to_path_buf()),
@@ -65,7 +51,6 @@ impl OutputDest {
         }
     }
 
-    /// Serialize `value` as JSON and write it to this destination.
     pub fn write<T: Serialize>(&self, value: &T, pretty: bool) -> AppResult<()> {
         let mut body = if pretty {
             serde_json::to_string_pretty(value)

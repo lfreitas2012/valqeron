@@ -1,9 +1,3 @@
-//! Data-transfer objects bridging JSON I/O and `valqeron-core` domain types.
-//!
-//! Identifier value types are parsed from / rendered to strings here rather than
-//! relying on the identifier crate's optional serde support, keeping the wire
-//! format explicit and independent of upstream feature flags.
-
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -14,11 +8,6 @@ use valqeron_core::{
 
 use crate::error::AppResult;
 
-/// A partial issuer document accepted as input for `issuer register`.
-///
-/// All fields are optional; missing fields fall back to engine defaults (a
-/// fresh id, `ACTIVE` status, current timestamp). Values provided via CLI flags
-/// are merged on top of a document read from `--input`.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IssuerInput {
@@ -30,8 +19,6 @@ pub struct IssuerInput {
 }
 
 impl IssuerInput {
-    /// Overlay CLI-flag values on top of self; flags take precedence over any
-    /// value already present (e.g. from a `--input` document).
     pub fn merge_flags(
         mut self,
         name: Option<String>,
@@ -58,9 +45,6 @@ impl IssuerInput {
         self
     }
 
-    /// Validate and assemble a domain [`Issuer`]. Each field is converted
-    /// through its typed constructor, so any failure yields a precise
-    /// `AppError` with a structured problem.
     pub fn into_issuer(self) -> AppResult<Issuer> {
         let mut builder: IssuerBuilder = Issuer::builder();
 
@@ -84,7 +68,6 @@ impl IssuerInput {
     }
 }
 
-/// A serializable, read-model view of a stored issuer plus its version.
 #[derive(Debug, Clone, Serialize)]
 pub struct IssuerView {
     pub id: String,
@@ -102,7 +85,6 @@ pub struct IssuerView {
 }
 
 impl IssuerView {
-    /// Build a view from an issuer at a known version.
     pub fn new(issuer: &Issuer, version: u32) -> Self {
         Self {
             id: issuer.id().value(),

@@ -1,5 +1,3 @@
-//! Command-line surface: the root parser and its global options.
-
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -7,7 +5,6 @@ use tracing::Level;
 
 use crate::commands::Commands;
 
-/// Valqeron command-line interface.
 #[derive(Parser, Debug)]
 #[command(
     name = "valqeron",
@@ -25,7 +22,6 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// Increase *stderr* log verbosity (-v=info, -vv=debug, -vvv=trace; default: warn).
     #[arg(
         short,
         long,
@@ -41,49 +37,84 @@ pub struct Cli {
     )]
     pub verbose: u8,
 
-    /// Write JSON output to FILE instead of stdout.
-    #[arg(short, long, global = true, value_name = "FILE")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        value_name = "FILE",
+        help = "Write JSON output to FILE instead of stdout."
+    )]
     pub output: Option<PathBuf>,
 
-    /// Read a JSON input document from FILE (use `-` for stdin).
-    #[arg(short, long, global = true, value_name = "FILE")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        value_name = "FILE",
+        help = "Read a JSON input from FILE."
+    )]
     pub input: Option<PathBuf>,
 
-    /// Rehearse against the real database, then roll back (persists nothing).
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        help = "Rehearse against the real database, then roll back."
+    )]
     pub dry_run: bool,
 
-    /// Pretty-print JSON output (default: on when stdout is a terminal).
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help = "Pretty-print JSON output.")]
     pub pretty: bool,
 
-    /// Path to the SQLite database file (overrides VALQERON_DB and the default).
-    #[arg(long, global = true, value_name = "PATH", env = "VALQERON_DB")]
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        env = "VALQERON_DB",
+        help = "Database file path.",
+        long_help = "Path to the SQLite database file. Overrides VALQERON_DB and the default."
+    )]
     pub db_path: Option<PathBuf>,
 
-    /// Log file location. File logging is on by default (per-binary logs dir);
-    /// with no value uses the default location, pass a PATH to pin it.
-    /// Overrides VALQERON_LOG_FILE.
-    #[arg(long, global = true, value_name = "PATH", num_args = 0..=1, default_missing_value = "")]
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        help = "Log file location.",
+        long_help = "Path to the log file. Overrides VALQERON_LOG_FILE and the default.",
+        default_missing_value = "",
+        num_args = 0..=1
+    )]
     pub log_file: Option<PathBuf>,
 
-    /// Disable writing logs to a file (also settable via VALQERON_LOG_FILE=off).
-    #[arg(long, global = true, conflicts_with = "log_file")]
+    #[arg(
+        long,
+        global = true,
+        conflicts_with = "log_file",
+        help = "Disable logging to a file.",
+        long_help = "Disable logging to a file. Also settable via VALQERON_LOG_FILE=off."
+    )]
     pub no_log_file: bool,
 
-    /// Number of concurrent read connections in the engine's reader pool.
-    #[arg(long, global = true, value_name = "N", default_value_t = 4)]
+    #[arg(
+        long,
+        global = true,
+        value_name = "N",
+        default_value_t = 4,
+        help = "Number of concurrent reader connections in the engine's reader pool."
+    )]
     pub reader_pool_size: usize,
 
-    /// Use strict, power-loss-safe durability for writes (slower). By default,
-    /// writes use relaxed durability: faster, and the database is never
-    /// corrupted, but the most recent commit may be lost on a power/OS crash.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        help = "Use strict durability for writes (slower).",
+        long_help = "Use strict durability for writes (slower). Writer use relaxed durability (default) \
+        durability, which is faster, but the database may be corrupted if the power/OS crashes."
+    )]
     pub durable: bool,
 }
 
 impl Cli {
-    /// Map `-v` occurrences to a tracing [`Level`].
     pub fn log_level(&self) -> Level {
         match self.verbose {
             0 => Level::WARN,
@@ -93,11 +124,6 @@ impl Cli {
         }
     }
 
-    /// Interpret the `--log-file` argument into the tri-state the config layer
-    /// expects: absent, present-without-path, or present-with-path.
-    ///
-    /// clap gives us `None` when the flag is absent, `Some("")` when it was
-    /// passed bare (via `default_missing_value`), and `Some(path)` otherwise.
     pub fn log_file_arg(&self) -> Option<Option<PathBuf>> {
         match &self.log_file {
             None => None,

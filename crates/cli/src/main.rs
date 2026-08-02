@@ -36,10 +36,6 @@ fn main() {
     };
 }
 
-/// Executes the command, logging and handling errors.
-///
-/// Returns the log worker guard (if a file layer was set up) so the caller can keep it alive until
-/// the process exits.
 fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuard>> {
     let config = ValqeronConfig::resolve(
         cli.db_path.clone(),
@@ -52,8 +48,6 @@ fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuar
     let guard = init_logging(cli, &config)?;
 
     if let Err(err) = dispatch(cli, &config) {
-        // Record the structured problem once (this is the file-audited error
-        // record); the caller renders the JSON envelope to stderr and exits.
         let problem = err.problem();
         tracing::error!(
             target: "valqeron::audit",
@@ -69,15 +63,12 @@ fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuar
     Ok(guard)
 }
 
-/// Resolve the output/pretty settings and run the selected command.
 fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
     let pretty = cli.pretty || std::io::stdout().is_terminal();
     let output = OutputDest::from_arg(cli.output.as_deref());
     let input = cli.input.as_deref().map(InputSource::from_arg);
     let ctx = AppContext::new(output, input, cli.dry_run, pretty);
 
-    // `init` opens the engine itself (to create/migrate); it does not run
-    // against an already-open repository.
     if let Commands::Init(args) = &cli.command {
         if cli.dry_run {
             return Err(InvalidCliFlag {
@@ -98,8 +89,6 @@ fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
     );
 
     let payload = if cli.dry_run {
-        // `dry_run` maps store-level failures into `StorageError` (the outer `?`); the closure's own
-        // `AppResult` is returned unchanged and then flattened (the inner `?`).
         store.dry_run(|repositories| cli.command.execute(&store::repos(repositories), &ctx))??
     } else {
         let repositories = store.repositories();
@@ -113,12 +102,6 @@ fn init_logging(
     cli: &Cli,
     config: &ValqeronConfig,
 ) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuard>> {
-    // stderr: quiet by default, raised by -v; RUST_LOG overrides.
-    //
-    // By default we mute the `valqeron::audit` target on stderr so it does not
-    // interleave with the machine-readable JSON envelope: audit records are the
-    // file layer's job. When the user sets RUST_LOG explicitly we honor it as-is
-    // (they've opted into full control of stderr).
     let stderr_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(cli.log_level().to_string())
             .add_directive("valqeron::audit=off".parse().expect("valid directive"))
@@ -130,7 +113,6 @@ fn init_logging(
         .compact()
         .with_filter(stderr_filter);
 
-    // Try to set up the file layer; on failure, warn and carry on stderr-only.
     let file = config
         .log_file()
         .and_then(|path| match open_log_file(path) {
@@ -164,8 +146,6 @@ fn init_logging(
     }
 }
 
-/// Open (creating parent dirs) the append-mode log file and wrap it in a
-/// non-blocking writer. Returns the writer plus its flush guard.
 fn open_log_file(
     path: &std::path::Path,
 ) -> std::io::Result<(
@@ -182,13 +162,6 @@ fn open_log_file(
     Ok(tracing_appender::non_blocking(file))
 }
 
-/// Render a problem as the JSON error envelope on stderr. Pretty-prints when
-/// stderr is a terminal.
-///
-/// This writes exactly one line to stderr and never touches stdout, so piped
-/// JSON output stays clean. The structured error itself is logged separately
-/// (see [`run`]), which is where it reaches the file layer — we do not also emit
-/// a duplicate human line here.
 fn print_problem(problem: &ProblemDetail) {
     let envelope = serde_json::json!({ "success": false, "error": problem });
     let rendered = if std::io::stderr().is_terminal() {
