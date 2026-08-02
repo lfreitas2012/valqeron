@@ -1,43 +1,56 @@
-//! Backend-agnostic storage errors.
+//! Errors produced by the storage boundary.
 //!
-//! These types are the domain's vocabulary for "something in the persistence layer failed". They
-//! are deliberately opaque: a driver (SQLite, and future backends) maps its own native error into a
-//! [`StorageFault`], preserving the source chain for the application layer to log, without leaking
-//! any driver type into the domain contract.
+//! This module defines the domain's driver-independent vocabulary for failures in the persistence
+//! layer. Storage drivers translate their native errors into [`StorageFault`] values before those
+//! errors cross into the domain or application layers. The concrete driver type therefore remains
+//! an implementation detail of the infrastructure layer.
 //!
-//! Note what is *not* here: `NotFound`, `Conflict`, version mismatches, or uniqueness violations.
-//! Those are domain outcomes, not faults — they are modelled as values ([`crate::WriteOutcome`],
-//! `Option`, domain services) rather than errors, so they stay backend-neutral and branchable
-//! without downcasting to a driver error.
+//! [`StorageFault`] deliberately preserves the wrapped error as its source. Callers can propagate
+//! the fault without inspecting it, while the application boundary can still traverse the source
+//! chain when it records diagnostics. Expected persistence outcomes—such as a missing record or a
+//! failed optimistic-lock check—are returned as ordinary values by repository APIs and are not
+//! represented by these errors.
 
 use std::error::Error as StdError;
 
-/// An opaque, source-preserving failure originating below the domain (I/O, a corrupt store, a
-/// driver-level error, etc.).
+/// An opaque failure originating below the domain boundary.
 ///
-/// The domain never interprets a fault; it only propagates it. The boxed source keeps the full
-/// error chain (e.g. the underlying `rusqlite::Error`) available to the application layer for
-/// logging and diagnostics.
+/// A storage driver uses this type to translate failures such as I/O errors, a corrupt database,
+/// or a driver-level error into the driver-independent error vocabulary exposed by the domain.
+/// The domain does not interpret the fault; it only propagates it.
+///
+/// The wrapped source is retained, so application code can inspect the error chain for logging and
+/// diagnostics. The source must be [`Send`] and [`Sync`] so that a fault can safely cross common
+/// thread and async-task boundaries without exposing a concrete driver error in the public API.
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct StorageFault(Box<dyn StdError + Send + Sync>);
 
 impl StorageFault {
-    /// Wrap a driver/backend error as an opaque storage fault.
+    /// Wrap a storage-driver error as an opaque storage fault.
+    ///
+    /// The original error is kept as the fault's source and remains available to error-reporting
+    /// code through the standard error-chain APIs.
     pub fn new(source: impl Into<Box<dyn StdError + Send + Sync>>) -> Self {
         Self(source.into())
     }
 }
 
-/// A failure at the store level (opening the engine, running a dry-run transaction) as opposed to a
-/// single repository operation.
+/// A failure while managing the storage engine itself.
+///
+/// This error is used for store-level operations such as opening the engine or starting and
+/// completing a dry-run transaction. Failures from an individual repository operation are exposed
+/// as [`StorageFault`] through the repository result type instead.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
-    /// The store could not be reached or opened.
+    /// The storage engine could not be reached or opened.
+    ///
+    /// The message describes the availability failure because no driver-independent source error
+    /// is available at this layer.
     #[error("storage is unavailable: {0}")]
     Unavailable(String),
 
-    /// An underlying storage fault occurred.
+    /// An underlying storage operation failed.
     #[error(transparent)]
     Fault(#[from] StorageFault),
 }
