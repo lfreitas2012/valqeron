@@ -1,5 +1,3 @@
-//! Configuration for opening a [`Database`](crate::sqlite::connection::Database).
-
 use std::thread;
 use std::time::Duration;
 
