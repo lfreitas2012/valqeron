@@ -1,7 +1,7 @@
 use valqeron_core::{StorageError, StorageFault};
 
 #[derive(Debug, thiserror::Error)]
-pub enum SqliteDbError {
+pub enum SqliteError {
     #[error("failed to open sqlite connection")]
     Connection {
         #[source]
@@ -30,15 +30,15 @@ pub enum SqliteDbError {
 }
 
 /// Translate a driver error into the domain's opaque storage fault, preserving the source chain.
-impl From<SqliteDbError> for StorageFault {
-    fn from(err: SqliteDbError) -> Self {
+impl From<SqliteError> for StorageFault {
+    fn from(err: SqliteError) -> Self {
         StorageFault::new(err)
     }
 }
 
 /// Translate a driver error into the domain's store-level error.
-impl From<SqliteDbError> for StorageError {
-    fn from(err: SqliteDbError) -> Self {
+impl From<SqliteError> for StorageError {
+    fn from(err: SqliteError) -> Self {
         StorageError::Fault(StorageFault::new(err))
     }
 }

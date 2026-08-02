@@ -1,4 +1,4 @@
-//! Generic, entity-agnostic row-mapping primitives for the SQLite backend.
+//! Generic, entity-agnostic row-mapping primitives for the SQLite driver.
 //!
 //! [`FromRow`] is the infra-local analogue of a "row → typed value" mapper (comparable to sqlx's
 //! `FromRow`, but synchronous for rusqlite). Each entity's row model (e.g.
@@ -11,8 +11,8 @@ use rusqlite::types::Type;
 /// Maps a single query [`Row`] into `Self`.
 ///
 /// Implementors read columns by name and convert them into domain types, returning a
-/// [`rusqlite::Error`] (typically [`rusqlite::Error::FromSqlConversionFailure`]) when a value cannot
-/// be converted.
+/// [`rusqlite::Error`] (typically [`rusqlite::Error::FromSqlConversionFailure`]) when a value
+/// cannot be converted.
 pub trait FromRow: Sized {
     /// Build `Self` from `row`.
     ///

@@ -19,7 +19,7 @@ pub struct SqliteStorageEngine {
 }
 
 impl SqliteStorageEngine {
-    /// Open (or create) a SQLite-backed store at `path`, applying any pending migrations.
+    /// Open (or create) an SQLite-backed store at `path`, applying any pending migrations.
     ///
     /// Driver errors are translated into the domain's [`StorageError`] so callers never depend on
     /// the SQLite-specific error type.
