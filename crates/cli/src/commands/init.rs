@@ -1,5 +1,3 @@
-//! `valqeron init` — create the database and apply schema migrations.
-
 use clap::Args;
 use serde_json::{Value, json};
 
@@ -8,22 +6,13 @@ use crate::context::AppContext;
 use crate::error::AppResult;
 use crate::store;
 
-/// Arguments for `init`. The database path and pool size come from the global
-/// options, so this command currently takes no positional arguments.
 #[derive(Args, Debug)]
 pub struct InitArgs {}
 
 impl InitArgs {
-    /// Ensure the data directory exists, open the engine (which runs any
-    /// pending migrations), and report the resolved location.
-    ///
-    /// Opening the engine is enough to create and migrate the database; there
-    /// is no separate write, so `--dry-run` has nothing to roll back here.
     pub fn run(&self, config: &ValqeronConfig, ctx: &AppContext) -> AppResult<Value> {
         config.ensure_db_parent()?;
 
-        // Opening applies migrations. We immediately drop the store; the file
-        // now exists at the latest schema version.
         let _store = store::open(config)?;
 
         tracing::info!(

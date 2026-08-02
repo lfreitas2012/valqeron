@@ -1,5 +1,3 @@
-//! `valqeron issuer register` — validate and persist a new issuer.
-
 use clap::Args;
 use serde_json::Value;
 
@@ -11,30 +9,26 @@ use crate::dto::{IssuerInput, IssuerView};
 use crate::error::{AppError, AppResult};
 use crate::store::Repos;
 
-/// Arguments for `issuer register`.
-///
-/// Fields may be supplied as flags and/or via a JSON document on `--input`
-/// (or stdin with `-`). Flags take precedence over the document.
 #[derive(Args, Debug)]
 pub struct RegisterArgs {
-    /// Human-readable issuer name.
-    #[arg(long)]
+    #[arg(long, short = 'n', help = "Human-readable issuer name (required)")]
     pub name: Option<String>,
 
-    /// Issuer status: ACTIVE or RETIRED (default: ACTIVE).
-    #[arg(long)]
+    #[arg(
+        long,
+        short = 's',
+        help = "Issuer status (ACTIVE or RETIRED)",
+        default_value = "ACTIVE"
+    )]
     pub status: Option<String>,
 
-    /// Brazilian CNPJ (punctuated or compact).
-    #[arg(long)]
+    #[arg(long, help = "Brazilian CNPJ (punctuated or compact)")]
     pub cnpj: Option<String>,
 
-    /// Legal Entity Identifier (ISO 17442).
-    #[arg(long)]
+    #[arg(long, help = "ISO 17442 LEI (punctuated or compact)")]
     pub lei: Option<String>,
 
-    /// ISO 3166-1 alpha-2 country code.
-    #[arg(long)]
+    #[arg(long, help = "Country code (2-letter ISO 3166-1 alpha-2)")]
     pub country_code: Option<String>,
 }
 
@@ -42,7 +36,6 @@ impl Command for RegisterArgs {
     fn execute(&self, repos: &Repos, ctx: &AppContext) -> AppResult<Value> {
         let repo = repos.issuers();
 
-        // Start from the optional --input document, then overlay flags.
         let base: IssuerInput = match ctx.read_input()? {
             Some(value) => {
                 serde_json::from_value(value).map_err(|e| AppError::Input(e.to_string()))?
@@ -60,7 +53,6 @@ impl Command for RegisterArgs {
 
         let issuer = input.into_issuer()?;
 
-        // Enforce domain invariants (identifier uniqueness) in the domain layer, not the store.
         register_issuer(repo, &issuer)?;
 
         tracing::info!(
@@ -71,7 +63,6 @@ impl Command for RegisterArgs {
             "registered issuer"
         );
 
-        // A freshly inserted issuer is at version 1.
         let view = IssuerView::new(&issuer, 1);
         let payload = serde_json::to_value(view).map_err(|e| AppError::Serialize(e.to_string()))?;
         Ok(payload)

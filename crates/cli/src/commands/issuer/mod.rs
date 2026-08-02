@@ -19,7 +19,6 @@ pub enum IssuerCommand {
 }
 
 impl IssuerCommand {
-    /// Borrow the active subcommand as a `&dyn Command` for dispatch.
     pub fn as_command(&self) -> &dyn Command {
         match self {
             IssuerCommand::Register(args) => args,

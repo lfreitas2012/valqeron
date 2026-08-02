@@ -1,11 +1,3 @@
-//! The CLI's top-level error type and its rendering as [`ProblemDetail`].
-//!
-//! [`AppError`] wraps every error the CLI can encounter — including those from
-//! `valqeron-core` and `ftracker-identifiers` — and maps each to a stable
-//! problem `type`, human `title`, structured `extensions`, and a BSD
-//! `sysexits.h`-style exit code. Command code uses `?` freely: the `From`
-//! conversions below funnel foreign errors into `AppError` automatically.
-
 pub mod problem;
 
 use ftracker_identifiers::{CnpjError, CountryCodeError, LeiError};
@@ -17,10 +9,8 @@ use valqeron_core::{
     StorageFault,
 };
 
-/// Convenient result alias for command and plumbing code.
 pub type AppResult<T> = Result<T, AppError>;
 
-/// BSD `sysexits.h`-style exit codes used across the CLI.
 mod exit {
     /// A requested entity was not found.
     pub const NOTFOUND: u16 = 4;
@@ -42,7 +32,6 @@ mod exit {
     pub const STORAGE: u16 = 80;
 }
 
-/// The identifier kind, used to namespace identifier-validation problems.
 #[derive(Debug, Clone, Copy)]
 pub enum IdentifierKind {
     Cnpj,
@@ -74,34 +63,26 @@ impl std::fmt::Display for IdentifierKind {
     }
 }
 
-/// Every failure the CLI surfaces to the user.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    /// Registering an issuer failed a domain invariant (e.g. a duplicate identifier).
     #[error(transparent)]
     Register(#[from] RegisterIssuerError),
 
-    /// A store-level failure (opening the engine, a dry-run transaction).
     #[error(transparent)]
     Storage(#[from] StorageError),
 
-    /// A repository operation failed at the storage layer.
     #[error(transparent)]
     StorageFault(#[from] StorageFault),
 
-    /// Building an issuer aggregate from user input failed.
     #[error(transparent)]
     IssuerBuilder(#[from] IssuerBuilderError),
 
-    /// An issuer name was invalid.
     #[error(transparent)]
     IssuerName(#[from] IssuerNameError),
 
-    /// An issuer status string was invalid.
     #[error(transparent)]
     IssuerStatus(#[from] IssuerStatusError),
 
-    /// A typed identifier (CNPJ, LEI, or country code) failed to parse.
     #[error("invalid {kind} identifier: {message}")]
     Identifier {
         kind: IdentifierKind,
@@ -109,32 +90,25 @@ pub enum AppError {
         extensions: Map<String, Value>,
     },
 
-    /// A UUID argument could not be parsed.
     #[error("invalid issuer id: {0}")]
     InvalidId(String),
 
-    /// Reading or parsing JSON input failed.
     #[error("failed to read JSON input: {0}")]
     Input(String),
 
-    /// A filesystem / I/O operation failed.
     #[error("I/O error: {0}")]
     Io(String),
 
-    /// Serializing output to JSON failed.
     #[error("failed to serialize output: {0}")]
     Serialize(String),
 
-    /// A configuration problem (e.g., no home directory to resolve paths).
     #[error("configuration error: {0}")]
     Config(String),
 
-    /// A requested issuer was not present for a write operation.
     #[allow(dead_code)]
     #[error("issuer {0} not found")]
     NotFound(String),
 
-    /// A version-guarded write found a different version than expected (optimistic-lock conflict).
     #[allow(dead_code)]
     #[error("version conflict: expected {expected}, found {actual}")]
     VersionConflict { expected: u32, actual: u32 },
@@ -144,27 +118,6 @@ pub enum AppError {
 }
 
 impl AppError {
-    /// Translate a repository [`WriteOutcome`](valqeron_core::WriteOutcome) into an app error.
-    ///
-    /// This is where the app layer assigns backend-neutral write outcomes their user-facing meaning
-    /// and exit codes: `Missing` → not-found, `VersionMismatch` → conflict. `Applied` is success and
-    /// yields `Ok(())`.
-    #[allow(dead_code)]
-    pub fn from_write_outcome(outcome: valqeron_core::WriteOutcome, id: &str) -> AppResult<()> {
-        use valqeron_core::WriteOutcome;
-        match outcome {
-            WriteOutcome::Applied => Ok(()),
-            WriteOutcome::Missing => Err(AppError::NotFound(id.to_string())),
-            WriteOutcome::VersionMismatch { expected, actual } => {
-                Err(AppError::VersionConflict { expected, actual })
-            }
-        }
-    }
-}
-
-impl AppError {
-    /// Build an [`AppError::Identifier`] from a `ftracker-identifiers` error,
-    /// extracting structured fields into `extensions` where useful.
     fn identifier(kind: IdentifierKind, err: &dyn std::error::Error) -> Self {
         let mut extensions = Map::new();
         extensions.insert("field".into(), Value::from(kind.field()));
@@ -174,9 +127,11 @@ impl AppError {
             extensions,
         }
     }
-}
 
-// --- Conversions from the identifier crate's errors -------------------------
+    pub fn problem(&self) -> ProblemDetail {
+        self.to_problem_detail()
+    }
+}
 
 impl From<CnpjError> for AppError {
     fn from(err: CnpjError) -> Self {
@@ -209,8 +164,6 @@ impl From<CountryCodeError> for AppError {
         AppError::identifier(IdentifierKind::CountryCode, &err)
     }
 }
-
-// --- Rendering as a ProblemDetail -------------------------------------------
 
 impl IntoProblem for AppError {
     fn problem_type(&self) -> &'static str {
@@ -331,13 +284,6 @@ impl IntoProblem for AppError {
     }
 }
 
-impl AppError {
-    /// Convenience: render straight to a [`ProblemDetail`].
-    pub fn problem(&self) -> ProblemDetail {
-        self.to_problem_detail()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,38 +303,6 @@ mod tests {
         let p = err.problem();
         assert_eq!(p.r#type, "storage/failed");
         assert_eq!(p.status, exit::STORAGE);
-    }
-
-    #[test]
-    fn write_outcome_applied_is_ok() {
-        assert!(AppError::from_write_outcome(valqeron_core::WriteOutcome::Applied, "id").is_ok());
-    }
-
-    #[test]
-    fn write_outcome_missing_maps_to_not_found() {
-        let err =
-            AppError::from_write_outcome(valqeron_core::WriteOutcome::Missing, "abc").unwrap_err();
-        let p = err.problem();
-        assert_eq!(p.r#type, "issuer/not-found");
-        assert_eq!(p.status, exit::NOTFOUND);
-        assert_eq!(p.extensions.get("id").unwrap(), "abc");
-    }
-
-    #[test]
-    fn write_outcome_version_mismatch_maps_to_conflict() {
-        let err = AppError::from_write_outcome(
-            valqeron_core::WriteOutcome::VersionMismatch {
-                expected: 3,
-                actual: 5,
-            },
-            "abc",
-        )
-        .unwrap_err();
-        let p = err.problem();
-        assert_eq!(p.r#type, "issuer/conflict");
-        assert_eq!(p.status, exit::CONFLICT);
-        assert_eq!(p.extensions.get("expected").unwrap(), 3);
-        assert_eq!(p.extensions.get("actual").unwrap(), 5);
     }
 
     #[test]

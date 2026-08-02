@@ -1,9 +1,3 @@
-//! `valqeron issuer list` — list issuers with keyset pagination.
-//!
-//! Lists issuers ordered by id in pages. Use `--limit` to bound the page size and
-//! `--after <id>` to fetch the next page (pass the id of the last item from the
-//! previous page). A page shorter than `--limit` (or empty) signals the end.
-
 use std::str::FromStr;
 
 use clap::Args;
@@ -24,20 +18,20 @@ const DEFAULT_LIMIT: u32 = 50;
 /// Maximum allowable page size to prevent memory exhaustion.
 const MAX_LIMIT: u32 = 1000;
 
-/// Arguments for `issuer list`.
 #[derive(Args, Debug)]
 pub struct ListArgs {
-    /// Maximum number of issuers to return in this page.
     #[arg(
         long,
         default_value_t = DEFAULT_LIMIT,
-        value_parser = clap::value_parser!(u32).range(1..=i64::from(MAX_LIMIT))
+        value_parser = clap::value_parser!(u32).range(1..=i64::from(MAX_LIMIT)),
+        help = &format!("Maximum number of issuers to return in this page (default: {})", DEFAULT_LIMIT)
     )]
     pub limit: u32,
 
-    /// Return only issuers whose id sorts after this one (UUID); use the last id
-    /// of the previous page to fetch the next page.
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Return issuers whose id sorts after this one (UUID). Use the last id of the previous page to fetch the next page."
+    )]
     pub after: Option<String>,
 }
 
