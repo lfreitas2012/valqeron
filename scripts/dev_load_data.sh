@@ -36,14 +36,14 @@ VALUES
     -- Financials & Banks
     (randomblob(16), 'Itaú Unibanco Holding S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '60872504000123', NULL, 'BR'),
     (randomblob(16), 'Banco Bradesco S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '60746948000112', NULL, 'BR'),
-    (randomblob(16), 'Banco do Brasil S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '00000000000191', '549300H400B6R2450C25', 'BR'),
-    (randomblob(16), 'B3 S.A. - Brasil, Bolsa, Balcão', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '09346601000125', '254900X7B94Y87K24S74', 'BR'),
+    (randomblob(16), 'Banco do Brasil S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '00000000000191', '549300H400B6R2450C53', 'BR'),
+    (randomblob(16), 'B3 S.A. - Brasil, Bolsa, Balcão', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '09346601000125', '254900X7B94Y87K24S45', 'BR'),
     (randomblob(16), 'Itaúsa S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '61532644000115', NULL, 'BR'),
     (randomblob(16), 'BB Seguridade Participações S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '17344597000194', NULL, 'BR'),
 
     -- Commodities & Energy (Oil, Gas, Mining)
-    (randomblob(16), 'Petróleo Brasileiro S.A. - Petrobras', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '33000167000101', '549300N738Q5O2A04M37', 'BR'),
-    (randomblob(16), 'Vale S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '33592510000154', '549300BQO2QG6F9A2A56', 'BR'),
+    (randomblob(16), 'Petróleo Brasileiro S.A. - Petrobras', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '33000167000101', '549300N738Q5O2A04M11', 'BR'),
+    (randomblob(16), 'Vale S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '33592510000154', '549300BQO2QG6F9A2A21', 'BR'),
     (randomblob(16), 'Cosan S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '50746577000115', NULL, 'BR'),
     (randomblob(16), 'Vibra Energia S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '34274233000102', NULL, 'BR'),
     (randomblob(16), 'Gerdau S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '33611500000119', NULL, 'BR'),
@@ -54,7 +54,7 @@ VALUES
     (randomblob(16), 'Equatorial Energia S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '03220438000173', NULL, 'BR'),
     (randomblob(16), 'Companhia de Saneamento Básico do Estado de São Paulo - Sabesp', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '43776517000180', NULL, 'BR'),
     (randomblob(16), 'CPFL Energia S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '02429144000193', NULL, 'BR'),
-    (randomblob(16), 'Engie Brasil Energia S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '02474398000143', NULL, 'BR'),
+    (randomblob(16), 'Engie Brasil Energia S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '02474398000123', NULL, 'BR'),
     (randomblob(16), 'Companhia Paranaense de Energia - Copel', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '76483817000120', NULL, 'BR'),
     (randomblob(16), 'Eneva S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '04423567000121', NULL, 'BR'),
     (randomblob(16), 'Energisa S.A.', 'ACTIVE', '2026-07-30T12:00:00Z', 1, '00864214000106', NULL, 'BR'),

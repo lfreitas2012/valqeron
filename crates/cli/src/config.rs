@@ -129,7 +129,7 @@ impl ValqeronConfig {
 
     /// A human-readable label for the configured durability, for logging/output.
     pub fn durability_label(&self) -> &'static str {
-        if self.durable { "Strict" } else { "Relaxed" }
+        if self.durable { "strict" } else { "relaxed" }
     }
 
     /// Ensure the parent directory of the database exists, creating it if

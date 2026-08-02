@@ -1,7 +1,7 @@
-//! SQLite connection setup and per-query timeout handling.
+//! SQLite connection setup and operation-scoped SQL execution limits.
 //!
 //! It opens one physical connection, applies its role-specific configuration, and installs the
-//! query timeout handler. Pooling and connection lifecycle management belong to
+//! operation execution limit handler. Pooling and connection lifecycle management belong to
 //! [`pool`](crate::sqlite::connection::pool) and [`Database`](crate::sqlite::connection::Database).
 
 use rusqlite::{Connection, OpenFlags};
@@ -11,11 +11,8 @@ use std::time::{Duration, Instant};
 use crate::sqlite::connection::sync::{Arc, Mutex};
 use crate::sqlite::error::SqliteError;
 
-/// Maximum duration a single SQL query is allowed to run before being aborted.
-const MAX_QUERY_EXECUTION_TIME: Duration = Duration::from_secs(15);
-
-/// Minimum idle gap between progress checks to detect a new query invocation.
-const IDLE_RESET_THRESHOLD: Duration = Duration::from_millis(50);
+/// Maximum wall-clock duration a repository operation may execute SQL before being interrupted.
+const MAX_OPERATION_EXECUTION_TIME: Duration = Duration::from_secs(15);
 
 /// A shared connection to the database.
 pub(crate) type SharedConnection = Arc<Mutex<Connection>>;
@@ -51,19 +48,19 @@ impl Synchronous {
 
 /// Identifies the SQLite database location.
 ///
-/// The value is retained so connections use the same location and lifecycle code can determine
-/// whether WAL checkpointing applies.
+/// The variant is retained so connections can select the appropriate open mode, and lifecycle code
+/// can determine whether WAL checkpointing applies.
 #[derive(Clone)]
 pub(crate) enum DbPath {
     File(PathBuf),
     /// An in-memory SQLite database.
-    Memory(String),
+    Memory,
 }
 
 impl DbPath {
     /// Returns `true` for an in-memory database.
     pub(crate) fn is_memory(&self) -> bool {
-        matches!(self, DbPath::Memory(_))
+        matches!(self, DbPath::Memory)
     }
 }
 
@@ -90,7 +87,7 @@ pub(crate) fn open_connection(
             };
             Connection::open_with_flags(p, flags).map_err(map_err)
         }
-        DbPath::Memory(_name) => {
+        DbPath::Memory => {
             let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
             Connection::open_in_memory_with_flags(flags).map_err(map_err)
         }
@@ -101,10 +98,10 @@ pub(crate) fn open_connection(
 ///
 /// | PRAGMA NAME / API | PRAGMA VALUE | Description |
 /// |: --- |: --- |: --- |
-/// | journal_mode | WAL | Enables Sqlite WAL mode. Skip for in-memory databases. Check [Sqlite docs](https://www.sqlite.org/wal.html) for more information. |
+/// | journal_mode | WAL | Enables SQLite WAL mode on the writer; readers query the resulting mode. Skipped for in-memory databases. Check [SQLite docs](https://www.sqlite.org/wal.html) for more information. |
 /// | synchronous | NORMAL (default) or FULL | Configurable via [`DatabaseConfig::synchronous`](crate::sqlite::connection::DatabaseConfig). **NORMAL** (default): fast; a committed transaction can be lost in a power/OS crash, though the database is never corrupted. **FULL**: the database file is fully synchronized on commit so committed transactions survive power loss, at the cost of write latency. <br><br>See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_synchronous) for more information. |
 /// | foreign_keys | ON | Enforce foreign key constraints. See [Sqlite docs](https://www.sqlite.org/foreignkeys.html) for more information. |
-/// | busy_timeout | 5000 | Wait up to 5 seconds when a locked database prevents progress. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout). |
+/// | busy_timeout | Configurable (5 seconds by default) | Wait up to the configured duration when a locked database prevents progress. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_busy_timeout). |
 /// | cache_size | -64000 | The database connection cache is limited to 64MB (64,000 KiB). See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_cache_size) for more information. |
 /// | temp_store | MEMORY | Forces temporary tables, indices, and views to be held purely in volatile RAM instead of spilling to disk files. See [Sqlite docs](https://www.sqlite.org/pragma.html#pragma_temp_store) for more information. |
 /// | mmap_size | 268,435,456 | Sets the maximum memory-mapped I/O size to 256 MiB. Skipped for in-memory databases. See [SQLite docs](https://www.sqlite.org/pragma.html#pragma_mmap_size). |
@@ -117,6 +114,7 @@ pub(crate) fn configure(
     role: ConnectionRole,
     is_memory: bool,
     synchronous: Synchronous,
+    busy_timeout: Duration,
 ) -> Result<(), SqliteError> {
     debug_assert!(
         !(is_memory && matches!(role, ConnectionRole::Reader)),
@@ -127,8 +125,15 @@ pub(crate) fn configure(
     let pragma_err = |source| SqliteError::Pragma { source };
 
     if !is_memory {
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(pragma_err)?;
+        match role {
+            ConnectionRole::Writer => conn
+                .pragma_update(None, "journal_mode", "WAL")
+                .map_err(pragma_err)?,
+            ConnectionRole::Reader => {
+                conn.pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))
+                    .map_err(pragma_err)?;
+            }
+        }
     }
 
     conn.pragma_update(None, "synchronous", synchronous.as_pragma())
@@ -137,8 +142,7 @@ pub(crate) fn configure(
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(pragma_err)?;
 
-    conn.busy_timeout(Duration::from_secs(5))
-        .map_err(pragma_err)?;
+    conn.busy_timeout(busy_timeout).map_err(pragma_err)?;
 
     conn.pragma_update(None, "cache_size", -64_000i64)
         .map_err(pragma_err)?;
@@ -166,34 +170,28 @@ pub(crate) fn configure(
             .map_err(pragma_err)?;
     }
 
-    configure_sqlite_progress_handler(conn);
-
     Ok(())
 }
 
-/// Installs a progress handler that limits individual SQL query execution time.
+/// Installs a progress handler with an operation-scoped SQL execution budget.
 ///
-/// The callback runs every 5,000 SQLite VM instructions. It resets the timer after an idle interval
-/// and interrupts the query with `SQLITE_INTERRUPT` after [`MAX_QUERY_EXECUTION_TIME`].
-fn configure_sqlite_progress_handler(conn: &Connection) {
-    let mut query_start = Instant::now();
-    let mut last_check = Instant::now();
+/// Guards acquire this handler at the start of a repository operation and clear it when they are
+/// dropped. The callback runs every 5,000 SQLite VM instructions and interrupts SQL with
+/// `SQLITE_INTERRUPT` after [`MAX_OPERATION_EXECUTION_TIME`].
+pub(crate) fn install_sqlite_progress_handler(conn: &Connection) {
+    install_sqlite_progress_handler_with_timeout(conn, MAX_OPERATION_EXECUTION_TIME);
+}
+
+pub(crate) fn install_sqlite_progress_handler_with_timeout(conn: &Connection, timeout: Duration) {
+    let operation_start = Instant::now();
 
     let _ = conn.progress_handler(
         5_000,
         Some(move || {
-            let now = Instant::now();
-
-            // Reset query_start if the connection was idle in the pool
-            if now.duration_since(last_check) > IDLE_RESET_THRESHOLD {
-                query_start = now;
-            }
-            last_check = now;
-
-            if now.duration_since(query_start) > MAX_QUERY_EXECUTION_TIME {
+            if Instant::now().duration_since(operation_start) > timeout {
                 tracing::error!(
-                    "SQLite query interrupted: execution exceeded time limit of {:?}",
-                    MAX_QUERY_EXECUTION_TIME
+                    "SQLite operation interrupted: execution exceeded time limit of {:?}",
+                    timeout
                 );
                 true // Returns SQLITE_INTERRUPT to rusqlite
             } else {
@@ -201,4 +199,9 @@ fn configure_sqlite_progress_handler(conn: &Connection) {
             }
         }),
     );
+}
+
+/// Clears the operation progress handler before a connection is returned to its pool.
+pub(crate) fn clear_sqlite_progress_handler(conn: &Connection) {
+    let _ = conn.progress_handler(0, None::<fn() -> bool>);
 }

@@ -15,10 +15,20 @@ thread_local! {
 
 /// Pins `conn` for `f` on the current thread, then restores the previous value.
 pub(crate) fn with_dry_run_conn<T>(conn: &Connection, f: impl FnOnce() -> T) -> T {
-    let previous = DRY_RUN_CONN.replace(Some(conn as *const Connection));
-    let result = f();
-    DRY_RUN_CONN.set(previous);
-    result
+    struct Restore(Option<*const Connection>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            DRY_RUN_CONN.set(self.0);
+        }
+    }
+
+    let _restore = Restore(DRY_RUN_CONN.replace(Some(conn as *const Connection)));
+    f()
+}
+
+/// Whether a dry-run connection is pinned on this thread.
+pub(crate) fn is_dry_run_active() -> bool {
+    DRY_RUN_CONN.get().is_some()
 }
 
 /// Returns the current thread's pinned dry-run connection.

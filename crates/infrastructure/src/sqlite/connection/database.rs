@@ -2,7 +2,7 @@ use std::path::Path;
 use valqeron_core::{StorageError, StorageFault};
 
 use crate::sqlite::connection::config::DatabaseConfig;
-use crate::sqlite::connection::dry_run::with_dry_run_conn;
+use crate::sqlite::connection::dry_run::{is_dry_run_active, with_dry_run_conn};
 use crate::sqlite::connection::handle::DbHandle;
 use crate::sqlite::connection::pool::{ReaderPool, ReaderSource, lock_writer};
 use crate::sqlite::connection::pragmas::{self, ConnectionRole, DbPath, SharedConnection};
@@ -43,10 +43,7 @@ impl Database {
 
     /// Opens an isolated in-memory database with `config`.
     pub(crate) fn open_in_memory_with_config(config: DatabaseConfig) -> Result<Self, SqliteError> {
-        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let name = format!("valqeron-mem-{}-{n}", std::process::id());
-        Self::open_inner(DbPath::Memory(name), config)
+        Self::open_inner(DbPath::Memory, config)
     }
 
     fn open_inner(path: DbPath, config: DatabaseConfig) -> Result<Self, SqliteError> {
@@ -62,6 +59,7 @@ impl Database {
             ConnectionRole::Writer,
             is_memory,
             config.synchronous,
+            config.busy_timeout,
         )?;
         migrations::run(&mut writer)?;
 
@@ -71,7 +69,13 @@ impl Database {
             let mut pool = Vec::with_capacity(config.reader_pool_size);
             for _ in 0..config.reader_pool_size {
                 let conn = pragmas::open_connection(&path, ConnectionRole::Reader)?;
-                pragmas::configure(&conn, ConnectionRole::Reader, is_memory, config.synchronous)?;
+                pragmas::configure(
+                    &conn,
+                    ConnectionRole::Reader,
+                    is_memory,
+                    config.synchronous,
+                    config.busy_timeout,
+                )?;
                 pool.push(conn);
             }
             ReaderSource::Pool(Arc::new(ReaderPool::new(pool)))
@@ -103,9 +107,11 @@ impl Database {
     where
         F: FnOnce(&DbHandle) -> T,
     {
-        // Hold the real writer guard for the entire dry-run. This serializes against every other
-        // writer via the app-level mutex, so no concurrent write can slip a committed transaction
-        // *inside* our savepoint and get rolled back with us.
+        debug_assert!(
+            !is_dry_run_active(),
+            "nested dry_run would deadlock on the writer mutex"
+        );
+
         let guard = lock_writer(&self.writer);
 
         guard
@@ -165,6 +171,7 @@ mod tests {
     use std::sync::Arc as StdArc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
+    use std::time::Duration;
 
     fn insert_dummy(conn: &Connection) {
         insert_dummy_result(conn).unwrap();
@@ -219,7 +226,14 @@ mod tests {
     #[test]
     fn schema_from_the_future_is_rejected_rather_than_silently_skipped() {
         let mut conn = Connection::open_in_memory().unwrap();
-        configure(&conn, ConnectionRole::Writer, true, Synchronous::Normal).unwrap();
+        configure(
+            &conn,
+            ConnectionRole::Writer,
+            true,
+            Synchronous::Normal,
+            Duration::from_secs(5),
+        )
+        .unwrap();
 
         conn.pragma_update(None, "user_version", (MIGRATIONS.len() as i64) + 5)
             .unwrap();
@@ -605,8 +619,8 @@ mod tests {
 
     #[test]
     fn two_in_memory_databases_are_isolated() {
-        // The counter-based unique shared-cache name must keep independent in-memory databases from
-        // seeing each other's rows.
+        // Each in-memory database uses a private SQLite connection, so independent databases cannot
+        // see each other's rows.
         let db_a = Database::open_in_memory().unwrap();
         let db_b = Database::open_in_memory().unwrap();
 

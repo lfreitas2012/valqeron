@@ -129,10 +129,6 @@ pub enum AppError {
     #[error("configuration error: {0}")]
     Config(String),
 
-    // The two variants below are produced by [`AppError::from_write_outcome`], the app-layer
-    // translation of a version-guarded [`WriteOutcome`]. They are wired and tested here so the
-    // update/patch/delete commands can map outcomes to exit codes when they are added; until then
-    // they are constructed only in tests.
     /// A requested issuer was not present for a write operation.
     #[allow(dead_code)]
     #[error("issuer {0} not found")]

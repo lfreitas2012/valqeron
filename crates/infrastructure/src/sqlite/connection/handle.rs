@@ -47,10 +47,12 @@ impl Db for DbHandle {
     /// In [`DbHandle::DryRun`] mode it borrows the thread-pinned dry-run connection (already locked
     /// by [`Database::dry_run`](crate::sqlite::connection::Database::dry_run) for the whole closure).
     fn write(&self) -> WriteGuard<'_> {
-        match self {
+        let guard = match self {
             DbHandle::Live { writer, .. } => WriteGuard::Locked(lock_writer(writer)),
             DbHandle::DryRun => WriteGuard::Borrowed(current_dry_run_conn()),
-        }
+        };
+        guard.start_operation();
+        guard
     }
 
     /// Acquires a read connection.
@@ -60,12 +62,14 @@ impl Db for DbHandle {
     /// borrows the thread-pinned dry-run connection so reads observe the dry-run's own uncommitted
     /// writes.
     fn read(&self) -> ReadGuard<'_> {
-        match self {
+        let guard = match self {
             DbHandle::Live { writer, readers } => match readers {
                 ReaderSource::Pool(pool) => ReadGuard::Pooled(ReaderPool::checkout(pool)),
                 ReaderSource::SharedWithWriter => ReadGuard::Locked(lock_writer(writer)),
             },
             DbHandle::DryRun => ReadGuard::Borrowed(current_dry_run_conn()),
-        }
+        };
+        guard.start_operation();
+        guard
     }
 }

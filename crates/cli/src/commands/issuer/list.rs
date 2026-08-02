@@ -21,11 +21,18 @@ use crate::store::Repos;
 /// Default page size when `--limit` is not supplied.
 const DEFAULT_LIMIT: u32 = 50;
 
+/// Maximum allowable page size to prevent memory exhaustion.
+const MAX_LIMIT: u32 = 1000;
+
 /// Arguments for `issuer list`.
 #[derive(Args, Debug)]
 pub struct ListArgs {
     /// Maximum number of issuers to return in this page.
-    #[arg(long, default_value_t = DEFAULT_LIMIT)]
+    #[arg(
+        long,
+        default_value_t = DEFAULT_LIMIT,
+        value_parser = clap::value_parser!(u32).range(1..=i64::from(MAX_LIMIT))
+    )]
     pub limit: u32,
 
     /// Return only issuers whose id sorts after this one (UUID); use the last id

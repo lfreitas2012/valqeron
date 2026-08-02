@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::thread;
 use std::time::Duration;
 
@@ -27,7 +28,7 @@ impl Default for DatabaseConfig {
 /// Best-effort available parallelism, used as the default reader-pool size.
 fn default_reader_pool_size() -> usize {
     match thread::available_parallelism() {
-        Ok(count) => count.into(),
-        Err(_) => 4,
+        Ok(available_parallelism) => min(available_parallelism.into(), 6),
+        Err(_) => 2,
     }
 }

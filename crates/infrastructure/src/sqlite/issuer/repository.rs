@@ -510,8 +510,6 @@ mod tests {
         );
     }
 
-    // ---- list_paged (keyset pagination) -------------------------------------------------------
-
     /// Insert `n` issuers and return their ids sorted ascending (the order `list_paged` yields).
     fn insert_sorted_ids(repo: &SqliteIssuerRepository, n: usize) -> Vec<IssuerId> {
         let mut ids: Vec<IssuerId> = Vec::with_capacity(n);
@@ -523,8 +521,6 @@ mod tests {
         ids.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
         ids
     }
-
-    // ---- created_at canonicalization ----------------------------------------------------------
 
     #[test]
     fn insert_stores_created_at_in_canonical_utc_form() {
@@ -582,8 +578,6 @@ mod tests {
             "2026-01-02T03:04:05+00:00"
         );
     }
-
-    // ---- busy/locked retry --------------------------------------------------------------------
 
     use std::cell::Cell;
 
@@ -700,5 +694,27 @@ mod tests {
         let page = repo.list_paged(Some(ids[1]), 2).unwrap();
         let page_ids: Vec<IssuerId> = page.iter().map(|v| *v.data.id()).collect();
         assert_eq!(page_ids, ids[2..4]);
+    }
+
+    #[test]
+    fn exists_by_cnpj_and_lei_report_stored_identifiers() {
+        let (_db, repo) = test_repo();
+        let cnpj = Cnpj::new("12345678000195").unwrap();
+        let lei = Lei::new("5493000IBP32UQZ0KL24").unwrap();
+
+        let other_lei = Lei::new("213800WSGIIZCXF1P572").unwrap();
+        assert!(!repo.exists_by_cnpj(&cnpj).unwrap());
+        assert!(!repo.exists_by_lei(&lei).unwrap());
+
+        let issuer = Issuer::builder()
+            .cnpj(cnpj.clone())
+            .lei(lei.clone())
+            .build()
+            .unwrap();
+        repo.insert(&issuer).unwrap();
+
+        assert!(repo.exists_by_cnpj(&cnpj).unwrap());
+        assert!(repo.exists_by_lei(&lei).unwrap());
+        assert!(!repo.exists_by_lei(&other_lei).unwrap());
     }
 }

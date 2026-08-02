@@ -7,7 +7,7 @@ use clap::Subcommand;
 use serde_json::Value;
 
 use crate::context::AppContext;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::store::Repos;
 
 /// Whether a command only reads persisted state or may mutate it.
@@ -60,9 +60,9 @@ impl Commands {
     /// `main` and must not reach here.
     pub fn execute(&self, repos: &Repos, ctx: &AppContext) -> AppResult<Value> {
         match self {
-            Commands::Init(_) => {
-                unreachable!("init is dispatched before opening a repository")
-            }
+            Commands::Init(_) => Err(AppError::Config(
+                "init must be dispatched before opening a repository".into(),
+            )),
             Commands::Issuer(cmd) => cmd.as_command().execute(repos, ctx),
         }
     }

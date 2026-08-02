@@ -1172,7 +1172,6 @@ dependencies = [
 name = "valqeron-infrastructure"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "ftracker-identifiers",
  "loom",

@@ -53,16 +53,21 @@ pub(crate) fn list_paged(
     after: Option<&IssuerId>,
     limit: u32,
 ) -> rusqlite::Result<Vec<IssuerRow>> {
-    // `?1 IS NULL` short-circuits the id filter for the first page; otherwise seek past `after`.
-    let sql = format!(
-        "SELECT {ISSUER_COLUMNS} FROM issuer \
-         WHERE ?1 IS NULL OR id > ?1 \
-         ORDER BY id LIMIT ?2"
-    );
-    let mut stmt = conn.prepare_cached(&sql)?;
-    let after_bytes = after.map(|id| id.as_bytes());
-    stmt.query_map(params![after_bytes, limit], IssuerRow::from_row)?
-        .collect()
+    match after {
+        Some(id) => {
+            let sql =
+                format!("SELECT {ISSUER_COLUMNS} FROM issuer WHERE id > ?1 ORDER BY id LIMIT ?2");
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![id.as_bytes(), limit], IssuerRow::from_row)?
+                .collect()
+        }
+        None => {
+            let sql = format!("SELECT {ISSUER_COLUMNS} FROM issuer ORDER BY id LIMIT ?1");
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![limit], IssuerRow::from_row)?
+                .collect()
+        }
+    }
 }
 
 /// Returns whether an issuer with `id` exists.
