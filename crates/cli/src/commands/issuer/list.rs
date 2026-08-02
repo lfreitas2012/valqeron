@@ -10,12 +10,13 @@ use clap::Args;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use valqeron_core::{IssuerId, IssuerRepository};
+use valqeron_core::IssuerId;
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
 use crate::dto::IssuerView;
 use crate::error::{AppError, AppResult};
+use crate::store::Repos;
 
 /// Default page size when `--limit` is not supplied.
 const DEFAULT_LIMIT: u32 = 50;
@@ -34,7 +35,9 @@ pub struct ListArgs {
 }
 
 impl Command for ListArgs {
-    fn execute(&self, repo: &dyn IssuerRepository, _ctx: &AppContext) -> AppResult<Value> {
+    fn execute(&self, repos: &Repos, _ctx: &AppContext) -> AppResult<Value> {
+        let repo = repos.issuers();
+
         let after: Option<IssuerId> = match &self.after {
             Some(raw) => {
                 let uuid = Uuid::from_str(raw).map_err(|e| AppError::InvalidId(e.to_string()))?;

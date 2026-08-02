@@ -5,7 +5,7 @@ mod context;
 mod dto;
 mod error;
 mod io_util;
-mod server;
+mod store;
 
 use std::io::IsTerminal;
 
@@ -22,7 +22,6 @@ use crate::error::AppError::InvalidCliFlag;
 use crate::error::AppResult;
 use crate::error::problem::ProblemDetail;
 use crate::io_util::{InputSource, OutputDest};
-use crate::server::Server;
 
 fn main() {
     let cli = Cli::parse();
@@ -90,7 +89,7 @@ fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
         return Ok(());
     }
 
-    let server = Server::open(config)?;
+    let store = store::open(config)?;
 
     tracing::debug!(
         access_mode = ?cli.command.access_mode(),
@@ -99,9 +98,12 @@ fn dispatch(cli: &Cli, config: &ValqeronConfig) -> AppResult<()> {
     );
 
     let payload = if cli.dry_run {
-        server.dry_run(|repo| cli.command.execute(repo, &ctx))?
+        // `dry_run` maps store-level failures into `StorageError` (the outer `?`); the closure's own
+        // `AppResult` is returned unchanged and then flattened (the inner `?`).
+        store.dry_run(|repositories| cli.command.execute(&store::repos(repositories), &ctx))??
     } else {
-        server.with_issuers(|repo| cli.command.execute(repo, &ctx))?
+        let repositories = store.repositories();
+        cli.command.execute(&store::repos(&repositories), &ctx)?
     };
 
     ctx.write_success(&payload)

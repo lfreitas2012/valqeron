@@ -8,7 +8,7 @@
 
 use rusqlite::{Connection, TransactionBehavior};
 
-use crate::sqlite::driver::SqliteDataDriverError;
+use crate::sqlite::error::SqliteDbError;
 
 /// Ordered list of embedded migration scripts. The index (1-based) is the
 /// schema version a script advances the database to.
@@ -21,14 +21,12 @@ pub const MIGRATIONS: &[&str] = &[include_str!(
 ///
 /// # Errors
 ///
-/// Returns [`SqliteDataDriverError::UnknownSchemaVersion`] if the on-disk schema
+/// Returns [`SqliteDbError::UnknownSchemaVersion`] if the on-disk schema
 /// is newer than the migrations this binary knows about, or
-/// [`SqliteDataDriverError::Migration`] if a script fails to apply.
-pub fn run(connection: &mut Connection) -> Result<(), SqliteDataDriverError> {
-    fn migration_err(
-        source: impl std::error::Error + Send + Sync + 'static,
-    ) -> SqliteDataDriverError {
-        SqliteDataDriverError::Migration {
+/// [`SqliteDbError::Migration`] if a script fails to apply.
+pub fn run(connection: &mut Connection) -> Result<(), SqliteDbError> {
+    fn migration_err(source: impl std::error::Error + Send + Sync + 'static) -> SqliteDbError {
+        SqliteDbError::Migration {
             source: Box::new(source),
         }
     }
@@ -38,7 +36,7 @@ pub fn run(connection: &mut Connection) -> Result<(), SqliteDataDriverError> {
         .map_err(migration_err)?;
 
     if current_version as usize > MIGRATIONS.len() {
-        return Err(SqliteDataDriverError::UnknownSchemaVersion {
+        return Err(SqliteDbError::UnknownSchemaVersion {
             found: current_version,
             known: MIGRATIONS.len(),
         });

@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub mod error;
 pub mod patch;
 pub mod repository;
+pub mod service;
 
 const ISSUER_NAME_MAX_LEN: usize = 200;
 const BRAZIL_COUNTRY_CODE: &str = "BR";

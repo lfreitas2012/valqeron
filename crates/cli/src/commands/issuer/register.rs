@@ -3,12 +3,13 @@
 use clap::Args;
 use serde_json::Value;
 
-use valqeron_core::IssuerRepository;
+use valqeron_core::register_issuer;
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
 use crate::dto::{IssuerInput, IssuerView};
 use crate::error::{AppError, AppResult};
+use crate::store::Repos;
 
 /// Arguments for `issuer register`.
 ///
@@ -38,11 +39,9 @@ pub struct RegisterArgs {
 }
 
 impl Command for RegisterArgs {
-    fn access_mode(&self) -> AccessMode {
-        AccessMode::ReadWrite
-    }
+    fn execute(&self, repos: &Repos, ctx: &AppContext) -> AppResult<Value> {
+        let repo = repos.issuers();
 
-    fn execute(&self, repo: &dyn IssuerRepository, ctx: &AppContext) -> AppResult<Value> {
         // Start from the optional --input document, then overlay flags.
         let base: IssuerInput = match ctx.read_input()? {
             Some(value) => {
@@ -60,7 +59,9 @@ impl Command for RegisterArgs {
         );
 
         let issuer = input.into_issuer()?;
-        repo.insert(&issuer)?;
+
+        // Enforce domain invariants (identifier uniqueness) in the domain layer, not the store.
+        register_issuer(repo, &issuer)?;
 
         tracing::info!(
             target: "valqeron::audit",
@@ -74,5 +75,9 @@ impl Command for RegisterArgs {
         let view = IssuerView::new(&issuer, 1);
         let payload = serde_json::to_value(view).map_err(|e| AppError::Serialize(e.to_string()))?;
         Ok(payload)
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::ReadWrite
     }
 }

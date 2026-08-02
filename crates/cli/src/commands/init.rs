@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::config::ValqeronConfig;
 use crate::context::AppContext;
 use crate::error::AppResult;
-use crate::server::Server;
+use crate::store;
 
 /// Arguments for `init`. The database path and pool size come from the global
 /// options, so this command currently takes no positional arguments.
@@ -22,9 +22,9 @@ impl InitArgs {
     pub fn run(&self, config: &ValqeronConfig, ctx: &AppContext) -> AppResult<Value> {
         config.ensure_db_parent()?;
 
-        // Opening applies migrations. We immediately drop the engine; the file
+        // Opening applies migrations. We immediately drop the store; the file
         // now exists at the latest schema version.
-        let _server = Server::open(config)?;
+        let _store = store::open(config)?;
 
         tracing::info!(
             target: "valqeron::audit",
@@ -36,7 +36,7 @@ impl InitArgs {
         let payload = json!({
             "db_path": config.db_path().display().to_string(),
             "reader_pool_size": config.reader_pool_size(),
-            "durability": format!("{:?}", config.durability()),
+            "durability": config.durability_label(),
             "initialized": true,
         });
 

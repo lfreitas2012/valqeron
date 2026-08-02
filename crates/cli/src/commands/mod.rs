@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::context::AppContext;
 use crate::error::AppResult;
+use crate::store::Repos;
 
 /// Whether a command only reads persisted state or may mutate it.
 ///
@@ -22,15 +23,12 @@ pub enum AccessMode {
     ReadWrite,
 }
 
-/// A runnable command. Implementors receive a repository handle and the app
-/// context, and return the JSON payload to embed in the success envelope.
+/// A runnable command. Implementors receive the backend-agnostic [`Repos`] accessor and the app
+/// context, pull the repository port(s) they need, and return the JSON payload to embed in the
+/// success envelope.
 pub trait Command {
-    /// Execute against the given repository, producing the result payload.
-    fn execute(
-        &self,
-        repo: &dyn valqeron_core::IssuerRepository,
-        ctx: &AppContext,
-    ) -> AppResult<Value>;
+    /// Execute against the given repositories, producing the result payload.
+    fn execute(&self, repos: &Repos, ctx: &AppContext) -> AppResult<Value>;
 
     /// The command's access mode. Defaults to read-write.
     fn access_mode(&self) -> AccessMode {
@@ -60,16 +58,12 @@ impl Commands {
 
     /// Dispatch a repository-backed command. `init` is handled separately in
     /// `main` and must not reach here.
-    pub fn execute(
-        &self,
-        repo: &dyn valqeron_core::IssuerRepository,
-        ctx: &AppContext,
-    ) -> AppResult<Value> {
+    pub fn execute(&self, repos: &Repos, ctx: &AppContext) -> AppResult<Value> {
         match self {
             Commands::Init(_) => {
                 unreachable!("init is dispatched before opening a repository")
             }
-            Commands::Issuer(cmd) => cmd.as_command().execute(repo, ctx),
+            Commands::Issuer(cmd) => cmd.as_command().execute(repos, ctx),
         }
     }
 }

@@ -12,7 +12,10 @@ use ftracker_identifiers::{CnpjError, CountryCodeError, LeiError};
 use problem::{IntoProblem, ProblemDetail};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
-use valqeron_core::{IssuerBuilderError, IssuerNameError, IssuerStatusError, RepositoryError};
+use valqeron_core::{
+    IssuerBuilderError, IssuerNameError, IssuerStatusError, RegisterIssuerError, StorageError,
+    StorageFault,
+};
 
 /// Convenient result alias for command and plumbing code.
 pub type AppResult<T> = Result<T, AppError>;
@@ -74,9 +77,17 @@ impl std::fmt::Display for IdentifierKind {
 /// Every failure the CLI surfaces to the user.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    /// A repository operation failed (not found, conflict, backend).
+    /// Registering an issuer failed a domain invariant (e.g. a duplicate identifier).
     #[error(transparent)]
-    Repository(#[from] RepositoryError),
+    Register(#[from] RegisterIssuerError),
+
+    /// A store-level failure (opening the engine, a dry-run transaction).
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+
+    /// A repository operation failed at the storage layer.
+    #[error(transparent)]
+    StorageFault(#[from] StorageFault),
 
     /// Building an issuer aggregate from user input failed.
     #[error(transparent)]
@@ -118,8 +129,41 @@ pub enum AppError {
     #[error("configuration error: {0}")]
     Config(String),
 
+    // The two variants below are produced by [`AppError::from_write_outcome`], the app-layer
+    // translation of a version-guarded [`WriteOutcome`]. They are wired and tested here so the
+    // update/patch/delete commands can map outcomes to exit codes when they are added; until then
+    // they are constructed only in tests.
+    /// A requested issuer was not present for a write operation.
+    #[allow(dead_code)]
+    #[error("issuer {0} not found")]
+    NotFound(String),
+
+    /// A version-guarded write found a different version than expected (optimistic-lock conflict).
+    #[allow(dead_code)]
+    #[error("version conflict: expected {expected}, found {actual}")]
+    VersionConflict { expected: u32, actual: u32 },
+
     #[error("Command line flag `{flag}` is not valid for `{command}`.")]
     InvalidCliFlag { flag: String, command: String },
+}
+
+impl AppError {
+    /// Translate a repository [`WriteOutcome`](valqeron_core::WriteOutcome) into an app error.
+    ///
+    /// This is where the app layer assigns backend-neutral write outcomes their user-facing meaning
+    /// and exit codes: `Missing` → not-found, `VersionMismatch` → conflict. `Applied` is success and
+    /// yields `Ok(())`.
+    #[allow(dead_code)]
+    pub fn from_write_outcome(outcome: valqeron_core::WriteOutcome, id: &str) -> AppResult<()> {
+        use valqeron_core::WriteOutcome;
+        match outcome {
+            WriteOutcome::Applied => Ok(()),
+            WriteOutcome::Missing => Err(AppError::NotFound(id.to_string())),
+            WriteOutcome::VersionMismatch { expected, actual } => {
+                Err(AppError::VersionConflict { expected, actual })
+            }
+        }
+    }
 }
 
 impl AppError {
@@ -175,10 +219,12 @@ impl From<CountryCodeError> for AppError {
 impl IntoProblem for AppError {
     fn problem_type(&self) -> &'static str {
         match self {
-            AppError::Repository(e) => match e {
-                RepositoryError::NotFound(_) => "issuer/not-found",
-                RepositoryError::Conflict(_) => "issuer/conflict",
+            AppError::Register(e) => match e {
+                RegisterIssuerError::DuplicateCnpj => "issuer/duplicate-cnpj",
+                RegisterIssuerError::DuplicateLei => "issuer/duplicate-lei",
+                RegisterIssuerError::Storage(_) => "storage/failed",
             },
+            AppError::Storage(_) | AppError::StorageFault(_) => "storage/failed",
             AppError::IssuerBuilder(e) => match e {
                 IssuerBuilderError::InvalidCountryForCnpj(_) => {
                     "issuer/validation/country-cnpj-mismatch"
@@ -196,6 +242,8 @@ impl IntoProblem for AppError {
                 IdentifierKind::CountryCode => "identifier/country-code-invalid",
             },
             AppError::InvalidId(_) => "issuer/invalid-id",
+            AppError::NotFound(_) => "issuer/not-found",
+            AppError::VersionConflict { .. } => "issuer/conflict",
             AppError::Input(_) => "input/parse",
             AppError::Io(_) => "io/failed",
             AppError::Serialize(_) => "io/serialize-failed",
@@ -206,15 +254,20 @@ impl IntoProblem for AppError {
 
     fn title(&self) -> Cow<'static, str> {
         match self {
-            AppError::Repository(e) => match e {
-                RepositoryError::NotFound(_) => Cow::Borrowed("Issuer not found"),
-                RepositoryError::Conflict(_) => Cow::Borrowed("Conflict"),
+            AppError::Register(e) => match e {
+                RegisterIssuerError::DuplicateCnpj | RegisterIssuerError::DuplicateLei => {
+                    Cow::Borrowed("Duplicate identifier")
+                }
+                RegisterIssuerError::Storage(_) => Cow::Borrowed("Storage error"),
             },
+            AppError::Storage(_) | AppError::StorageFault(_) => Cow::Borrowed("Storage error"),
             AppError::IssuerBuilder(_) | AppError::IssuerName(_) | AppError::IssuerStatus(_) => {
                 Cow::Borrowed("Issuer validation failed")
             }
             AppError::Identifier { .. } => Cow::Borrowed("Invalid identifier"),
             AppError::InvalidId(_) => Cow::Borrowed("Invalid issuer id"),
+            AppError::NotFound(_) => Cow::Borrowed("Issuer not found"),
+            AppError::VersionConflict { .. } => Cow::Borrowed("Conflict"),
             AppError::Input(_) => Cow::Borrowed("Invalid input"),
             AppError::Io(_) => Cow::Borrowed("I/O error"),
             AppError::Serialize(_) => Cow::Borrowed("Serialization error"),
@@ -228,15 +281,20 @@ impl IntoProblem for AppError {
 
     fn status(&self) -> u16 {
         match self {
-            AppError::Repository(e) => match e {
-                RepositoryError::NotFound(_) => exit::NOTFOUND,
-                RepositoryError::Conflict(_) => exit::CONFLICT,
+            AppError::Register(e) => match e {
+                RegisterIssuerError::DuplicateCnpj | RegisterIssuerError::DuplicateLei => {
+                    exit::CONFLICT
+                }
+                RegisterIssuerError::Storage(_) => exit::STORAGE,
             },
+            AppError::Storage(_) | AppError::StorageFault(_) => exit::STORAGE,
             AppError::IssuerBuilder(_)
             | AppError::IssuerName(_)
             | AppError::IssuerStatus(_)
             | AppError::Identifier { .. }
             | AppError::InvalidId(_) => exit::DATAERR,
+            AppError::NotFound(_) => exit::NOTFOUND,
+            AppError::VersionConflict { .. } => exit::CONFLICT,
             AppError::Input(_) => exit::NOINPUT,
             AppError::Io(_) => exit::IOERR,
             AppError::Serialize(_) => exit::SOFTWARE,
@@ -248,11 +306,11 @@ impl IntoProblem for AppError {
     fn extensions(&self) -> Map<String, Value> {
         let mut ext = Map::new();
         match self {
-            AppError::Repository(RepositoryError::NotFound(id)) => {
-                ext.insert("id".into(), Value::from(format!("{id:?}")));
+            AppError::Register(RegisterIssuerError::DuplicateCnpj) => {
+                ext.insert("field".into(), Value::from("cnpj"));
             }
-            AppError::Repository(RepositoryError::Conflict(constraint)) => {
-                ext.insert("constraint".into(), Value::from(constraint.clone()));
+            AppError::Register(RegisterIssuerError::DuplicateLei) => {
+                ext.insert("field".into(), Value::from("lei"));
             }
             AppError::IssuerBuilder(IssuerBuilderError::InvalidCountryForCnpj(cc)) => {
                 ext.insert("country_code".into(), Value::from(cc.clone()));
@@ -262,6 +320,13 @@ impl IntoProblem for AppError {
             }
             AppError::IssuerStatus(_) => {
                 ext.insert("allowed".into(), Value::from(vec!["ACTIVE", "RETIRED"]));
+            }
+            AppError::NotFound(id) => {
+                ext.insert("id".into(), Value::from(id.clone()));
+            }
+            AppError::VersionConflict { expected, actual } => {
+                ext.insert("expected".into(), Value::from(*expected));
+                ext.insert("actual".into(), Value::from(*actual));
             }
             AppError::Identifier { extensions, .. } => return extensions.clone(),
             _ => {}
@@ -282,12 +347,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn conflict_maps_to_conflict_exit_with_constraint() {
-        let err = AppError::Repository(RepositoryError::Conflict("cnpj".into()));
+    fn duplicate_cnpj_maps_to_conflict_exit_with_field() {
+        let err = AppError::Register(RegisterIssuerError::DuplicateCnpj);
+        let p = err.problem();
+        assert_eq!(p.r#type, "issuer/duplicate-cnpj");
+        assert_eq!(p.status, exit::CONFLICT);
+        assert_eq!(p.extensions.get("field").unwrap(), "cnpj");
+    }
+
+    #[test]
+    fn storage_error_maps_to_storage_exit() {
+        let err = AppError::Storage(StorageError::Unavailable("disk gone".into()));
+        let p = err.problem();
+        assert_eq!(p.r#type, "storage/failed");
+        assert_eq!(p.status, exit::STORAGE);
+    }
+
+    #[test]
+    fn write_outcome_applied_is_ok() {
+        assert!(AppError::from_write_outcome(valqeron_core::WriteOutcome::Applied, "id").is_ok());
+    }
+
+    #[test]
+    fn write_outcome_missing_maps_to_not_found() {
+        let err =
+            AppError::from_write_outcome(valqeron_core::WriteOutcome::Missing, "abc").unwrap_err();
+        let p = err.problem();
+        assert_eq!(p.r#type, "issuer/not-found");
+        assert_eq!(p.status, exit::NOTFOUND);
+        assert_eq!(p.extensions.get("id").unwrap(), "abc");
+    }
+
+    #[test]
+    fn write_outcome_version_mismatch_maps_to_conflict() {
+        let err = AppError::from_write_outcome(
+            valqeron_core::WriteOutcome::VersionMismatch {
+                expected: 3,
+                actual: 5,
+            },
+            "abc",
+        )
+        .unwrap_err();
         let p = err.problem();
         assert_eq!(p.r#type, "issuer/conflict");
         assert_eq!(p.status, exit::CONFLICT);
-        assert_eq!(p.extensions.get("constraint").unwrap(), "cnpj");
+        assert_eq!(p.extensions.get("expected").unwrap(), 3);
+        assert_eq!(p.extensions.get("actual").unwrap(), 5);
     }
 
     #[test]

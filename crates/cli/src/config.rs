@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
 
-use valqeron_core::Durability;
+use valqeron_infrastructure::Synchronous;
 
 use crate::error::{AppError, AppResult};
 
@@ -114,16 +114,22 @@ impl ValqeronConfig {
         self.reader_pool_size
     }
 
-    /// The configured writer durability level for the engine.
+    /// The configured writer durability level, expressed as the storage backend's `synchronous`
+    /// pragma level.
     ///
-    /// `--durable` selects [`Durability::Strict`] (committed writes survive power loss, slower);
-    /// the default is [`Durability::Relaxed`] (faster, may lose the last commit on a crash).
-    pub fn durability(&self) -> Durability {
+    /// `--durable` selects [`Synchronous::Full`] (committed writes survive power loss, slower); the
+    /// default is [`Synchronous::Normal`] (faster, may lose the last commit on a crash).
+    pub fn synchronous(&self) -> Synchronous {
         if self.durable {
-            Durability::Strict
+            Synchronous::Full
         } else {
-            Durability::Relaxed
+            Synchronous::Normal
         }
+    }
+
+    /// A human-readable label for the configured durability, for logging/output.
+    pub fn durability_label(&self) -> &'static str {
+        if self.durable { "Strict" } else { "Relaxed" }
     }
 
     /// Ensure the parent directory of the database exists, creating it if
@@ -216,7 +222,7 @@ mod tests {
             .unwrap();
         assert_eq!(cfg.db_path(), Path::new("/tmp/x.db"));
         assert_eq!(cfg.reader_pool_size(), 4);
-        assert_eq!(cfg.durability(), Durability::Relaxed);
+        assert_eq!(cfg.synchronous(), Synchronous::Normal);
     }
 
     #[test]
@@ -273,7 +279,7 @@ mod tests {
     fn durable_flag_selects_strict_durability() {
         let cfg = ValqeronConfig::resolve(Some(PathBuf::from("/tmp/x.db")), None, false, 4, true)
             .unwrap();
-        assert_eq!(cfg.durability(), Durability::Strict);
+        assert_eq!(cfg.synchronous(), Synchronous::Full);
     }
 
     #[test]

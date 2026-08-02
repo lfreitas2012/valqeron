@@ -4,12 +4,13 @@ use clap::Args;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use valqeron_core::{IssuerId, IssuerRepository};
+use valqeron_core::IssuerId;
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
 use crate::dto::IssuerView;
 use crate::error::{AppError, AppResult};
+use crate::store::Repos;
 
 #[derive(Args, Debug)]
 pub struct InfoArgs {
@@ -19,7 +20,9 @@ pub struct InfoArgs {
 }
 
 impl Command for InfoArgs {
-    fn execute(&self, repo: &dyn IssuerRepository, _ctx: &AppContext) -> AppResult<Value> {
+    fn execute(&self, repos: &Repos, _ctx: &AppContext) -> AppResult<Value> {
+        let repo = repos.issuers();
+
         let uuid = Uuid::from_str(&self.id).map_err(|e| AppError::InvalidId(e.to_string()))?;
         let id = IssuerId::from_uuid(uuid);
 

@@ -12,12 +12,9 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 ftracker-identifiers = { workspace = true }
-anyhow = { workspace = true }
-tracing = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
-tempfile = { workspace = true }
 
 [lib]
 name = "valqeron_core"
