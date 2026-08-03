@@ -14,7 +14,7 @@ pub(crate) fn with_dry_run_conn<T>(conn: &Connection, f: impl FnOnce() -> T) -> 
         }
     }
 
-    let _restore = Restore(DRY_RUN_CONN.replace(Some(conn as *const Connection)));
+    let _restore = Restore(DRY_RUN_CONN.replace(Some(std::ptr::from_ref(conn))));
     f()
 }
 
@@ -23,6 +23,7 @@ pub(crate) fn is_dry_run_active() -> bool {
 }
 
 pub(crate) fn current_dry_run_conn() -> &'static Connection {
+    #[allow(clippy::expect_used)]
     let ptr = DRY_RUN_CONN
         .get()
         .expect("DbHandle::DryRun used outside an active dry-run");

@@ -12,11 +12,12 @@ pub struct IssuerPatch {
 }
 
 impl IssuerPatch {
-    pub fn builder() -> IssuerPatchBuilder<Empty> {
+    #[must_use]
+    pub const fn builder() -> IssuerPatchBuilder<Empty> {
         IssuerPatchBuilder::new()
     }
 
-    fn empty() -> Self {
+    const fn empty() -> Self {
         Self {
             name: None,
             status: None,
@@ -26,23 +27,28 @@ impl IssuerPatch {
         }
     }
 
-    pub fn name(&self) -> Option<&IssuerName> {
+    #[must_use]
+    pub const fn name(&self) -> Option<&IssuerName> {
         self.name.as_ref()
     }
 
-    pub fn status(&self) -> Option<IssuerStatus> {
+    #[must_use]
+    pub const fn status(&self) -> Option<IssuerStatus> {
         self.status
     }
 
-    pub fn cnpj(&self) -> Option<&Cnpj> {
+    #[must_use]
+    pub const fn cnpj(&self) -> Option<&Cnpj> {
         self.cnpj.as_ref()
     }
 
-    pub fn lei(&self) -> Option<&Lei> {
+    #[must_use]
+    pub const fn lei(&self) -> Option<&Lei> {
         self.lei.as_ref()
     }
 
-    pub fn country_code(&self) -> Option<&CountryCode> {
+    #[must_use]
+    pub const fn country_code(&self) -> Option<&CountryCode> {
         self.country_code.as_ref()
     }
 }
@@ -56,7 +62,7 @@ pub struct IssuerPatchBuilder<State> {
 }
 
 impl IssuerPatchBuilder<Empty> {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             inner: IssuerPatch::empty(),
             _state: PhantomData,
@@ -65,6 +71,7 @@ impl IssuerPatchBuilder<Empty> {
 }
 
 impl<State> IssuerPatchBuilder<State> {
+    #[must_use]
     pub fn name(self, name: IssuerName) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
@@ -75,6 +82,7 @@ impl<State> IssuerPatchBuilder<State> {
         }
     }
 
+    #[must_use]
     pub fn status(self, status: IssuerStatus) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
@@ -85,6 +93,7 @@ impl<State> IssuerPatchBuilder<State> {
         }
     }
 
+    #[must_use]
     pub fn cnpj(self, cnpj: Cnpj) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
@@ -95,6 +104,7 @@ impl<State> IssuerPatchBuilder<State> {
         }
     }
 
+    #[must_use]
     pub fn lei(self, lei: Lei) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
@@ -105,6 +115,7 @@ impl<State> IssuerPatchBuilder<State> {
         }
     }
 
+    #[must_use]
     pub fn country_code(self, country_code: CountryCode) -> IssuerPatchBuilder<NonEmpty> {
         IssuerPatchBuilder {
             inner: IssuerPatch {
@@ -117,6 +128,7 @@ impl<State> IssuerPatchBuilder<State> {
 }
 
 impl IssuerPatchBuilder<NonEmpty> {
+    #[must_use]
     pub fn build(self) -> IssuerPatch {
         self.inner
     }
@@ -128,7 +140,11 @@ mod tests {
 
     #[test]
     fn single_field_patch_only_sets_that_field() {
-        let name = IssuerName::new("Renamed Corp").unwrap();
+        let name_result = IssuerName::new("Renamed Corp");
+        assert!(name_result.is_ok());
+        let Some(name) = name_result.ok() else {
+            return;
+        };
         let patch = IssuerPatch::builder().name(name.clone()).build();
 
         assert_eq!(patch.name, Some(name));

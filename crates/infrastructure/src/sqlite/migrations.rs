@@ -17,7 +17,7 @@ pub fn run(connection: &mut Connection) -> Result<(), SqliteError> {
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(migration_err)?;
 
-    if current_version as usize > MIGRATIONS.len() {
+    if usize::try_from(current_version).unwrap_or(usize::MAX) > MIGRATIONS.len() {
         return Err(SqliteError::UnknownSchemaVersion {
             found: current_version,
             known: MIGRATIONS.len(),
@@ -25,7 +25,7 @@ pub fn run(connection: &mut Connection) -> Result<(), SqliteError> {
     }
 
     for (index, sql) in MIGRATIONS.iter().enumerate() {
-        let migration_version = (index + 1) as i64;
+        let migration_version = i64::try_from(index.saturating_add(1)).unwrap_or(i64::MAX);
         if migration_version <= current_version {
             continue;
         }

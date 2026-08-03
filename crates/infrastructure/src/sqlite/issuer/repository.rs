@@ -131,12 +131,12 @@ fn with_busy_retry<T>(op: impl Fn() -> rusqlite::Result<T>) -> rusqlite::Result<
     let mut attempt = 0u32;
     loop {
         match op() {
-            Err(e) if attempt + 1 < BUSY_MAX_ATTEMPTS && is_busy_or_locked(&e) => {
-                attempt += 1;
-                let backoff = BUSY_BACKOFF_BASE * attempt;
+            Err(e) if attempt.saturating_add(1) < BUSY_MAX_ATTEMPTS && is_busy_or_locked(&e) => {
+                attempt = attempt.saturating_add(1);
+                let backoff = BUSY_BACKOFF_BASE.saturating_mul(attempt);
                 tracing::warn!(
                     attempt,
-                    backoff_ms = backoff.as_millis() as u64,
+                    backoff_ms = u64::try_from(backoff.as_millis()).unwrap_or(u64::MAX),
                     "database busy/locked; retrying write after backoff"
                 );
                 std::thread::sleep(backoff);
@@ -664,6 +664,6 @@ mod tests {
 
         assert!(repo.exists_by_cnpj(&cnpj).unwrap());
         assert!(repo.exists_by_lei(&lei).unwrap());
-        assert!(!repo.exists_by_lei(&other_lei).unwrap());
+        assert!(matches!(repo.exists_by_lei(&other_lei), Ok(false)));
     }
 }

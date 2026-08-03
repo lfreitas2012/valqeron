@@ -179,6 +179,7 @@ impl IntoProblem for AppError {
                     "issuer/validation/country-cnpj-mismatch"
                 }
                 IssuerBuilderError::NameError(_) => "issuer/validation/name",
+                IssuerBuilderError::CountryCodeError(_) => "identifier/country-code-invalid",
             },
             AppError::IssuerName(e) => match e {
                 IssuerNameError::Empty => "issuer/validation/name-empty",

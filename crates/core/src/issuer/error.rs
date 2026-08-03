@@ -1,4 +1,5 @@
 use crate::storage::StorageFault;
+use ftracker_identifiers::CountryCodeError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum IssuerNameError {
@@ -22,6 +23,9 @@ pub enum IssuerBuilderError {
 
     #[error("Issuer name validation failed: {0}")]
     NameError(#[from] IssuerNameError),
+
+    #[error("country code validation failed: {0}")]
+    CountryCodeError(#[from] CountryCodeError),
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -110,6 +110,7 @@ impl Drop for PooledReader {
 
 impl std::ops::Deref for PooledReader {
     type Target = Connection;
+    #[allow(clippy::expect_used)]
     fn deref(&self) -> &Connection {
         self.conn.as_ref().expect("connection present until drop")
     }

@@ -233,7 +233,7 @@ impl IssuerBuilder {
                     ));
                 }
                 None => {
-                    country_code = Some(CountryCode::from_str("BR").unwrap());
+                    country_code = Some(CountryCode::from_str(BRAZIL_COUNTRY_CODE)?);
                 }
                 _ => {}
             }
@@ -256,9 +256,15 @@ mod tests {
     use super::*;
     use std::str::FromStr;
 
+    const US_COUNTRY_CODE: &str = "US";
+
     #[test]
     fn test_issuer_name_valid() {
-        let name = IssuerName::new(" Acme Corp ").expect("Should create valid name");
+        let name_result = IssuerName::new(" Acme Corp ");
+        assert!(name_result.is_ok());
+        let Some(name) = name_result.ok() else {
+            return;
+        };
         // Ensure it trims whitespace automatically
         assert_eq!(name.as_str(), "Acme Corp");
     }
@@ -313,21 +319,19 @@ mod tests {
 
     #[test]
     fn test_issuer_status_from_str() {
-        // Case insensitive parsing
-        assert_eq!(
-            IssuerStatus::from_str("ACTIVE").unwrap(),
-            IssuerStatus::Active
-        );
-        assert_eq!(
-            IssuerStatus::from_str("active").unwrap(),
-            IssuerStatus::Active
-        );
-        assert_eq!(
-            IssuerStatus::from_str("Retired").unwrap(),
-            IssuerStatus::Retired
-        );
+        assert!(matches!(
+            IssuerStatus::from_str("ACTIVE"),
+            Ok(IssuerStatus::Active)
+        ));
+        assert!(matches!(
+            IssuerStatus::from_str("active"),
+            Ok(IssuerStatus::Active)
+        ));
+        assert!(matches!(
+            IssuerStatus::from_str("Retired"),
+            Ok(IssuerStatus::Retired)
+        ));
 
-        // Invalid parsing
         assert!(matches!(
             IssuerStatus::from_str("UNKNOWN"),
             Err(IssuerStatusError::InvalidStatus)
@@ -336,72 +340,128 @@ mod tests {
 
     #[test]
     fn test_builder_resolves_defaults() {
-        let issuer = Issuer::builder()
-            .build()
-            .expect("Should build successfully");
+        let issuer_result = Issuer::builder().build();
+        assert!(issuer_result.is_ok());
+        let Some(issuer) = issuer_result.ok() else {
+            return;
+        };
 
         assert!(issuer.status.is_active(), "Default status should be Active");
-        // Optionals should be None
         assert!(issuer.name.is_none());
         assert!(issuer.cnpj.is_none());
         assert!(issuer.lei.is_none());
         assert!(issuer.country_code.is_none());
-        // Timestamps and IDs should be populated
         assert!(issuer.created_at <= Utc::now());
     }
 
     #[test]
     fn test_builder_with_all_valid_fields() {
         let custom_time = Utc::now();
-        let name = IssuerName::new("Tech Global").unwrap();
-        let lei = Lei::new("5493000IBP32UQZ0KL24").unwrap();
-        let country = CountryCode::from_str("US").unwrap();
+        let name_result = IssuerName::new("Tech Global");
+        assert!(name_result.is_ok());
+        let Some(name) = name_result.ok() else {
+            return;
+        };
+        let lei_result = Lei::new("5493000IBP32UQZ0KL24");
+        assert!(lei_result.is_ok());
+        let Some(lei) = lei_result.ok() else {
+            return;
+        };
+        let country_result = CountryCode::from_str(US_COUNTRY_CODE);
+        assert!(country_result.is_ok());
+        let Some(country) = country_result.ok() else {
+            return;
+        };
 
-        let issuer = Issuer::builder()
+        let issuer_result = Issuer::builder()
             .status(IssuerStatus::Retired)
             .created_at(custom_time)
             .name(name.clone())
             .lei(lei)
             .country_code(country)
-            .build()
-            .expect("Should build successfully");
+            .build();
+        assert!(issuer_result.is_ok());
+        let Some(issuer) = issuer_result.ok() else {
+            return;
+        };
 
         assert!(issuer.status.is_retired());
         assert_eq!(issuer.created_at, custom_time);
-        assert_eq!(issuer.name.unwrap(), name);
-        assert_eq!(issuer.country_code.unwrap().as_str(), "US");
+        assert!(matches!(issuer.name.as_ref(), Some(value) if value == &name));
+        assert!(
+            matches!(issuer.country_code, Some(country) if country.as_str() == US_COUNTRY_CODE)
+        );
     }
 
     #[test]
     fn test_builder_cnpj_validation_success_without_country() {
-        let cnpj = Cnpj::new("12.345.678/0001-95").unwrap();
+        let cnpj_result = Cnpj::new("12.345.678/0001-95");
+        assert!(cnpj_result.is_ok());
+        let Some(cnpj) = cnpj_result.ok() else {
+            return;
+        };
 
-        let issuer = Issuer::builder()
-            .cnpj(cnpj)
-            .build()
-            .expect("Should build successfully when no country code is provided alongside CNPJ");
+        let issuer_result = Issuer::builder().cnpj(cnpj).build();
+        assert!(issuer_result.is_ok());
+        let Some(issuer) = issuer_result.ok() else {
+            return;
+        };
 
-        assert_eq!(issuer.country_code.unwrap().as_str(), "BR");
+        assert!(matches!(issuer.country_code, Some(country) if country.as_str() == "BR"));
     }
 
     #[test]
     fn test_builder_cnpj_validation_success_with_br() {
-        let cnpj = Cnpj::new("12.345.678/0001-95").unwrap();
-        let country_br = CountryCode::from_str("BR").unwrap();
+        let cnpj_result = Cnpj::new("12.345.678/0001-95");
+        assert!(cnpj_result.is_ok());
+        let Some(cnpj) = cnpj_result.ok() else {
+            return;
+        };
+        let country_result = CountryCode::from_str("BR");
+        assert!(country_result.is_ok());
+        let Some(country_br) = country_result.ok() else {
+            return;
+        };
 
-        let issuer = Issuer::builder()
+        let issuer_result = Issuer::builder()
             .cnpj(cnpj)
             .country_code(country_br)
-            .build()
-            .expect("Should build successfully when BR is explicitly provided");
+            .build();
+        assert!(issuer_result.is_ok());
+        let Some(issuer) = issuer_result.ok() else {
+            return;
+        };
 
-        assert_eq!(issuer.country_code.unwrap().as_str(), "BR");
+        assert!(matches!(issuer.country_code, Some(country) if country.as_str() == "BR"));
+    }
+
+    #[test]
+    fn test_invalid_country_code_is_propagated_as_builder_error() {
+        let country_code_result = CountryCode::from_str("ZZ");
+        assert!(country_code_result.is_err());
+        let Some(country_code_error) = country_code_result.err() else {
+            return;
+        };
+        let builder_error: IssuerBuilderError = country_code_error.into();
+
+        assert!(matches!(
+            builder_error,
+            IssuerBuilderError::CountryCodeError(_)
+        ));
     }
 
     #[test]
     fn test_builder_cnpj_validation_fails_with_foreign_country() {
-        let cnpj = Cnpj::new("12.345.678/0001-95").unwrap();
-        let country_us = CountryCode::from_str("US").unwrap();
+        let cnpj_result = Cnpj::new("12.345.678/0001-95");
+        assert!(cnpj_result.is_ok());
+        let Some(cnpj) = cnpj_result.ok() else {
+            return;
+        };
+        let country_us_result = CountryCode::from_str(US_COUNTRY_CODE);
+        assert!(country_us_result.is_ok());
+        let Some(country_us) = country_us_result.ok() else {
+            return;
+        };
 
         let result = Issuer::builder()
             .cnpj(cnpj)

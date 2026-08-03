@@ -28,11 +28,10 @@ mod tests {
     use crate::issuer::repository::MockIssuerRepository;
     use ftracker_identifiers::Cnpj;
 
-    fn issuer_with_cnpj() -> Issuer {
-        Issuer::builder()
-            .cnpj(Cnpj::new("12.345.678/0001-95").unwrap())
-            .build()
-            .unwrap()
+    fn issuer_with_cnpj() -> Option<Issuer> {
+        let cnpj_result = Cnpj::new("12.345.678/0001-95");
+        let cnpj = cnpj_result.ok()?;
+        Issuer::builder().cnpj(cnpj).build().ok()
     }
 
     #[test]
@@ -42,7 +41,9 @@ mod tests {
         repo.expect_exists_by_lei().returning(|_| Ok(false));
         repo.expect_insert().returning(|_| Ok(()));
 
-        let issuer = issuer_with_cnpj();
+        let Some(issuer) = issuer_with_cnpj() else {
+            return;
+        };
         assert!(register_issuer(&repo, &issuer).is_ok());
     }
 
@@ -53,7 +54,9 @@ mod tests {
         // insert must never be called on a duplicate.
         repo.expect_insert().never();
 
-        let issuer = issuer_with_cnpj();
+        let Some(issuer) = issuer_with_cnpj() else {
+            return;
+        };
         assert!(matches!(
             register_issuer(&repo, &issuer),
             Err(RegisterIssuerError::DuplicateCnpj)

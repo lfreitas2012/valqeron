@@ -1,3 +1,13 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::as_conversions,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::unwrap_used
+    )
+)]
+
 mod cli;
 mod commands;
 mod config;
@@ -103,8 +113,11 @@ fn init_logging(
     config: &ValqeronConfig,
 ) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuard>> {
     let stderr_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(cli.log_level().to_string())
-            .add_directive("valqeron::audit=off".parse().expect("valid directive"))
+        let mut filter = EnvFilter::new(cli.log_level().to_string());
+        if let Ok(directive) = "valqeron::audit=off".parse() {
+            filter = filter.add_directive(directive);
+        }
+        filter
     });
 
     let stderr_layer = fmt::layer()

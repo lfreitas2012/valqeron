@@ -24,7 +24,7 @@ impl ProblemDetail {
     }
 
     pub fn exit_code(&self) -> i32 {
-        (self.status.min(255)) as i32
+        i32::from(self.status.min(255))
     }
 }
 
@@ -51,7 +51,7 @@ pub trait IntoProblem: std::error::Error {
             status: self.status(),
             detail: self.to_string(),
             extensions: self.extensions(),
-            causes: collect_causes(self as &dyn std::error::Error),
+            causes: collect_causes(self),
         }
     }
 }

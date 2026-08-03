@@ -20,8 +20,9 @@ pub enum WriteOutcome {
 }
 
 impl WriteOutcome {
-    pub fn applied(self) -> bool {
-        matches!(self, WriteOutcome::Applied)
+    #[must_use]
+    pub const fn applied(self) -> bool {
+        matches!(self, Self::Applied)
     }
 }
 
