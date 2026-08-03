@@ -1,8 +1,3 @@
-//! SQLite implementation of the issuer repository.
-//!
-//! Reads use the configured reader source. Writes use the serialized writer and retry transient
-//! SQLite busy or locked errors before converting failures to [`StorageFault`].
-
 use std::time::Duration;
 
 use crate::sqlite::connection::{Db, DbHandle};
@@ -14,22 +9,15 @@ use valqeron_core::{
     WriteOutcome,
 };
 
-/// Maximum attempts for a writer that encounters a busy or locked database.
 const BUSY_MAX_ATTEMPTS: u32 = 5;
 
-/// Base delay for busy retries; the delay grows linearly per attempt.
 const BUSY_BACKOFF_BASE: Duration = Duration::from_millis(10);
 
-/// [`IssuerRepository`] implementation for SQLite.
-///
-/// The [`DbHandle`] selects live or dry-run operation. In a dry-run, all operations use the
-/// connection held by the enclosing savepoint.
 pub struct SqliteIssuerRepository {
     db: DbHandle,
 }
 
 impl SqliteIssuerRepository {
-    /// Creates a repository over `db`.
     pub(crate) fn new(db: DbHandle) -> Self {
         Self { db }
     }
@@ -126,21 +114,10 @@ impl IssuerRepository for SqliteIssuerRepository {
     }
 }
 
-/// Wraps a raw SQLite error as the domain's opaque [`StorageFault`].
-///
-/// This includes constraint violations (`UNIQUE`/`CHECK`): those are domain invariants the domain
-/// layer enforces *before* the store (see [`valqeron_core::register_issuer`]). The DB constraints
-/// are only a defense-in-depth backstop, so if one fires it is an unexpected fault (typically a
-/// race), not a domain outcome.
 fn backend(e: rusqlite::Error) -> StorageFault {
     StorageFault::new(e)
 }
 
-/// Returns whether a SQLite error is a transient busy or locked condition.
-///
-/// `SQLITE_BUSY` can still surface after `busy_timeout` (e.g. cross-process writers), and
-/// `SQLITE_LOCKED` is not covered by `busy_timeout` at all — both are transient and safe to retry
-/// for an idempotent, self-contained write attempt.
 fn is_busy_or_locked(err: &rusqlite::Error) -> bool {
     matches!(
         err,
@@ -150,13 +127,6 @@ fn is_busy_or_locked(err: &rusqlite::Error) -> bool {
     )
 }
 
-/// Runs a write operation, retrying transient busy or locked errors with linear backoff.
-///
-/// The operation closure must (re)acquire the writer guard on each attempt so the lock is not held
-/// across the backoff sleep. Only raw busy/locked driver errors are retried; every other outcome —
-/// success, a [`WriteOutcome`], a constraint violation, or any other driver error — returns
-/// immediately without a retry. Retrying happens at the raw `rusqlite::Error` layer, so the transient
-/// condition is recognized before it is wrapped into an opaque [`StorageFault`].
 fn with_busy_retry<T>(op: impl Fn() -> rusqlite::Result<T>) -> rusqlite::Result<T> {
     let mut attempt = 0u32;
     loop {
@@ -176,10 +146,6 @@ fn with_busy_retry<T>(op: impl Fn() -> rusqlite::Result<T>) -> rusqlite::Result<
     }
 }
 
-/// Classifies a zero-row version-guarded writer as a version mismatch or missing row.
-///
-/// Must be called while still holding the writer lock, so the follow-up read is race-free with the
-/// preceding write attempt.
 fn write_outcome(
     conn: &Connection,
     id: &IssuerId,
@@ -284,8 +250,6 @@ mod tests {
 
     #[test]
     fn insert_duplicate_id_is_a_storage_fault() {
-        // Inserting a duplicate primary key trips the store's backstop; the domain layer is
-        // expected to prevent this beforehand, so at the port it surfaces as an opaque fault.
         let (_db, repo) = test_repo();
         let issuer = Issuer::builder().build().unwrap();
 
@@ -387,9 +351,6 @@ mod tests {
         let (_db, repo) = test_repo();
         let id = IssuerId::new();
         let original = Issuer::builder().id(id).build().unwrap();
-        // Stored timestamps are canonicalized to millisecond precision (truncated), so compare
-        // against the millis-truncated instant (the invariant under test is immutability across a
-        // full replace, not sub-millisecond fidelity).
         let created_at = original.created_at().trunc_subsecs(3);
         repo.insert(&original).unwrap();
 
@@ -436,8 +397,6 @@ mod tests {
 
     #[test]
     fn update_unique_collision_is_a_storage_fault() {
-        // A UNIQUE collision is the store's backstop firing; the domain enforces uniqueness before
-        // the store, so at the port a raw collision surfaces as an opaque fault.
         let (_db, repo) = test_repo();
 
         let a = Issuer::builder()
@@ -467,8 +426,6 @@ mod tests {
 
     #[test]
     fn insert_reconstituted_issuer_with_cnpj_and_non_br_country_is_a_storage_fault() {
-        // The CHECK backstop fires because `reconstitute` bypasses the aggregate's own validation;
-        // at the port this is an opaque fault, not a domain outcome.
         let (_db, repo) = test_repo();
         let id = IssuerId::new();
 
@@ -510,7 +467,6 @@ mod tests {
         );
     }
 
-    /// Insert `n` issuers and return their ids sorted ascending (the order `list_paged` yields).
     fn insert_sorted_ids(repo: &SqliteIssuerRepository, n: usize) -> Vec<IssuerId> {
         let mut ids: Vec<IssuerId> = Vec::with_capacity(n);
         for _ in 0..n {
@@ -581,7 +537,6 @@ mod tests {
 
     use std::cell::Cell;
 
-    /// Build a raw SQLITE_BUSY failure, as the retry helper sees before wrapping.
     fn busy_error() -> rusqlite::Error {
         let ffi = rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY);
         rusqlite::Error::SqliteFailure(ffi, Some("database is locked".into()))
@@ -593,11 +548,7 @@ mod tests {
         let result = with_busy_retry(|| {
             let n = attempts.get() + 1;
             attempts.set(n);
-            if n < 3 {
-                Err(busy_error()) // busy on the first two attempts
-            } else {
-                Ok(42)
-            }
+            if n < 3 { Err(busy_error()) } else { Ok(42) }
         });
         assert_eq!(result.unwrap(), 42);
         assert_eq!(attempts.get(), 3, "should have retried until success");
@@ -623,7 +574,7 @@ mod tests {
         let attempts = Cell::new(0u32);
         let result: rusqlite::Result<()> = with_busy_retry(|| {
             attempts.set(attempts.get() + 1);
-            Err(rusqlite::Error::QueryReturnedNoRows) // not a busy/locked condition
+            Err(rusqlite::Error::QueryReturnedNoRows)
         });
         assert!(matches!(result, Err(rusqlite::Error::QueryReturnedNoRows)));
         assert_eq!(attempts.get(), 1, "non-busy errors must not be retried");
@@ -656,7 +607,6 @@ mod tests {
         let (_db, repo) = test_repo();
         let ids = insert_sorted_ids(&repo, 5);
 
-        // Page through with limit 2: [0,1], [2,3], [4], [].
         let mut collected: Vec<IssuerId> = Vec::new();
         let mut after: Option<IssuerId> = None;
         loop {
@@ -690,7 +640,6 @@ mod tests {
         let (_db, repo) = test_repo();
         let ids = insert_sorted_ids(&repo, 5);
 
-        // Seek after ids[1] → should return ids[2], ids[3] (limit 2).
         let page = repo.list_paged(Some(ids[1]), 2).unwrap();
         let page_ids: Vec<IssuerId> = page.iter().map(|v| *v.data.id()).collect();
         assert_eq!(page_ids, ids[2..4]);

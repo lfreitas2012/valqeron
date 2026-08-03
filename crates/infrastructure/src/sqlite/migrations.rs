@@ -1,29 +1,11 @@
-//! Schema migrations for the SQLite driver.
-//!
-//! This module contains a list of SQL scripts that define the database schema and a function to
-//! apply them to a database connection. The scripts are ordered by schema version so that the
-//! database can be upgraded incrementally, e.g., from version 1 to 2, 2 to 3, etc.
-//!
-//! The scripts are embedded in the binary, and the binary's version number is used to determine
-//! which migrations to apply. This means that if the database schema changes, the binary must be
-//! upgraded, and the database must be re-migrated.
-
 use rusqlite::{Connection, TransactionBehavior};
 
 use crate::sqlite::error::SqliteError;
 
-/// Ordered list of embedded migration scripts.
 pub const MIGRATIONS: &[&str] = &[include_str!(
     "../../../../migrations/001_create_initial_issuer_schema.sql"
 )];
 
-/// Apply any pending migrations to `connection`, advancing `user_version` as it goes.
-/// Idempotent: already-applied migrations are skipped.
-///
-/// # Errors
-///
-/// Returns [`SqliteError::UnknownSchemaVersion`] if the on-disk schema is newer than the
-/// migrations this binary knows about, or [`SqliteError::Migration`] if a script fails to apply.
 pub fn run(connection: &mut Connection) -> Result<(), SqliteError> {
     fn migration_err(source: impl std::error::Error + Send + Sync + 'static) -> SqliteError {
         SqliteError::Migration {

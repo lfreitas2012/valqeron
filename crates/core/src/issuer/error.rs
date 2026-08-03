@@ -24,22 +24,14 @@ pub enum IssuerBuilderError {
     NameError(#[from] IssuerNameError),
 }
 
-/// Failure to register a new issuer.
-///
-/// Uniqueness of identifiers is a domain invariant, enforced by the registration use case
-/// ([`crate::register_issuer`]) rather than by the persistence backend. A duplicate is therefore a
-/// domain outcome, distinct from an opaque [`StorageFault`].
 #[derive(Debug, thiserror::Error)]
 pub enum RegisterIssuerError {
-    /// Another issuer already holds this CNPJ.
     #[error("an issuer with this CNPJ already exists")]
     DuplicateCnpj,
 
-    /// Another issuer already holds this LEI.
     #[error("an issuer with this LEI already exists")]
     DuplicateLei,
 
-    /// The persistence layer failed while checking or writing.
     #[error(transparent)]
     Storage(#[from] StorageFault),
 }

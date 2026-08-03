@@ -1,8 +1,3 @@
-//! RAII guards for repository read and write access.
-//!
-//! Both guards dereference to [`Connection`], regardless of whether the connection is pooled,
-//! mutex-locked, or borrowed during a dry-run.
-
 use rusqlite::Connection;
 
 use crate::sqlite::connection::pool::PooledReader;
@@ -11,7 +6,6 @@ use crate::sqlite::connection::pragmas::{
 };
 use crate::sqlite::connection::sync::MutexGuard;
 
-/// A reader connection held by a repository operation.
 pub(crate) enum ReadGuard<'a> {
     Pooled(PooledReader),
     Locked(MutexGuard<'a, Connection>),
@@ -42,7 +36,6 @@ impl std::ops::Deref for ReadGuard<'_> {
     }
 }
 
-/// A writer connection held by a repository operation.
 pub(crate) enum WriteGuard<'a> {
     Locked(MutexGuard<'a, Connection>),
     Borrowed(&'a Connection),
@@ -78,8 +71,6 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
 
-        // If the guard did not clear the handler, this statement would be interrupted because the
-        // operation budget expired while the guard was alive.
         let value: i64 = conn
             .query_row(
                 "WITH RECURSIVE counter(x) AS (

@@ -1,8 +1,3 @@
-//! Row mapping for the SQLite `issuer` table.
-//!
-//! [`IssuerRow`] implements [`FromRow`] and reconstructs a versioned domain [`Issuer`] from a
-//! query row.
-
 use rusqlite::Row;
 use valqeron_core::{Issuer, Versioned};
 
@@ -12,15 +7,10 @@ use crate::sqlite::issuer::mapping::{
 };
 use crate::sqlite::row::FromRow;
 
-/// An `issuer` row with its optimistic-locking version.
-///
-/// Selection queries must project the columns:
-/// `id, name, status, created_at, cnpj, lei, country_code, version`.
 #[derive(Debug)]
 pub(crate) struct IssuerRow(pub Versioned<Issuer>);
 
 impl IssuerRow {
-    /// Consumes the row and returns the versioned issuer.
     pub(crate) fn into_inner(self) -> Versioned<Issuer> {
         self.0
     }
@@ -54,8 +44,6 @@ mod tests {
     use std::str::FromStr;
     use valqeron_core::{IssuerId, IssuerStatus};
 
-    /// Insert a fully populated issuer directly, then round-trip it back through
-    /// [`IssuerRow::from_row`] to prove every column maps correctly.
     #[test]
     fn issuer_row_round_trips_all_columns() {
         let db = Database::open_in_memory().unwrap();
@@ -108,7 +96,6 @@ mod tests {
         assert_eq!(version, 7);
     }
 
-    /// Optional columns that are NULL must map to `None`, not errors.
     #[test]
     fn issuer_row_maps_null_optionals_to_none() {
         let db = Database::open_in_memory().unwrap();
@@ -142,14 +129,11 @@ mod tests {
         assert_eq!(issuer.status(), IssuerStatus::Active);
     }
 
-    /// An unparseable status column surfaces a conversion failure rather than a panic.
     #[test]
     fn issuer_row_rejects_invalid_status() {
         let db = Database::open_in_memory().unwrap();
         let handle = db.handle();
 
-        // Bypass the CHECK constraint is not possible here, so assert the mapping
-        // helper itself rejects bad input via a crafted query returning a literal.
         let conn = handle.read();
         let result: rusqlite::Result<IssuerRow> = conn.query_row(
             "SELECT randomblob(16) AS id, NULL AS name, 'BOGUS' AS status,
