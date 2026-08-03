@@ -1,26 +1,60 @@
-[package]
-name = "valqeron-core"
-version = "0.1.0"
+[workspace]
+resolver = "3"
+members = [
+    "crates/core",
+    "crates/infrastructure",
+    "crates/cli",
+]
+
+[workspace.package]
 edition = "2024"
+rust-version = "1.93.0"
 license = "MIT OR Apache-2.0"
+authors = ["Leonardo Freitas"]
+version = "0.1.0"
 
+[workspace.dependencies]
+valqeron-core = { path = "crates/core" }
+valqeron-cli = { path = "crates/cli" }
+valqeron-infrastructure = { path = "crates/infrastructure" }
 
-[dependencies]
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
 chrono = { version = "0.4" }
 ftracker-identifiers = { version = "0.0.3" }
 anyhow = "1.0.104"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-rusqlite = { version = "0.40.1", features = ["bundled"] }
-
-
-[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+rusqlite = { version = "0.40.1", features = ["bundled", "hooks"] }
 mockall = "0.15.0"
 tempfile = "3"
+loom = "0.7"
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+directories = "6"
 
 [profile.release]
 codegen-units = 1
 lto = "fat"
 opt-level = 3
+
+[workspace.lints.clippy]
+#pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+unreachable = "deny"
+unimplemented = "deny"
+unchecked_time_subtraction = "deny"
+todo = "deny"
+string_slice = "deny"
+panic_in_result_fn = "deny"
+panic = "deny"
+exit = "deny"
+as_conversions = "deny"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }

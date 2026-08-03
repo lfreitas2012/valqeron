@@ -1,4 +1,5 @@
-use crate::issuer::IssuerId;
+use crate::storage::StorageFault;
+use ftracker_identifiers::CountryCodeError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum IssuerNameError {
@@ -22,16 +23,19 @@ pub enum IssuerBuilderError {
 
     #[error("Issuer name validation failed: {0}")]
     NameError(#[from] IssuerNameError),
+
+    #[error("country code validation failed: {0}")]
+    CountryCodeError(#[from] CountryCodeError),
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum IssuerRepositoryError {
-    #[error("constraint violation: {0}")]
-    Conflict(String),
+pub enum RegisterIssuerError {
+    #[error("an issuer with this CNPJ already exists")]
+    DuplicateCnpj,
+
+    #[error("an issuer with this LEI already exists")]
+    DuplicateLei,
 
     #[error(transparent)]
-    Infrastructure(#[from] anyhow::Error),
-
-    #[error("issuer {0:?} not found")]
-    NotFound(IssuerId),
+    Storage(#[from] StorageFault),
 }

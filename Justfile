@@ -7,6 +7,10 @@ test:
     cargo install cargo-llvm-cov --locked
     cargo llvm-cov
 
+# Run all loom tests
+test-loom:
+    RUSTFLAGS="--cfg loom" cargo test -p valqeron-infrastructure --lib loom_tests
+
 # Check Rust code formatting without modifying files
 format-check:
     cargo fmt --all -- --check
