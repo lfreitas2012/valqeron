@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/infrastructure",
     "crates/cli",
+    "crates/identifiers",
 ]
 
 [workspace.package]
@@ -17,6 +18,7 @@ version = "0.1.0"
 valqeron-core = { path = "crates/core" }
 valqeron-cli = { path = "crates/cli" }
 valqeron-infrastructure = { path = "crates/infrastructure" }
+valqeron-identifiers = { path = "crates/identifiers" }
 
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }

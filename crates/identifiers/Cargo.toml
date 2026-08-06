@@ -1,0 +1,65 @@
+[package]
+name = "valqeron-identifiers"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"], default-features = false, optional = true }
+schemars = { version = "1", default-features = false, optional = true }
+arbitrary = { version = "1", features = ["derive"], optional = true }
+proptest = { version = "1", default-features = false, optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+criterion = "0.8.2"
+proptest = "1"
+serde_json = "1"
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+
+std = [
+    "serde?/std",
+    "schemars?/std",
+    "proptest?/std",
+]
+
+serde = ["dep:serde"]
+schemars = ["dep:schemars", "serde"]
+arbitrary = ["dep:arbitrary"]
+proptest = ["dep:proptest", "proptest/alloc", "proptest/no_std"]
+codegen = ["dep:serde_json"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[[bench]]
+name = "cnpj_benches"
+harness = false
+
+[[bench]]
+name = "isin_benches"
+harness = false
+
+[[bench]]
+name = "cfi_benches"
+harness = false
+
+[[bench]]
+name = "country_benches"
+harness = false
+
+[[bench]]
+name = "lei_benches"
+harness = false
+
+[[bin]]
+name = "generate_cfi_table"
+required-features = ["codegen"]
