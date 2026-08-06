@@ -40,9 +40,9 @@ impl FromRow for IssuerRow {
 mod tests {
     use super::*;
     use crate::sqlite::connection::{Database, Db};
-    use ftracker_identifiers::{Cnpj, CountryCode};
     use std::str::FromStr;
     use valqeron_core::{IssuerId, IssuerStatus};
+    use valqeron_identifiers::{Cnpj, CountryCode};
 
     #[test]
     fn issuer_row_round_trips_all_columns() {

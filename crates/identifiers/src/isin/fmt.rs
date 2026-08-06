@@ -22,8 +22,8 @@ impl fmt::Debug for Isin {
 #[cfg(test)]
 mod tests {
     use crate::isin::Isin;
-    use alloc::format;
-    use alloc::string::ToString;
+    use std::format;
+    use std::string::ToString;
 
     #[test]
     fn display_is_the_canonical_string() {

@@ -84,8 +84,8 @@ impl fmt::Debug for Cnpj {
 #[cfg(test)]
 mod tests {
     use crate::cnpj::Cnpj;
-    use alloc::format;
-    use alloc::string::ToString;
+    use std::format;
+    use std::string::ToString;
 
     #[test]
     fn formats_numeric_cnpj() {

@@ -3,7 +3,7 @@
 //!
 //! This module has no knowledge of the original user input or of formatting; that is
 //! [`super::parser`]'s job. Everything here operates on a `[u8; 12]` and is pure,
-//! `#[no_std]`-friendly arithmetic.
+//! standard-library arithmetic.
 //!
 //! # Checksum
 //!
@@ -166,7 +166,7 @@ mod tests {
     /// [`compute_check_digit`]: it materializes the full expanded digit buffer instead of doing a
     /// single reverse pass.
     fn reference_check_digit(base: &str) -> u8 {
-        let mut digits = alloc::vec::Vec::new();
+        let mut digits = std::vec::Vec::new();
         for &c in base.as_bytes() {
             if c.is_ascii_digit() {
                 digits.push((c - b'0') as u32);

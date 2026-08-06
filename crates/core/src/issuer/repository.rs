@@ -1,9 +1,9 @@
 use crate::issuer::patch::IssuerPatch;
 use crate::issuer::{Issuer, IssuerId};
 use crate::storage::StorageFault;
-use ftracker_identifiers::{Cnpj, Lei};
 use std::rc::Rc;
 use std::sync::Arc;
+use valqeron_identifiers::{Cnpj, Lei};
 
 use crate::common::Versioned;
 

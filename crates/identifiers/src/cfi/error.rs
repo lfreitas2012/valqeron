@@ -2,11 +2,11 @@ use core::fmt;
 
 /// The set of reasons a CFI string can fail validation.
 ///
-/// Every fallible constructor of [`Cfi`](super::Cfi) returns this type. Unlike CNPJ or ISIN, a CFI
-/// carries no checksum; instead its validity is defined by the ISO 10962 code taxonomy, so beyond
-/// the structural checks there are three *taxonomic* failure modes ([`CfiError::UnknownCategory`],
-/// [`CfiError::UnknownGroup`], [`CfiError::InvalidAttribute`]). Each variant maps to a single,
-/// specific failure so callers can react programmatically rather than parsing a message.
+/// Every fallible constructor of [`Cfi`](super::Cfi) returns this type. CFI carries no checksum;
+/// instead, its validity is defined by the ISO 10962 code taxonomy, so beyond the structural checks
+/// there are three *taxonomic* failure modes ([`CfiError::UnknownCategory`], [`CfiError::UnknownGroup`],
+/// [`CfiError::InvalidAttribute`]). Each variant maps to a single, specific failure, so callers can
+/// react programmatically rather than parsing a message.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CfiError {

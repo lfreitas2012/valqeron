@@ -5,6 +5,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 version.workspace = true
+publish = false
 
 [dependencies]
 serde = { version = "1", features = ["derive"], default-features = false, optional = true }
@@ -22,23 +23,11 @@ serde_json = "1"
 workspace = true
 
 [features]
-default = ["std"]
-
-std = [
-    "serde?/std",
-    "schemars?/std",
-    "proptest?/std",
-]
-
 serde = ["dep:serde"]
 schemars = ["dep:schemars", "serde"]
 arbitrary = ["dep:arbitrary"]
-proptest = ["dep:proptest", "proptest/alloc", "proptest/no_std"]
+proptest = ["dep:proptest"]
 codegen = ["dep:serde_json"]
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [[bench]]
 name = "cnpj_benches"

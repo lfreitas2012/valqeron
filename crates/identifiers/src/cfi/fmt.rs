@@ -22,8 +22,8 @@ impl fmt::Debug for Cfi {
 #[cfg(test)]
 mod tests {
     use crate::cfi::Cfi;
-    use alloc::format;
-    use alloc::string::ToString;
+    use std::format;
+    use std::string::ToString;
 
     #[test]
     fn display_is_the_canonical_string() {

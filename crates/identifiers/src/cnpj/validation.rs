@@ -2,7 +2,7 @@
 //! uppercase, punctuation already stripped).
 //!
 //! This module has no knowledge of the original user input or of formatting; that is [`super::parser`]'s job.
-//! Everything here operates on a `[u8; 14]` and is pure, `#[no_std]`-friendly arithmetic.
+//! Everything here operates on a `[u8; 14]` and is pure, standard-library arithmetic.
 
 use super::error::{CharacterClass, CnpjError};
 

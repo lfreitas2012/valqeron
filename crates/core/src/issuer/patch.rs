@@ -1,6 +1,6 @@
 use crate::issuer::{IssuerName, IssuerStatus};
-use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use std::marker::PhantomData;
+use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
 #[derive(Debug, Clone)]
 pub struct IssuerPatch {

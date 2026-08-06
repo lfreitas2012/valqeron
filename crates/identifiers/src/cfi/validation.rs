@@ -9,7 +9,7 @@
 //! A CFI has no check digit. A CFI is valid exactly when its letters describe a combination defined
 //! by ISO 10962: a known category (position 1), a known group within it (position 2), and, for each
 //! of the four attribute positions (3–6), a code the standard permits for that category and group.
-//! Those permitted combinations are embedded as the generated, `no_std` lookup table
+//! Those permitted combinations are embedded as the generated, lookup table
 //! in [`super::table`]; validation is a handful of allocation-free binary searches and bitmask
 //! tests against it.
 

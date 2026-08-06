@@ -6,8 +6,8 @@
 
 use super::Isin;
 use super::validation::{ALPHANUMERIC, BASE_LEN, LETTERS, build_valid_isin_bytes};
-use alloc::string::{String, ToString};
 use proptest::prelude::{Strategy, prop};
+use std::string::{String, ToString};
 
 /// A strategy producing structurally valid, checksum-correct [`Isin`] values: a two-letter country
 /// code, a nine-character alphanumeric NSIN, and a matching Luhn check digit.

@@ -65,7 +65,7 @@
 //! - **No invalid state is representable.** [`Lei`]'s only field is private; the only ways to obtain
 //!   one is through [`Lei::parse`], [`Lei::new`], [`Lei::from_bytes`], [`FromStr`], and
 //!   [`TryFrom<&str>`]; all run full validation. There is no unchecked constructor.
-//! - **Zero allocation, `Copy`, `no_std`-friendly.** [`Lei`] is a 20-byte value type wrapping
+//! - **Zero allocation, `Copy`, allocation-free.** [`Lei`] is a 20-byte value type wrapping
 //!   `[u8; 20]`. Parsing, validating, and every accessor operate on the stack.
 //! - **Ordering and hashing are byte-wise.** [`Lei`] derives [`Ord`] and [`Hash`] directly over its
 //!   ASCII bytes, which matches [`str`] ordering on [`Lei::as_str`]. This is lexicographic string
@@ -85,7 +85,7 @@
 //!   string (`^[A-Z0-9]{18}[0-9]{2}$`). Implies `serde`.
 //! - **`arbitrary`**: implements `Arbitrary` for [`Lei`], generating structurally valid,
 //!   checksum-correct values for fuzz targets.
-//! - **`proptest`**: exposes reusable `proptest` strategies (`ftracker_identifiers::lei::proptest`,
+//! - **`proptest`**: exposes reusable `proptest` strategies (`valqeron_identifiers::lei::proptest`,
 //!   when this feature is enabled) for generating checksum-valid [`Lei`] values.
 //!
 //! # Error handling
@@ -95,7 +95,7 @@
 //! error-aggregation crates alike:
 //!
 //! ```
-//! use ftracker_identifiers::{Lei, LeiError};
+//! use valqeron_identifiers::{Lei, LeiError};
 //!
 //! match Lei::parse("5493000IBP32UQZ0KL25") {
 //!     Ok(lei) => println!("valid: {lei}"),
@@ -109,7 +109,7 @@
 //! # Examples
 //!
 //! ```
-//! use ftracker_identifiers::Lei;
+//! use valqeron_identifiers::Lei;
 //!
 //! let bbc = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
 //! assert_eq!(bbc.lou_prefix(), "5493");
@@ -121,7 +121,7 @@
 //! Sorting and deduplicating a batch of LEIs, e.g. after importing them from a spreadsheet:
 //!
 //! ```
-//! use ftracker_identifiers::Lei;
+//! use valqeron_identifiers::Lei;
 //!
 //! let mut leis: Vec<Lei> = ["213800WSGIIZCXF1P572", "5493000IBP32UQZ0KL24", "5493000IBP32UQZ0KL24"]
 //!     .into_iter()
@@ -148,9 +148,6 @@ mod arbitrary;
 
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
-
-#[cfg(test)]
-mod tests;
 
 pub use error::LeiError;
 
@@ -197,7 +194,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// assert!(Lei::parse("5493000IBP32UQZ0KL24").is_ok());
     /// assert!(Lei::parse("5493000ibp32uqz0kl24").is_ok()); // lowercase is folded automatically
@@ -218,7 +215,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// assert_eq!(Lei::new("5493000IBP32UQZ0KL24"), Lei::parse("5493000IBP32UQZ0KL24"));
     /// ```
@@ -241,7 +238,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::from_bytes(*b"5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.as_str(), "5493000IBP32UQZ0KL24");
@@ -259,7 +256,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.as_bytes(), b"5493000IBP32UQZ0KL24");
@@ -277,7 +274,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.as_str(), "5493000IBP32UQZ0KL24");
@@ -295,7 +292,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.lou_prefix(), "5493");
@@ -311,7 +308,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.entity_id(), "000IBP32UQZ0KL");
@@ -329,7 +326,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.check_digits(), 24);
@@ -349,7 +346,7 @@ impl Lei {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Lei;
+    /// use valqeron_identifiers::Lei;
     ///
     /// let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
     /// assert_eq!(lei.computed_check_digits(), lei.check_digits());

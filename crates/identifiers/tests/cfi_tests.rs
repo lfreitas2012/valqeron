@@ -1,9 +1,8 @@
-use super::{Cfi, CfiError};
-
 const EQUITY: &str = "ESVUFR";
 
 mod construction {
     use super::*;
+    use valqeron_identifiers::{Cfi, CfiError};
 
     #[test]
     fn parse_accepts_canonical_input() {
@@ -51,6 +50,7 @@ mod construction {
 
 mod accessors {
     use super::*;
+    use valqeron_identifiers::Cfi;
 
     #[test]
     fn exposes_segments() {
@@ -69,7 +69,7 @@ mod accessors {
 }
 
 mod taxonomy_rejections {
-    use super::*;
+    use valqeron_identifiers::{Cfi, CfiError};
 
     #[test]
     fn unknown_category() {
@@ -117,7 +117,7 @@ mod taxonomy_rejections {
 
 mod traits {
     use super::*;
-    use alloc::string::ToString;
+    use valqeron_identifiers::{Cfi, CfiError};
 
     #[test]
     fn from_str_matches_parse() {

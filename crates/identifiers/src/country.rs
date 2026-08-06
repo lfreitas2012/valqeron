@@ -41,7 +41,7 @@
 //!   obtain one ([`CountryCode::parse`], [`CountryCode::new`], [`CountryCode::from_bytes`],
 //!   [`FromStr`], and [`TryFrom<&str>`]) runs full validation. There is no unchecked constructor.
 //! * It is zero allocation and `Copy`. [`CountryCode`] is a two byte value that wraps `[u8; 2]`. It
-//!   works in `no_std` environments. Parsing, validation, and every accessor operate on the stack.
+//!   works in standard-library environments. Parsing, validation, and every accessor operate on the stack.
 //!   The assignment check computes one array index and tests one bit.
 //! * Ordering and hashing operate over the raw ASCII bytes. This matches [`str`] ordering on
 //!   [`CountryCode::as_str`], which is lexicographic and carries no geographic meaning.
@@ -62,7 +62,7 @@
 //!   letter codes are assigned, so validity is enforced on deserialization. Implies `serde`.
 //! * `arbitrary`: implements `Arbitrary` for [`CountryCode`], generating officially assigned codes
 //!   for fuzz targets.
-//! * `proptest`: exposes reusable `proptest` strategies (`ftracker_identifiers::country::proptest`,
+//! * `proptest`: exposes reusable `proptest` strategies (`valqeron_identifiers::country::proptest`,
 //!   when this feature is enabled) for generating valid [`CountryCode`] values.
 //!
 //! # Error handling
@@ -72,7 +72,7 @@
 //! error aggregation crates alike:
 //!
 //! ```
-//! use ftracker_identifiers::{CountryCode, CountryCodeError};
+//! use valqeron_identifiers::{CountryCode, CountryCodeError};
 //!
 //! match CountryCode::parse("ZZ") {
 //!     Ok(code) => println!("valid: {code}"),
@@ -86,7 +86,7 @@
 //! # Examples
 //!
 //! ```
-//! use ftracker_identifiers::CountryCode;
+//! use valqeron_identifiers::CountryCode;
 //!
 //! let code = CountryCode::parse("us").unwrap(); // lowercase is folded automatically
 //! assert_eq!(code.as_str(), "US");
@@ -96,7 +96,7 @@
 //! Sorting and deduplicating a batch of codes, for example after importing them from a spreadsheet:
 //!
 //! ```
-//! use ftracker_identifiers::CountryCode;
+//! use valqeron_identifiers::CountryCode;
 //!
 //! let mut codes: Vec<CountryCode> = ["US", "BR", "US"]
 //!     .into_iter()
@@ -124,9 +124,6 @@ mod arbitrary;
 
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
-
-#[cfg(test)]
-mod tests;
 
 pub use error::CountryCodeError;
 
@@ -172,7 +169,7 @@ impl CountryCode {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::CountryCode;
+    /// use valqeron_identifiers::CountryCode;
     ///
     /// assert!(CountryCode::parse("US").is_ok());
     /// assert!(CountryCode::parse("us").is_ok()); // lowercase is folded automatically
@@ -193,7 +190,7 @@ impl CountryCode {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::CountryCode;
+    /// use valqeron_identifiers::CountryCode;
     ///
     /// assert_eq!(CountryCode::new("US"), CountryCode::parse("US"));
     /// ```
@@ -216,7 +213,7 @@ impl CountryCode {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::CountryCode;
+    /// use valqeron_identifiers::CountryCode;
     ///
     /// let code = CountryCode::from_bytes(*b"US").unwrap();
     /// assert_eq!(code.as_str(), "US");
@@ -234,7 +231,7 @@ impl CountryCode {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::CountryCode;
+    /// use valqeron_identifiers::CountryCode;
     ///
     /// let code = CountryCode::parse("US").unwrap();
     /// assert_eq!(code.as_bytes(), b"US");
@@ -252,7 +249,7 @@ impl CountryCode {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::CountryCode;
+    /// use valqeron_identifiers::CountryCode;
     ///
     /// let code = CountryCode::parse("US").unwrap();
     /// assert_eq!(code.as_str(), "US");

@@ -50,7 +50,7 @@
 //! - **No invalid state is representable.** [`Isin`]'s only field is private; the only ways to
 //!   obtain one — [`Isin::parse`], [`Isin::new`], [`Isin::from_bytes`], [`FromStr`], and
 //!   [`TryFrom<&str>`] — all run full validation. There is no unchecked constructor.
-//! - **Zero allocation, `Copy`, `no_std`-friendly.** [`Isin`] is a 12-byte value type wrapping
+//! - **Zero allocation, `Copy`, allocation-free.** [`Isin`] is a 12-byte value type wrapping
 //!   `[u8; 12]`. Parsing, validating, and every accessor operate on the stack.
 //! - **Ordering and hashing are byte-wise.** [`Isin`] derives [`Ord`] and [`Hash`] directly over
 //!   its ASCII bytes, which matches [`str`] ordering on [`Isin::as_str`]. This is lexicographic
@@ -70,7 +70,7 @@
 //!   string (`^[A-Z]{2}[A-Z0-9]{9}[0-9]$`). Implies `serde`.
 //! - **`arbitrary`** — implements `Arbitrary` for [`Isin`], generating structurally valid,
 //!   checksum-correct values for fuzz targets.
-//! - **`proptest`** — exposes reusable `proptest` strategies (`ftracker_identifiers::isin::proptest`,
+//! - **`proptest`** — exposes reusable `proptest` strategies (`valqeron_identifiers::isin::proptest`,
 //!   when this feature is enabled) for generating checksum-valid [`Isin`] values.
 //!
 //! # Error handling
@@ -80,7 +80,7 @@
 //! error-aggregation crates alike:
 //!
 //! ```
-//! use ftracker_identifiers::{Isin, IsinError};
+//! use valqeron_identifiers::{Isin, IsinError};
 //!
 //! match Isin::parse("US0378331006") {
 //!     Ok(isin) => println!("valid: {isin}"),
@@ -94,7 +94,7 @@
 //! # Examples
 //!
 //! ```
-//! use ftracker_identifiers::Isin;
+//! use valqeron_identifiers::Isin;
 //!
 //! let apple = Isin::parse("US0378331005").unwrap();
 //! assert_eq!(apple.country_code(), "US");
@@ -106,7 +106,7 @@
 //! Sorting and deduplicating a batch of ISINs, e.g. after importing them from a spreadsheet:
 //!
 //! ```
-//! use ftracker_identifiers::Isin;
+//! use valqeron_identifiers::Isin;
 //!
 //! let mut isins: Vec<Isin> = ["US0231351067", "US0378331005", "US0378331005"]
 //!     .into_iter()
@@ -133,9 +133,6 @@ mod arbitrary;
 
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
-
-#[cfg(test)]
-mod tests;
 
 pub use error::IsinError;
 
@@ -181,7 +178,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// assert!(Isin::parse("US0378331005").is_ok());
     /// assert!(Isin::parse("us0378331005").is_ok()); // lowercase is folded automatically
@@ -202,7 +199,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// assert_eq!(Isin::new("US0378331005"), Isin::parse("US0378331005"));
     /// ```
@@ -225,7 +222,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::from_bytes(*b"US0378331005").unwrap();
     /// assert_eq!(isin.as_str(), "US0378331005");
@@ -243,7 +240,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(isin.as_bytes(), b"US0378331005");
@@ -261,7 +258,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(isin.as_str(), "US0378331005");
@@ -278,7 +275,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(isin.country_code(), "US");
@@ -302,7 +299,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::{Isin, CountryCode};
+    /// use valqeron_identifiers::{Isin, CountryCode};
     ///
     /// let apple = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(apple.country(), Some(CountryCode::parse("US").unwrap()));
@@ -318,7 +315,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(isin.nsin(), "037833100");
@@ -336,7 +333,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(isin.check_digit(), 5);
@@ -356,7 +353,7 @@ impl Isin {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Isin;
+    /// use valqeron_identifiers::Isin;
     ///
     /// let isin = Isin::parse("US0378331005").unwrap();
     /// assert_eq!(isin.computed_check_digit(), isin.check_digit());

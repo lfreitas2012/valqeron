@@ -32,7 +32,7 @@
 //!
 //! Unlike [`Cnpj`](crate::Cnpj) (Módulo 11) or [`Isin`](crate::Isin) (Luhn), a CFI carries no check
 //! digit. Its validity is defined entirely by the ISO 10962 code taxonomy, which this crate embeds
-//! as a generated, `no_std` lookup table. Every fallible constructor runs the same rules, in order,
+//! as a generated, lookup table. Every fallible constructor runs the same rules, in order,
 //! and each maps to one [`CfiError`] variant:
 //!
 //! 1. **Length** — after surrounding whitespace is trimmed, the input must contain exactly 6
@@ -55,7 +55,7 @@
 //! - **No invalid state is representable.** [`Cfi`]'s only field is private; the only ways to
 //!   obtain one — [`Cfi::parse`], [`Cfi::new`], [`Cfi::from_bytes`], [`FromStr`], and
 //!   [`TryFrom<&str>`] — all run full validation. There is no unchecked constructor.
-//! - **Zero allocation, `Copy`, `no_std`-friendly.** [`Cfi`] is a 6-byte value type wrapping
+//! - **Zero allocation, `Copy`, allocation-free.** [`Cfi`] is a 6-byte value type wrapping
 //!   `[u8; 6]`. Parsing, validating, and every accessor operate on the stack; the taxonomy lookup
 //!   is a couple of binary searches and bitmask tests over a `static` table.
 //! - **Ordering and hashing are byte-wise.** [`Cfi`] derives [`Ord`] and [`Hash`] directly over its
@@ -77,7 +77,7 @@
 //!   taxonomically valid. Implies `serde`.
 //! - **`arbitrary`** — implements `Arbitrary` for [`Cfi`], generating taxonomically valid values for
 //!   fuzz targets by walking the embedded table.
-//! - **`proptest`** — exposes reusable `proptest` strategies (`ftracker_identifiers::cfi::proptest`,
+//! - **`proptest`** — exposes reusable `proptest` strategies (`valqeron_identifiers::cfi::proptest`,
 //!   when this feature is enabled) for generating valid [`Cfi`] values.
 //!
 //! # Error handling
@@ -87,7 +87,7 @@
 //! error-aggregation crates alike:
 //!
 //! ```
-//! use ftracker_identifiers::{Cfi, CfiError};
+//! use valqeron_identifiers::{Cfi, CfiError};
 //!
 //! match Cfi::parse("ESZUFR") {
 //!     Ok(cfi) => println!("valid: {cfi}"),
@@ -101,7 +101,7 @@
 //! # Examples
 //!
 //! ```
-//! use ftracker_identifiers::Cfi;
+//! use valqeron_identifiers::Cfi;
 //!
 //! let cfi = Cfi::parse("ESVUFR").unwrap();
 //! assert_eq!(cfi.category(), 'E');
@@ -113,7 +113,7 @@
 //! Sorting and deduplicating a batch of CFIs, e.g. after importing them from a spreadsheet:
 //!
 //! ```
-//! use ftracker_identifiers::Cfi;
+//! use valqeron_identifiers::Cfi;
 //!
 //! let mut cfis: Vec<Cfi> = ["ESVUFR", "DBFTFB", "ESVUFR"]
 //!     .into_iter()
@@ -141,9 +141,6 @@ mod arbitrary;
 
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
-
-#[cfg(test)]
-mod tests;
 
 pub use error::CfiError;
 
@@ -190,7 +187,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// assert!(Cfi::parse("ESVUFR").is_ok());
     /// assert!(Cfi::parse("esvufr").is_ok()); // lowercase is folded automatically
@@ -211,7 +208,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// assert_eq!(Cfi::new("ESVUFR"), Cfi::parse("ESVUFR"));
     /// ```
@@ -233,7 +230,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// let cfi = Cfi::from_bytes(*b"ESVUFR").unwrap();
     /// assert_eq!(cfi.as_str(), "ESVUFR");
@@ -251,7 +248,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// let cfi = Cfi::parse("ESVUFR").unwrap();
     /// assert_eq!(cfi.as_bytes(), b"ESVUFR");
@@ -269,7 +266,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// let cfi = Cfi::parse("ESVUFR").unwrap();
     /// assert_eq!(cfi.as_str(), "ESVUFR");
@@ -286,7 +283,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// let cfi = Cfi::parse("ESVUFR").unwrap();
     /// assert_eq!(cfi.category(), 'E');
@@ -302,7 +299,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// let cfi = Cfi::parse("ESVUFR").unwrap();
     /// assert_eq!(cfi.group(), 'S');
@@ -318,7 +315,7 @@ impl Cfi {
     /// # Examples
     ///
     /// ```
-    /// use ftracker_identifiers::Cfi;
+    /// use valqeron_identifiers::Cfi;
     ///
     /// let cfi = Cfi::parse("ESVUFR").unwrap();
     /// assert_eq!(cfi.attributes(), ['V', 'U', 'F', 'R']);

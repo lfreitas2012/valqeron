@@ -3,7 +3,7 @@
 //!
 //! This module has no knowledge of the original user input or of formatting; that is
 //! [`super::parser`]'s job. Everything here operates on a `[u8; 20]` and is pure,
-//! `#[no_std]`-friendly arithmetic.
+//! standard-library arithmetic.
 //!
 //! # Checksum
 //!
@@ -187,7 +187,7 @@ mod tests {
     /// [`compute_check_digits`]: it materializes the full expanded decimal string and reduces it
     /// digit by digit, independent of the folding in `fold_mod_97`.
     fn reference_check_digits(base: &str) -> u8 {
-        let mut expanded = alloc::string::String::new();
+        let mut expanded = std::string::String::new();
         for &c in base.as_bytes() {
             if c.is_ascii_digit() {
                 expanded.push(c as char);

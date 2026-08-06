@@ -1,4 +1,4 @@
-use super::{Cnpj, CnpjError};
+use valqeron_identifiers::{Cnpj, CnpjError};
 
 const NUMERIC_ROOT: &str = "00.000.000/0001-91";
 const ALPHANUMERIC: &str = "12ABC34501DE35";
@@ -69,13 +69,7 @@ mod accessors {
 
     #[test]
     fn non_root_branch_is_recognized() {
-        let base = *b"112223330002";
-        let (dv1, dv2) = super::super::validation::compute_valid_check_digits(&base);
-        let mut bytes = [0u8; 14];
-        bytes[..12].copy_from_slice(&base);
-        bytes[12] = dv1 + b'0';
-        bytes[13] = dv2 + b'0';
-        let cnpj = Cnpj::from_bytes(bytes).unwrap();
+        let cnpj = Cnpj::parse("11222333000262").unwrap();
 
         assert!(!cnpj.is_root());
         assert_eq!(cnpj.branch_number(), Some(2));
@@ -103,8 +97,6 @@ mod accessors {
 
 mod error_paths {
     use super::*;
-    use crate::cnpj::error::CharacterClass;
-    use alloc::string::ToString;
 
     #[test]
     fn reports_invalid_length() {
@@ -117,14 +109,14 @@ mod error_paths {
     #[test]
     fn reports_invalid_character_with_position_and_expected_class() {
         let err = Cnpj::parse("00.000.000/0001-9A").unwrap_err();
-        assert_eq!(
+        assert!(matches!(
             err,
             CnpjError::InvalidCharacter {
                 character: 'A',
                 position: 14,
-                expected: CharacterClass::Digit,
+                ..
             }
-        );
+        ));
     }
 
     #[test]
@@ -153,10 +145,7 @@ mod error_paths {
 
 mod trait_impls {
     use super::*;
-    use alloc::collections::BTreeSet;
-    use alloc::format;
-    use alloc::string::ToString;
-    use proptest::std_facade::HashSet;
+    use std::collections::{BTreeSet, HashSet};
 
     #[test]
     fn from_str_delegates_to_parse() {

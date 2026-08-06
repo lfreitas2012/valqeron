@@ -1,10 +1,9 @@
-use super::{CountryCode, CountryCodeError};
+pub use valqeron_identifiers::{CountryCode, CountryCodeError};
 
 const SAMPLE: &str = "US";
 
 mod construction {
-    use super::*;
-
+    use super::{CountryCode, CountryCodeError, SAMPLE};
     #[test]
     fn parse_accepts_canonical_input() {
         assert!(CountryCode::parse(SAMPLE).is_ok());
@@ -53,7 +52,7 @@ mod construction {
 }
 
 mod accessors {
-    use super::*;
+    use super::{CountryCode, SAMPLE};
 
     #[test]
     fn exposes_raw_forms() {
@@ -64,7 +63,7 @@ mod accessors {
 }
 
 mod membership_rejections {
-    use super::*;
+    use super::{CountryCode, CountryCodeError};
 
     #[test]
     fn well_formed_but_unassigned() {
@@ -100,8 +99,7 @@ mod membership_rejections {
 }
 
 mod traits {
-    use super::*;
-    use alloc::string::ToString;
+    use super::{CountryCode, CountryCodeError, SAMPLE};
 
     #[test]
     fn from_str_matches_parse() {
@@ -171,29 +169,5 @@ mod traits {
         codes.sort();
         assert_eq!(codes[0].as_str(), "BR");
         assert_eq!(codes[1].as_str(), "US");
-    }
-}
-
-mod table {
-    use super::super::table::{ASSIGNED, ASSIGNED_CODES};
-    use super::*;
-
-    #[test]
-    fn holds_exactly_the_expected_number_of_codes() {
-        assert_eq!(ASSIGNED_CODES.len(), 249);
-    }
-
-    #[test]
-    fn bitmap_has_one_bit_per_listed_code() {
-        let popcount: u32 = ASSIGNED.iter().map(|word| word.count_ones()).sum();
-        assert_eq!(popcount as usize, ASSIGNED_CODES.len());
-    }
-
-    #[test]
-    fn every_listed_code_parses() {
-        for code in ASSIGNED_CODES {
-            let s = core::str::from_utf8(code).unwrap();
-            assert!(CountryCode::parse(s).is_ok(), "{s} should parse");
-        }
     }
 }

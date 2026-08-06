@@ -1,4 +1,4 @@
-//! Validated, `no_std`-first identifier types.
+//! Validated identifier types.
 //!
 //! This crate provides small, `Copy`, allocation-free value types that can only ever hold a valid
 //! identifier. Every constructor runs full validation up front, so there is no partially validated
@@ -23,8 +23,6 @@
 //!
 //! * No invalid state is representable. Every constructor runs the full validation rules and
 //!   returns a typed error on failure. There is no unchecked public constructor.
-//! * `no_std` first. The crate is `#![no_std]` by default and relies only on `core` and `alloc`.
-//!   The `std` feature is additive.
 //! * Zero allocation and `Copy`. Each type wraps a fixed size byte array, and parsing, validation,
 //!   and every accessor operate on the stack.
 //! * Consistent ordering and hashing. Ordering and hashing operate over the raw ASCII bytes and
@@ -35,8 +33,6 @@
 //! The optional integrations are off by default and purely additive. Enabling one never changes the
 //! behavior of the parsers or the validation rules:
 //!
-//! * `std` (default): enables the standard library and the `std` support of any enabled optional
-//!   dependency.
 //! * `serde`: (de)serializes each type as its canonical string. Deserialization re-runs full
 //!   validation.
 //! * `schemars`: implements `JsonSchema` for each type. Implies `serde`.
@@ -46,7 +42,7 @@
 //! # Example
 //!
 //! ```
-//! use ftracker_identifiers::{Cnpj, Isin, Cfi, CountryCode, Lei};
+//! use valqeron_identifiers::{Cnpj, Isin, Cfi, CountryCode, Lei};
 //!
 //! let cnpj = Cnpj::parse("00.000.000/0001-91").unwrap();
 //! assert_eq!(cnpj.as_str(), "00000000000191");
@@ -63,10 +59,8 @@
 //! let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
 //! assert_eq!(lei.lou_prefix(), "5493");
 //! ```
-#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
-extern crate alloc;
 
 pub mod cnpj;
 #[doc(inline)]

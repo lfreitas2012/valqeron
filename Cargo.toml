@@ -23,7 +23,6 @@ valqeron-identifiers = { path = "crates/identifiers" }
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
 chrono = { version = "0.4" }
-ftracker-identifiers = { version = "0.0.3" }
 anyhow = "1.0.104"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

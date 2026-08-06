@@ -4,12 +4,6 @@
 //! captures the two uppercase letter shape, but a regex cannot express which two letter codes ISO
 //! 3166-1 actually assigns. Deserialization (via the `serde` feature) still enforces membership.
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::borrow::Cow;
-#[cfg(feature = "std")]
 use std::borrow::Cow;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};

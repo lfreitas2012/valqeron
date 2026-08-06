@@ -92,7 +92,7 @@ mod accessors {
 mod error_paths {
     use super::*;
     use crate::lei::error::CharacterClass;
-    use alloc::string::ToString;
+    use std::string::ToString;
 
     #[test]
     fn reports_invalid_length() {
@@ -150,10 +150,10 @@ mod error_paths {
 
 mod trait_impls {
     use super::*;
-    use alloc::collections::BTreeSet;
-    use alloc::format;
-    use alloc::string::ToString;
     use proptest::std_facade::HashSet;
+    use std::collections::BTreeSet;
+    use std::format;
+    use std::string::ToString;
 
     #[test]
     fn from_str_delegates_to_parse() {

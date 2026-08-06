@@ -2,12 +2,6 @@
 //!
 //! Enabled by the `schemars` feature.
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::borrow::Cow;
-#[cfg(feature = "std")]
 use std::borrow::Cow;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};

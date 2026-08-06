@@ -1,8 +1,8 @@
 use crate::issuer::error::{IssuerBuilderError, IssuerNameError, IssuerStatusError};
 use chrono::{DateTime, Utc};
-use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use std::str::FromStr;
 use uuid::Uuid;
+use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
 pub mod error;
 pub mod patch;

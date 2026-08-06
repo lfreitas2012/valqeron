@@ -22,3 +22,7 @@ format:
 # Run Clippy lints
 lint:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Run every fuzz target for the requested bounded time.
+fuzz-all:
+    just --justfile crates/identifiers/Justfile fuzz-all

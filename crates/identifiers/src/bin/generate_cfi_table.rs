@@ -1,12 +1,10 @@
 //! Generates `src/cfi/table.rs` from `data/cfi.json`, the code-only ISO 10962 (CFI) seed.
 //!
-//! This is a build-time tool, not part of the library. It only compiles under the non-default
-//! `codegen` feature (which pulls in the optional `serde_json` dependency), so downstream builds
-//! never touch it; run it via `just cfi-generate` (`cargo run --bin generate_cfi_table --features
-//! codegen`). The output is committed and `just cfi-check` guards against drift, and both this file
-//! and the seed are excluded from the published crate.
+//! This is a build-time tool, not part of the library. It only compiles under the `codegen` feature
+//! (which pulls in the optional `serde_json` dependency); run it via
+//! `cargo run -p valqeron-identifiers --bin generate_cfi_table --features codegen`.
 //!
-//! The seed is parsed as an untyped [`serde_json::Value`] on purpose, so the generator needs no
+//! The seed is parsed as an untyped [`Value`] on purpose, so the generator needs no
 //! `serde` derive and is not coupled to any of the library's feature modules. Only the
 //! classification *codes* are read; the emitted table contains no ISO descriptive text.
 
@@ -95,8 +93,8 @@ fn parse_group(group: &Value) -> Group {
             let letter = single_letter(&value["code"], "attribute value code");
             mask |= 1 << (letter - b'A');
         }
-        assert!(
-            mask != 0,
+        assert_ne!(
+            mask, 0,
             "attribute `{key}` has no values in group {}",
             code as char
         );

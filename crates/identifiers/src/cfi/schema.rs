@@ -5,12 +5,6 @@
 //! attribute *combinations* ISO 10962 actually defines. Deserialization (via the `serde` feature)
 //! still enforces the full taxonomy.
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::borrow::Cow;
-#[cfg(feature = "std")]
 use std::borrow::Cow;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
