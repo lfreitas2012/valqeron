@@ -1,12 +1,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use valqeron_identifiers::Isin;
 use std::hint::black_box;
+use valqeron_identifiers::Isin;
 
-// Amazon: an all-numeric NSIN (no letter expansion in the Luhn pass).
 const NUMERIC_NSIN: &str = "US0231351067";
-// Petrobras ON: an all-letter NSIN (every character expands to two Luhn digits).
 const ALPHANUMERIC_NSIN: &str = "BRPETRACNOR9";
-// A single wrong check digit, to measure the validation early-exit path.
 const INVALID_CHECKSUM: &str = "US0378331006";
 
 fn bench_parse(c: &mut Criterion) {

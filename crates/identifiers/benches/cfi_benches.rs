@@ -2,13 +2,9 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use valqeron_identifiers::Cfi;
 
-// Equity / common share: a fully-populated taxonomy path (category, group, four attributes).
 const EQUITY: &str = "ESVUFR";
-// Debt / bond: a different category with wide attribute sets.
 const DEBT: &str = "DBFTFB";
-// Unknown category: exercises the earliest taxonomy exit (position 1 lookup fails).
 const UNKNOWN_CATEGORY: &str = "QSVUFR";
-// Valid category/group but an attribute code the standard does not permit (late exit).
 const INVALID_ATTRIBUTE: &str = "ESZUFR";
 
 fn bench_parse(c: &mut Criterion) {

@@ -1,16 +1,11 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use valqeron_identifiers::CountryCode;
 use std::hint::black_box;
+use valqeron_identifiers::CountryCode;
 
-// A common assigned code.
 const US: &str = "US";
-// A different assigned code, later in byte order.
 const BRAZIL: &str = "BR";
-// Well formed but not assigned: exercises the membership rejection path.
 const UNASSIGNED: &str = "ZZ";
-// A non letter in the second position: exercises the character class rejection path.
 const BAD_CHARACTER: &str = "U1";
-// Wrong length: exercises the earliest exit in the parser.
 const WRONG_LENGTH: &str = "USA";
 
 fn bench_parse(c: &mut Criterion) {

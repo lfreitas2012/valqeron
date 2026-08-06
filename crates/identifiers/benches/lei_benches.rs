@@ -1,12 +1,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use valqeron_identifiers::Lei;
 use std::hint::black_box;
+use valqeron_identifiers::Lei;
 
-// British Broadcasting Corporation: a mix of digits and letters in the base.
 const MIXED_BASE: &str = "5493000IBP32UQZ0KL24";
-// G.E. Financing GmbH: a longer  run of letters (more two-digit expansions in the MOD 97-10 fold).
 const LETTER_HEAVY_BASE: &str = "54930084UKLVMY22DS16";
-// A single wrong check digit, to measure the validation early-exit path.
 const INVALID_CHECKSUM: &str = "5493000IBP32UQZ0KL25";
 
 fn bench_parse(c: &mut Criterion) {
