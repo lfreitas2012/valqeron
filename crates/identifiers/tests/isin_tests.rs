@@ -1,3 +1,14 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::string_slice,
+    clippy::unreachable,
+    clippy::unwrap_used
+)]
+
 const APPLE: &str = "US0378331005";
 const PETROBRAS: &str = "BRPETRACNOR9";
 

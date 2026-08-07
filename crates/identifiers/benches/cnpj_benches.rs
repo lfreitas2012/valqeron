@@ -1,3 +1,9 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used
+)]
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::fmt::Write;
 use std::hint::black_box;

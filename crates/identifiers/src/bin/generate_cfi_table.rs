@@ -8,6 +8,15 @@
 //! `serde` derive and is not coupled to any of the library's feature modules. Only the
 //! classification *codes* are read; the emitted table contains no ISO descriptive text.
 
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+
 use serde_json::Value;
 use std::fmt::Write as _;
 use std::fs;

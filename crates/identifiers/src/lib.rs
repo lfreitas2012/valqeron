@@ -61,6 +61,18 @@
 //! ```
 #![warn(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
+// These identifier implementations operate on fixed-size, validated ASCII byte arrays. The
+// indexing, arithmetic, and conversions below are guarded by the parser/validator invariants.
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::string_slice,
+    clippy::unreachable,
+    clippy::unwrap_used
+)]
 
 pub mod cnpj;
 #[doc(inline)]

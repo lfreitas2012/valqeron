@@ -1,3 +1,14 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::string_slice,
+    clippy::unreachable,
+    clippy::unwrap_used
+)]
+
 use valqeron_identifiers::{Cnpj, CnpjError};
 
 const NUMERIC_ROOT: &str = "00.000.000/0001-91";

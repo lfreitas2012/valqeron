@@ -1,3 +1,14 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::string_slice,
+    clippy::unreachable,
+    clippy::unwrap_used
+)]
+
 const BBC: &str = "5493000IBP32UQZ0KL24";
 const JLR: &str = "213800WSGIIZCXF1P572";
 

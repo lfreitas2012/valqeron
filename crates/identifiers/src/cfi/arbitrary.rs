@@ -8,8 +8,8 @@ impl<'a> Arbitrary<'a> for Cfi {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         // Walk the embedded taxonomy so every generated value is valid by construction: a category,
         // a group within it, and a permitted letter for each of the four attribute positions.
-        let category = u.choose(&CATEGORIES)?;
-        let group = u.choose(&category.groups)?;
+        let category = u.choose(CATEGORIES)?;
+        let group = u.choose(category.groups)?;
 
         let mut bytes = [0u8; 6];
         bytes[0] = category.code;

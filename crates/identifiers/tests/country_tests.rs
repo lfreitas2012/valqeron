@@ -1,3 +1,14 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::string_slice,
+    clippy::unreachable,
+    clippy::unwrap_used
+)]
+
 pub use valqeron_identifiers::{CountryCode, CountryCodeError};
 
 const SAMPLE: &str = "US";
