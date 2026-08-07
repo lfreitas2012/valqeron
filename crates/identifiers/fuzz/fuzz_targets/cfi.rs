@@ -70,7 +70,7 @@ fuzz_target!(|data: &[u8]| {
             Err(err) => {
                 let _ = err.to_string();
                 if let CfiError::InvalidLength { found } = err {
-                    // `found` counts characters after trimming surrounding whitespace.
+                    // `found` counts characters after trimming surrounding Unicode whitespace.
                     assert_eq!(found, text.trim().chars().count());
                     assert_ne!(found, LEN);
                 }

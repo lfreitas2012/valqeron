@@ -9,6 +9,27 @@ cfi-check:
     cargo fmt
     git diff --exit-code HEAD -- src/cfi/table.rs
 
+# Regenerate the committed MIC registry table from data/mic.csv
+mic-generate:
+    cargo run --bin generate_mic_table --features codegen
+    cargo fmt
+
+# Check that the committed MIC registry table is up to date with data/mic.csv
+mic-check:
+    cargo run --bin generate_mic_table --features codegen
+    cargo fmt
+    git diff --exit-code HEAD -- src/mic/table.rs
+
+# Fetch the latest ISO 10383 publication and refresh both data/mic.csv and the table
+mic-update:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    publication="$(mktemp)"
+    trap 'rm -f "${publication}"' EXIT
+    curl -fsSL "https://www.iso20022.org/sites/default/files/ISO10383_MIC/ISO10383_MIC.csv" -o "${publication}"
+    cargo run --bin generate_mic_table --features codegen -- --import "${publication}"
+    cargo fmt
+
 # Generate the third-party license report
 licenses-generate:
     cargo about generate about.hbs > third-party-licenses.html

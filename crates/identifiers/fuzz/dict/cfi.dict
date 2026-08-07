@@ -1,4 +1,7 @@
-# Category letters, a couple of full codes, and the "not applicable" attribute marker.
+# Category letters, a couple of full codes, the "not applicable" attribute marker, and
+# whitespace examples: \x0b is trimmed ASCII whitespace; \xc2\xa0 is trimmed Unicode whitespace.
+"\x0b"
+"\xc2\xa0"
 "E"
 "C"
 "D"

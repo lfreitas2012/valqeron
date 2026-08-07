@@ -49,6 +49,14 @@ harness = false
 name = "lei_benches"
 harness = false
 
+[[bench]]
+name = "mic_benches"
+harness = false
+
 [[bin]]
 name = "generate_cfi_table"
+required-features = ["codegen"]
+
+[[bin]]
+name = "generate_mic_table"
 required-features = ["codegen"]

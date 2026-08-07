@@ -2,7 +2,7 @@
 //! for [`super::validation`].
 //!
 //! This module only knows about *formatting*: stripping the punctuation conventionally used to
-//! display a CNPJ (`.`, `/`, `-`, ASCII whitespace) and folding ASCII cases. It does not know which
+//! display a CNPJ (`.`, `/`, `-`, Unicode whitespace) and folding ASCII cases. It does not know which
 //! characters are semantically valid at which position, that is [`super::validation`]'s job, since
 //! it needs to distinguish the digit-only tail from the alphanumeric head.
 
@@ -11,13 +11,13 @@ use super::error::CnpjError;
 /// Characters stripped from input before length/content checks apply.
 #[inline]
 fn is_formatting_char(c: char) -> bool {
-    matches!(c, '.' | '/' | '-') || c.is_ascii_whitespace()
+    matches!(c, '.' | '/' | '-') || c.is_whitespace()
 }
 
 /// Normalizes `input` into a 14-byte ASCII array.
 ///
 /// - Empty input is rejected as [`CnpjError::Empty`].
-/// - Formatting characters (`.`, `/`, `-`, ASCII whitespace) are stripped anywhere they appear.
+/// - Formatting characters (`.`, `/`, `-`, Unicode whitespace) are stripped anywhere they appear.
 /// - Remaining characters are ASCII-uppercased (so lowercase letters in the alphanumeric portion
 ///   are accepted transparently).
 /// - Any remaining non-ASCII character, or a meaningful-character count other than 14, is rejected.
@@ -68,6 +68,14 @@ mod tests {
     fn strips_all_whitespace() {
         assert_eq!(
             normalize(" \t12.345.678/0001-95\n \r"),
+            normalize("12345678000195")
+        );
+    }
+
+    #[test]
+    fn strips_non_ascii_whitespace() {
+        assert_eq!(
+            normalize("\u{00A0}12.345.678/0001-95\u{00A0}"),
             normalize("12345678000195")
         );
     }

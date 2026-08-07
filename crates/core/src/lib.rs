@@ -8,6 +8,7 @@ pub use storage::{PersistenceManager, Repositories, StorageEngine, StorageError,
 
 pub use valqeron_identifiers::{
     Cfi, CfiError, Cnpj, CnpjError, CountryCode, CountryCodeError, Isin, IsinError, Lei, LeiError,
+    Mic, MicError,
 };
 
 pub use issuer::patch::IssuerPatch;
