@@ -1,6 +1,6 @@
 //! `Serialize` and `Deserialize` for [`Mic`], gated behind the `serde` feature.
 //!
-//! `Mic` (de)serializes as its canonical four character string, for example `"XNYS"`, so it round
+//! `Mic` (de)serializes as its canonical four-character string, for example, `"XNYS"`, so it round
 //! trips as a plain identifier in JSON and config files. Deserializing always re-runs full
 //! validation. An untrusted payload can never produce an invalid `Mic`.
 

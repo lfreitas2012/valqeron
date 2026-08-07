@@ -16,8 +16,8 @@ pub fn valid_mic() -> impl Strategy<Value = Mic> {
     })
 }
 
-/// A strategy producing a valid [`Mic`] rendered as its canonical four character `String`, useful
-/// for round trip through parsing property tests.
+/// A strategy producing a valid [`Mic`] rendered as its canonical four-character `String`, useful
+/// for a round trip through parsing property tests.
 pub fn valid_mic_string() -> impl Strategy<Value = String> {
     valid_mic().prop_map(|mic| mic.as_str().to_string())
 }

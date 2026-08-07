@@ -1,18 +1,18 @@
-//! ISO 10383 market identifier codes (MIC): the four character codes that identify exchanges,
+//! ISO 10383 market identifier codes (MIC): the four-character codes that identify exchanges,
 //! trading platforms, and other organized markets.
 //!
 //! This module provides the validated Rust representation ([`Mic`]) together with the parsing,
-//! validation, and error types that surround it. It accepts the canonical four character form
+//! validation, and error types that surround it. It accepts the canonical four-character form
 //! (optionally surrounded by whitespace, in any ASCII case), normalizes it, and guarantees that
 //! any constructed [`Mic`] is a code registered in ISO 10383. There is no partially validated
 //! state. If you hold a [`Mic`], it is registered.
 //!
 //! # What this type represents
 //!
-//! A MIC is four uppercase ASCII letters or digits, for example `XNYS`, `XLON`, or `360T`. The
+//! A MIC is four uppercase ASCII letters or digits, for example, `XNYS`, `XLON`, or `360T`. The
 //! registry distinguishes two kinds of code: an *operating MIC* identifies the entity operating a
-//! market (for example `XNYS`, the New York Stock Exchange), and a *segment MIC* identifies a
-//! specific market segment run by that operator (for example `ARCX`, NYSE Arca, operated under
+//! market (for example, `XNYS`, the New York Stock Exchange), and a *segment MIC* identifies a
+//! specific market segment run by that operator (for example, `ARCX`, NYSE Arca, operated under
 //! `XNYS`). A few special purpose codes (`XOFF`, `XXXX`, `BILT`) describe off-exchange or
 //! unlisted activity rather than a real market.
 //!
@@ -27,7 +27,7 @@
 //! crate embeds the registry as a sorted table generated from `data/mic.csv`. Every fallible
 //! constructor runs the same rules, in order, and each maps to one [`MicError`] variant:
 //!
-//! 1. Length: after surrounding whitespace is trimmed, the input must contain exactly four
+//! 1. Length: after the surrounding whitespace is trimmed, the input must contain exactly four
 //!    characters ([`MicError::InvalidLength`]). [`Mic::parse`] rejects empty input first
 //!    ([`MicError::Empty`]).
 //! 2. Character class: every position must be an uppercase ASCII letter or a decimal digit
@@ -36,7 +36,7 @@
 //!    ([`MicError::Unregistered`]).
 //!
 //! Registration, not lifecycle state, decides validity: codes the registry lists as expired are
-//! accepted, because they identify markets that existed and still appear in historical reference
+//! accepted because they identify markets that existed and still appear in historical reference
 //! data. Use [`Mic::is_active`] to enforce "currently active" as a policy where that matters.
 //!
 //! # The registry is a snapshot
@@ -54,7 +54,7 @@
 //! * No invalid state is representable. The only field of [`Mic`] is private. Every way to obtain
 //!   one ([`Mic::parse`], [`Mic::new`], [`Mic::from_bytes`], [`FromStr`], and [`TryFrom<&str>`])
 //!   runs full validation. There is no unchecked constructor.
-//! * It is zero allocation and `Copy`. [`Mic`] is a four byte value that wraps `[u8; 4]`. Parsing,
+//! * It is zero allocation and `Copy`. [`Mic`] is a four-byte value that wraps `[u8; 4]`. Parsing,
 //!   validation, and every accessor operate on the stack. The membership test and the lookup
 //!   accessors are a binary search over the embedded table.
 //! * Ordering and hashing operate over the raw ASCII bytes. This matches [`str`] ordering on
@@ -68,10 +68,10 @@
 //! The optional integrations are off by default and purely additive. Enabling one never changes
 //! the behavior of [`Mic::parse`] or the validation rules above:
 //!
-//! * `serde`: (de)serializes [`Mic`] as its four character string, for example `"XNYS"`.
+//! * `serde`: (de)serializes [`Mic`] as its four-character string, for example, `"XNYS"`.
 //!   Deserialization re-runs full validation, so an untrusted payload can never produce an invalid
 //!   [`Mic`].
-//! * `schemars`: implements `JsonSchema` for [`Mic`], describing it as a pattern constrained
+//! * `schemars`: implements `JsonSchema` for [`Mic`], describing it as a pattern-constrained
 //!   string (`^[A-Z0-9]{4}$`). The pattern is structural. It cannot express which codes are
 //!   registered, so validity is enforced on deserialization. Implies `serde`.
 //! * `arbitrary`: implements `Arbitrary` for [`Mic`], generating registered codes for fuzz
@@ -145,18 +145,18 @@ use core::str::{FromStr, from_utf8_unchecked};
 
 /// A validated ISO 10383 market identifier code.
 ///
-/// `Mic` is a four byte, `Copy`, allocation free value object. Once constructed, it is guaranteed
+/// `Mic` is a four-byte, `Copy`, allocation-free value object. Once constructed, it is guaranteed
 /// to be a code registered in ISO 10383 (active or expired). There is no way to get a `Mic` that
 /// has not passed validation.
 ///
-/// Internally, the code is stored as four raw uppercase ASCII letters or digits (`'A'..='Z'`,
-/// `'0'..='9'`).
+/// Internally, the code is stored as four raw uppercase ASCII letters or digits (`'A'...='Z'`,
+/// `'0'...='9'`).
 ///
 /// # Constructing a `Mic`
 ///
 /// * [`Mic::parse`] and [`Mic::new`] accept four character strings, in any ASCII case, trimmed of
 ///   surrounding whitespace.
-/// * [`Mic::from_bytes`] accepts exactly four pre normalized uppercase ASCII bytes.
+/// * [`Mic::from_bytes`] accepts exactly four pre-normalized uppercase ASCII bytes.
 /// * [`FromStr`] and [`TryFrom<&str>`] behave like `parse`, for use in generic code.
 ///
 /// All of them run the same validation and return [`MicError`] on failure. See the
@@ -256,7 +256,7 @@ impl Mic {
         &self.bytes
     }
 
-    /// Returns the four character market identifier code as a `&str`.
+    /// Returns the four-character market identifier code as a `&str`.
     ///
     /// This never allocates. The bytes are guaranteed to be valid ASCII by construction.
     ///
@@ -278,7 +278,7 @@ impl Mic {
     /// Returns `true` when the registry snapshot lists this code as active, `false` when it has
     /// expired.
     ///
-    /// Expired codes still parse, because they identify markets that existed and remain registered
+    /// Expired codes still parse because they identify markets that existed and remain registered
     /// forever. Whether an expired code is acceptable is a policy decision for the caller, and
     /// this accessor is the hook for it.
     ///

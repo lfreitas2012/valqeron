@@ -1,7 +1,7 @@
-//! Turns raw user input into a normalized four byte ASCII candidate ready for [`super::validation`].
+//! Turns raw user input into a normalized four-byte ASCII candidate ready for [`super::validation`].
 //!
 //! This module only knows about formatting. It trims surrounding whitespace a code might pick up
-//! from a spreadsheet cell or a CSV column, and it folds ASCII case. A MIC has no internal
+//! from a spreadsheet cell or a CSV column, and it folds an ASCII case. A MIC has no internal
 //! punctuation, so nothing is stripped from the interior: an interior space or separator is left
 //! in place and rejected later as an invalid character.
 //!
@@ -10,14 +10,14 @@
 
 use super::error::MicError;
 
-/// Normalizes `input` into a four byte ASCII array.
+/// Normalizes `input` into a four-byte ASCII array.
 ///
 /// The steps are:
 ///
 /// * Empty input is rejected as [`MicError::Empty`].
 /// * Leading and trailing whitespace is trimmed. Interior characters are left untouched.
 /// * Remaining characters are ASCII uppercased, so a lowercase code is accepted transparently.
-/// * Any non ASCII character, or a character count other than four after trimming, is rejected.
+/// * Any non-ASCII character, or a character count other than four after trimming, is rejected.
 ///
 /// This function does not check the character class of each position, nor whether the four
 /// characters name a registered code. See [`super::validation::validate`] for that.
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn keeps_non_alphanumeric_characters_for_validation() {
-        // A separator that is not surrounding whitespace survives normalization (the count is
+        // A separator not surrounding whitespace survives normalization (the count is
         // still four) and is left for validation to reject as an invalid character.
         assert_eq!(normalize("XN.S").unwrap(), *b"XN.S");
     }

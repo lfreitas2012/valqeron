@@ -1,6 +1,6 @@
 //! [`JsonSchema`] implementation for [`Mic`].
 //!
-//! Enabled by the `schemars` feature. The schema is a structural, pattern constrained string. It
+//! Enabled by the `schemars` feature. The schema is a structural, pattern-constrained string. It
 //! captures the four uppercase letter or digit shape, but a regex cannot express which codes ISO
 //! 10383 actually registers. Deserialization (via the `serde` feature) still enforces membership.
 

@@ -10,10 +10,8 @@ const ALPHANUMERIC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 /// Full invariant oracle for a value the library accepted. Every property here must hold for any
 /// valid `Mic`, no matter how it was produced.
 fn check(value: Mic) {
-    // `as_str` goes through `from_utf8_unchecked`; it must be sound and equal to the raw bytes.
     assert_eq!(std::str::from_utf8(value.as_bytes()), Ok(value.as_str()));
 
-    // The canonical form always has the fixed length and stays inside the allowed byte class.
     assert_eq!(value.as_bytes().len(), LEN);
     assert_eq!(value.as_str().len(), LEN);
     assert!(
@@ -23,7 +21,7 @@ fn check(value: Mic) {
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
     );
 
-    // Every constructor agrees and parsing the canonical form is idempotent.
+    // Every constructor agrees, and parsing the canonical form is idempotent.
     assert_eq!(Mic::parse(value.as_str()), Ok(value));
     assert_eq!(Mic::new(value.as_str()), Ok(value));
     assert_eq!(Mic::from_bytes(*value.as_bytes()), Ok(value));

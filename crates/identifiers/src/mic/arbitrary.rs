@@ -22,7 +22,7 @@ mod tests {
             let mut u = Unstructured::new(&data);
             let mic = Mic::arbitrary(&mut u).expect("arbitrary should always succeed");
             // Re-validating via parse() proves the value round trips through the exact same checks
-            // a hand typed input would.
+            // a hand-typed input would.
             assert!(Mic::parse(mic.as_str()).is_ok());
         }
     }

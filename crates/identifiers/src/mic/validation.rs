@@ -1,4 +1,4 @@
-//! Structural and membership validation of an already normalized four byte MIC candidate (ASCII,
+//! Structural and membership validation of an already normalized four-byte MIC candidate (ASCII,
 //! uppercase, surrounding whitespace already trimmed).
 //!
 //! This module has no knowledge of the original user input or of formatting. That is the job of
