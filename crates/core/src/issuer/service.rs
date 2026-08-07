@@ -26,7 +26,7 @@ pub fn register_issuer<R: IssuerRepository + ?Sized>(
 mod tests {
     use super::*;
     use crate::issuer::repository::MockIssuerRepository;
-    use ftracker_identifiers::Cnpj;
+    use valqeron_identifiers::Cnpj;
 
     fn issuer_with_cnpj() -> Option<Issuer> {
         let cnpj_result = Cnpj::new("12.345.678/0001-95");

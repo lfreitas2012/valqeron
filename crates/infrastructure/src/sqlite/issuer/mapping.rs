@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
-use ftracker_identifiers::{Cnpj, CountryCode, Lei};
 use rusqlite::Row;
 use rusqlite::types::Type;
 use valqeron_core::{IssuerId, IssuerName, IssuerStatus};
+use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
 use crate::sqlite::row::{column_index, conversion_failure};
 

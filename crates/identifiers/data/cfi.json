@@ -1,0 +1,5240 @@
+{
+  "categories": [
+    {
+      "code": "E",
+      "groups": [
+        {
+          "code": "S",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "O"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "P",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "O"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "L",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "O"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "D",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "D"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "D"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "Y",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "D"
+              },
+              {
+                "code": "Y"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "C",
+      "groups": [
+        {
+          "code": "I",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "J"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "Y"
+              }
+            ]
+          }
+        },
+        {
+          "code": "H",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "D"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "B",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "J"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "Y"
+              }
+            ]
+          }
+        },
+        {
+          "code": "E",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "J"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          }
+        },
+        {
+          "code": "S",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "J"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "Y"
+              }
+            ]
+          }
+        },
+        {
+          "code": "P",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "J"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "Y"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "Y"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "D",
+      "groups": [
+        {
+          "code": "B",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "K"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "K"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "W",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "K"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "K"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "Y",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "K"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "S",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "Y"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "E",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "Y"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "G",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "A",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "N",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "D",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "Y"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "R",
+      "groups": [
+        {
+          "code": "A",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "S",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "P",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "W",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "B"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "D",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "O",
+      "groups": [
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          }
+        },
+        {
+          "code": "P",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "F",
+      "groups": [
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "S",
+      "groups": [
+        {
+          "code": "R",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "Z"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "Y"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "D"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "T"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "E",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "U"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "L"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "A"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "H",
+      "groups": [
+        {
+          "code": "R",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "I"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "I"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "E",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "I"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "U"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "I"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "Y"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "L"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "L"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "V"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "A"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "I",
+      "groups": [
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "P"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "J",
+      "groups": [
+        {
+          "code": "E",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "N"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "R"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "O"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              }
+            ]
+          }
+        },
+        {
+          "code": "R",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "I"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "F"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "K",
+      "groups": [
+        {
+          "code": "R",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "E",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "F",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "Y",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "L",
+      "groups": [
+        {
+          "code": "L",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "A"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "J"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "P"
+              }
+            ]
+          }
+        },
+        {
+          "code": "R",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "G"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "C"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "F"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "T"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "D"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "T"
+              }
+            ]
+          }
+        },
+        {
+          "code": "S",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "C"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "N"
+              },
+              {
+                "code": "O"
+              },
+              {
+                "code": "T"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "D"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "T"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "T",
+      "groups": [
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "N"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "T",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "R",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "N"
+              },
+              {
+                "code": "V"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "D"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "Q"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "I",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "P"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "G"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "B",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "E"
+              },
+              {
+                "code": "D"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "D",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "C"
+              },
+              {
+                "code": "F"
+              },
+              {
+                "code": "L"
+              },
+              {
+                "code": "K"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "M",
+      "groups": [
+        {
+          "code": "C",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "S"
+              },
+              {
+                "code": "B"
+              },
+              {
+                "code": "H"
+              },
+              {
+                "code": "A"
+              },
+              {
+                "code": "W"
+              },
+              {
+                "code": "U"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "T"
+              },
+              {
+                "code": "U"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "B"
+              },
+              {
+                "code": "R"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "attribute1": {
+            "attributeValues": [
+              {
+                "code": "R"
+              },
+              {
+                "code": "I"
+              },
+              {
+                "code": "E"
+              },
+              {
+                "code": "T"
+              },
+              {
+                "code": "N"
+              },
+              {
+                "code": "P"
+              },
+              {
+                "code": "S"
+              },
+              {
+                "code": "M"
+              }
+            ]
+          },
+          "attribute2": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute3": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          },
+          "attribute4": {
+            "attributeValues": [
+              {
+                "code": "X"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

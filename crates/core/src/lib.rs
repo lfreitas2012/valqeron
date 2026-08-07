@@ -6,7 +6,9 @@ pub use common::Versioned;
 
 pub use storage::{PersistenceManager, Repositories, StorageEngine, StorageError, StorageFault};
 
-pub use ftracker_identifiers::{Cnpj, CountryCode, Lei};
+pub use valqeron_identifiers::{
+    Cfi, CfiError, Cnpj, CnpjError, CountryCode, CountryCodeError, Isin, IsinError, Lei, LeiError,
+};
 
 pub use issuer::patch::IssuerPatch;
 

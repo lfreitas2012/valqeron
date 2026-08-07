@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use crate::sqlite::connection::{Db, DbHandle};
 use crate::sqlite::issuer::queries;
-use ftracker_identifiers::{Cnpj, Lei};
 use rusqlite::{Connection, OptionalExtension, params};
 use valqeron_core::{
     Issuer, IssuerId, IssuerPatch, IssuerRepository, RepositoryResult, StorageFault, Versioned,
     WriteOutcome,
 };
+use valqeron_identifiers::{Cnpj, Lei};
 
 const BUSY_MAX_ATTEMPTS: u32 = 5;
 
@@ -170,9 +170,9 @@ mod tests {
     use super::*;
     use crate::sqlite::connection::Database;
     use chrono::Utc;
-    use ftracker_identifiers::{Cnpj, CountryCode, Lei};
     use std::str::FromStr;
     use valqeron_core::{IssuerName, IssuerStatus};
+    use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
     fn test_repo() -> (Database, SqliteIssuerRepository) {
         let db = Database::open_in_memory().unwrap();

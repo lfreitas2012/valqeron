@@ -1,0 +1,57 @@
+[package]
+name = "valqeron-identifiers-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = "1"
+serde_json = "1"
+
+[dependencies.valqeron-identifiers]
+path = ".."
+features = ["arbitrary", "serde"]
+
+[workspace]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "country_code"
+path = "fuzz_targets/country_code.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cfi"
+path = "fuzz_targets/cfi.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "isin"
+path = "fuzz_targets/isin.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cnpj"
+path = "fuzz_targets/cnpj.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lei"
+path = "fuzz_targets/lei.rs"
+test = false
+doc = false
+bench = false

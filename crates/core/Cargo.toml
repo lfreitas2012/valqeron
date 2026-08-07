@@ -11,7 +11,7 @@ publish = false
 thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-ftracker-identifiers = { workspace = true }
+valqeron-identifiers = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
