@@ -34,10 +34,16 @@ pub(super) fn normalize(input: &str) -> Result<[u8; 12], IsinError> {
     let mut buf = [0u8; 12];
     for (i, ch) in trimmed.chars().enumerate() {
         if !ch.is_ascii() {
+            let expected = match i {
+                0 | 1 => CharacterClass::Letter,
+                2..=10 => CharacterClass::Alphanumeric,
+                11 => CharacterClass::Digit,
+                _ => unreachable!(),
+            };
             return Err(IsinError::InvalidCharacter {
                 character: ch,
                 position: (i + 1) as u8,
-                expected: CharacterClass::Alphanumeric,
+                expected,
             });
         }
         buf[i] = ch.to_ascii_uppercase() as u8;
@@ -91,8 +97,35 @@ mod tests {
         assert!(matches!(
             err,
             IsinError::InvalidCharacter {
-                character: '£', ..
+                character: '£',
+                position: 11,
+                expected: CharacterClass::Alphanumeric,
             }
         ));
+    }
+
+    #[test]
+    fn reports_correct_expected_class_for_non_ascii() {
+        // Position 1 (Letter expected)
+        let err1 = normalize("£S0378331005").unwrap_err();
+        assert_eq!(
+            err1,
+            IsinError::InvalidCharacter {
+                character: '£',
+                position: 1,
+                expected: CharacterClass::Letter,
+            }
+        );
+
+        // Position 12 (Digit expected)
+        let err12 = normalize("US037833100£").unwrap_err();
+        assert_eq!(
+            err12,
+            IsinError::InvalidCharacter {
+                character: '£',
+                position: 12,
+                expected: CharacterClass::Digit,
+            }
+        );
     }
 }

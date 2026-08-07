@@ -1,21 +1,21 @@
-//! CNPJ (Cadastro Nacional da Pessoa Jurídica) — Brazil's national registry identifier for legal
+//! CNPJ (Cadastro Nacional da Pessoa Jurídica), Brazil's national registry identifier for legal
 //! entities, issued by the Receita Federal.
 //!
 //! This module provides the validated Rust representation ([`Cnpj`]) and the parsing, formatting,
 //! validation, and error types that surround it. It accepts both the conventional punctuated
-//! `AA.AAA.AAA/AAAA-DD` form and the compact 14-character form, normalizes ASCII case, and
+//! `AA.AAA.AAA/AAAA-DD` form and the compact 14-character form, normalizes ASCII cases, and
 //! guarantees that any constructed [`Cnpj`] satisfies the format and Módulo 11 checksum rules
-//! described below. There is no partially-validated state: if you hold a [`Cnpj`], it is valid.
+//! described below. There is no partially validated state: if you hold a [`Cnpj`], it is valid.
 //!
 //! # What this type represents
 //!
 //! A CNPJ has 14 meaningful characters, split into three logical segments:
 //!
-//! | Positions | Length | Segment            | Meaning                                                        |
+//! | Positions | Length | Segment | Meaning |
 //! |-----------|--------|---------------------|-----------------------------------------------------------------|
-//! | 1–8       | 8      | Root (raiz)          | Identifies the entity itself; shared by the head office and every branch |
-//! | 9–12      | 4      | Branch/order (ordem) | `"0001"` conventionally denotes the head office (matriz)         |
-//! | 13–14     | 2      | Verification digits  | Computed from the first 12 characters via Módulo 11              |
+//! | 1–8 | 8 | Root (raiz) | Identifies the entity itself; shared by the head office and every branch |
+//! | 9–12 | 4 | Branch/order (ordem) | `"0001"` conventionally denotes the head office (matriz) |
+//! | 13–14 | 2 | Verification digits | Computed from the first 12 characters via Módulo 11 algorithm |
 //!
 //! [`Cnpj`] stores those 14 characters as normalized uppercase ASCII and exposes borrowed
 //! accessors for the root ([`Cnpj::root`]), the branch/order segment ([`Cnpj::branch_code`]), and
@@ -32,23 +32,23 @@
 //! it always has.
 //!
 //! Older numeric-only CNPJs remain valid and are treated as a special case of the same
-//! 14-character, same-checksum format — [`Cnpj`] represents both uniformly; there is no separate
-//! legacy type, and no separate code path to keep in sync.
+//! 14-character, same-checksum format. [`Cnpj`] represents both uniformly; there is no separate
+//! legacy type and no separate code path to keep in sync.
 //!
 //! # Validation rules
 //!
 //! Every fallible constructor runs the same rules, in order, and each maps to one [`CnpjError`]
 //! variant:
 //!
-//! 1. **Length** — after formatting is stripped, the input must contain exactly 14 meaningful
+//! 1. **Length**: after formatting is stripped, the input must contain exactly 14 meaningful
 //!    characters ([`CnpjError::InvalidLength`]).
-//! 2. **Character class** — positions 1–12 accept a digit or an uppercase letter; positions 13–14
+//! 2. **Character class**: positions 1–12 accept a digit or an uppercase letter; positions 13–14
 //!    accept only a digit ([`CnpjError::InvalidCharacter`]).
-//! 3. **Not degenerate** — the 14 characters cannot all be identical, e.g. `"00000000000000"`
-//!    ([`CnpjError::RepeatedDigits`]). Such inputs are structurally well-formed, and can even
+//! 3. **Not degenerate**: the 14 characters cannot all be identical, e.g. `"00000000000000"`
+//!    ([`CnpjError::RepeatedDigits`]). Such inputs are structurally well-formed and can even
 //!    satisfy the checksum for certain repeated digits, but the Receita Federal never issues them;
 //!    they are reliably placeholder or data-entry artifacts.
-//! 4. **Checksum** — both verification digits must match the Módulo 11 algorithm applied to the
+//! 4. **Checksum**: both verification digits must match the Módulo 11 algorithm applied to the
 //!    preceding characters ([`CnpjError::InvalidCheckDigits`]).
 //!
 //! [`Cnpj::parse`] additionally strips conventional punctuation (`.`, `/`, `-`, ASCII spaces)
@@ -58,7 +58,7 @@
 //! # Design notes
 //!
 //! - **No invalid state is representable.** [`Cnpj`]'s only field is private; the only ways to
-//!   obtain one are [`Cnpj::parse`], [`Cnpj::new`], [`Cnpj::from_bytes`], [`FromStr`], and
+//!   get one are [`Cnpj::parse`], [`Cnpj::new`], [`Cnpj::from_bytes`], [`FromStr`], and
 //!   [`TryFrom<&str>`] — every one of them runs full validation. There is no unchecked or
 //!   "trust me" constructor exposed publicly.
 //! - **Zero allocation, `Copy`, allocation-free.** [`Cnpj`] is a 14-byte value type wrapping
@@ -66,27 +66,26 @@
 //!   in this module requires an allocator.
 //! - **Ordering and hashing are byte-wise.** [`Cnpj`] derives [`Ord`] and [`Hash`] directly over
 //!   its underlying ASCII bytes, which matches [`str`] ordering on [`Cnpj::as_str`]. Because ASCII
-//!   digits (`'0'..='9'`) sort before uppercase letters (`'A'..='Z'`), a numeric-format CNPJ always
-//!   sorts before any alphanumeric CNPJ sharing the same leading digits. This is lexicographic
-//!   string order, not numeric order — don't read it as meaning "issued earlier" or
-//!   "smaller root number".
+//!   digits (`'0'...='9'`) sort before uppercase letters (`'A'...='Z'`), a numeric-format CNPJ always
+//!   sorts before any alphanumeric CNPJ sharing the same leading digits. This is a lexicographic
+//!   string order, not a numeric order. Don't read it as meaning "issued earlier" or "smaller root number".
 //! - **Safe to use as a map/set key.** [`Cnpj`] implements [`Eq`] and [`Hash`] consistently with
 //!   [`PartialEq`], so it works as a `HashMap`/`HashSet` key or a `BTreeMap`/`BTreeSet` key out of
 //!   the box.
 //!
 //! # Feature flags
 //!
-//! This module's optional integrations are off by default and purely additive — enabling one
+//! This module's optional integrations are off by default and purely additive, enabling one
 //! never changes the behavior of [`Cnpj::parse`] or the validation rules above:
 //!
-//! - **`serde`** — (de)serializes [`Cnpj`] as its compact 14-character string (e.g.
+//! - **`serde`**: (de)serializes [`Cnpj`] as its compact 14-character string (e.g.
 //!   `"12ABC34501DE35"`), never the punctuated form. Deserialization re-runs full validation, so an
 //!   untrusted payload can never produce an invalid [`Cnpj`].
-//! - **`schemars`** — implements `JsonSchema` for [`Cnpj`], describing it as a pattern-constrained
+//! - **`schemars`**: implements `JsonSchema` for [`Cnpj`], describing it as a pattern-constrained
 //!   string (`^[A-Z0-9]{12}[0-9]{2}$`). Implies `serde`.
-//! - **`arbitrary`** — implements `Arbitrary` for [`Cnpj`], generating structurally valid,
+//! - **`arbitrary`**: implements `Arbitrary` for [`Cnpj`], generating structurally valid,
 //!   checksum-correct values for fuzz targets.
-//! - **`proptest`** — exposes reusable `proptest` strategies (`valqeron_identifiers::cnpj::proptest`,
+//! - **`proptest`**: exposes reusable `proptest` strategies (`valqeron_identifiers::cnpj::proptest`,
 //!   when this feature is enabled) for generating checksum-valid [`Cnpj`] values and their
 //!   formatted string representations, so downstream property tests don't need to hand-roll a
 //!   generator.
@@ -126,7 +125,7 @@
 //! assert_eq!(alpha.branch_number(), None);
 //! ```
 //!
-//! Sorting and deduplicating a batch of CNPJs, e.g. after importing them from a spreadsheet:
+//! Sorting and deduplicating a batch of CNPJs, e.g., after importing them from a spreadsheet:
 //!
 //! ```
 //! use valqeron_identifiers::Cnpj;
@@ -157,7 +156,7 @@ mod arbitrary;
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
 
-pub use error::CnpjError;
+pub use error::{CharacterClass, CnpjError};
 pub use fmt::FormattedCnpj;
 
 use core::convert::TryFrom;
@@ -166,19 +165,19 @@ use core::str::{FromStr, from_utf8_unchecked};
 /// A validated CNPJ (Cadastro Nacional da Pessoa Jurídica).
 ///
 /// `Cnpj` is a 14-byte, `Copy`, allocation-free value object. Once constructed, it is guaranteed to
-/// satisfy the structural rules and Módulo 11 checksum required by the crate — there is no way to
-/// obtain a `Cnpj` that hasn't passed validation.
+/// satisfy the structural rules and Módulo 11 checksum required by the crate. There is no way to
+/// get a `Cnpj` that hasn't passed validation.
 ///
 /// Internally, the identifier is stored as raw uppercase ASCII bytes (`'0'...='9'` or `'A'...='Z'`).
 /// This keeps the compact representation lossless and makes borrowed access to the normalized form cheap.
 ///
 /// # Constructing a `Cnpj`
 ///
-/// | Constructor                      | Accepts                                                       |
+/// | Constructor | Accepts |
 /// |-----------------------------------|----------------------------------------------------------------|
-/// | [`Cnpj::parse`] / [`Cnpj::new`]   | Punctuated or compact strings, any ASCII case                   |
-/// | [`Cnpj::from_bytes`]              | Exactly 14 pre-normalized ASCII bytes, no punctuation            |
-/// | [`FromStr`] / [`TryFrom<&str>`]   | Same as `parse`, for use in generic code                        |
+/// | [`Cnpj::parse`] / [`Cnpj::new`] | Punctuated or compact strings, any ASCII case |
+/// | [`Cnpj::from_bytes`] | Exactly 14 pre-normalized ASCII bytes, no punctuation |
+/// | [`FromStr`] / [`TryFrom<&str>`] | Same as `parse`, for use in generic code |
 ///
 /// All of them run the same validation and return [`CnpjError`] on failure. See the [module-level
 /// documentation](self) for the field layout, format history, and design rationale.
@@ -195,7 +194,8 @@ impl Cnpj {
     /// 14-character form. It also tolerates surrounding and embedded ASCII spaces and folds ASCII
     /// letters to uppercase before validation.
     ///
-    /// This is the primary constructor; [`Cnpj::new`], [`FromStr`], and [`TryFrom<&str>`] all delegate to it.
+    /// This is the primary constructor; [`Cnpj::new`], [`FromStr`], and [`TryFrom<&str>`] all
+    /// delegate to it.
     ///
     /// # Errors
     ///
@@ -441,7 +441,7 @@ impl TryFrom<&str> for Cnpj {
 impl TryFrom<[u8; 14]> for Cnpj {
     type Error = CnpjError;
 
-    /// Delegates to [`Cnpj::from_bytes`]. The bytes must already be pre normalized ASCII, without
+    /// Delegates to [`Cnpj::from_bytes`]. The bytes must already be pre-normalized ASCII, without
     /// punctuation.
     fn try_from(value: [u8; 14]) -> Result<Self, Self::Error> {
         Self::from_bytes(value)
@@ -463,7 +463,7 @@ impl TryFrom<&[u8]> for Cnpj {
 }
 
 impl PartialEq<str> for Cnpj {
-    /// Compares against a string slice by its compact 14 character representation (not the
+    /// Compares against a string slice by its compact 14-character representation (not the
     /// punctuated form).
     fn eq(&self, other: &str) -> bool {
         self.as_str() == other
@@ -471,7 +471,7 @@ impl PartialEq<str> for Cnpj {
 }
 
 impl PartialEq<&str> for Cnpj {
-    /// Compares against a string slice by its compact 14 character representation (not the
+    /// Compares against a string slice by its compact 14-character representation (not the
     /// punctuated form).
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == *other

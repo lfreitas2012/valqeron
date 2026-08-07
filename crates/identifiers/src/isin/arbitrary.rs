@@ -1,14 +1,25 @@
-use arbitrary::{Arbitrary, Unstructured};
-
 use super::Isin;
 use super::validation::{ALPHANUMERIC, BASE_LEN, LETTERS, build_valid_isin_bytes};
+use crate::CountryCode;
+use arbitrary::{Arbitrary, Unstructured};
 
 impl<'a> Arbitrary<'a> for Isin {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        // Positions 1-2: ISO 3166-1 alpha-2 country code (letters only).
+        // Positions 1-2: Generate a valid CountryCode first to ensure
+        // we only use assigned ISO 3166-1 alpha-2 prefixes.
+        let country_code = u.arbitrary::<CountryCode>()?;
+        let cc_bytes = country_code.as_bytes();
+
+        // Map the selected country code's bytes back into LETTERS indices.
         let country = [
-            u.arbitrary::<u8>()? as usize % LETTERS.len(),
-            u.arbitrary::<u8>()? as usize % LETTERS.len(),
+            LETTERS
+                .iter()
+                .position(|&b| b == cc_bytes[0])
+                .expect("valid letter"),
+            LETTERS
+                .iter()
+                .position(|&b| b == cc_bytes[1])
+                .expect("valid letter"),
         ];
 
         // Positions 3-11: alphanumeric NSIN.

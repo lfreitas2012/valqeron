@@ -8,7 +8,6 @@ use super::Cfi;
 use super::table::CATEGORIES;
 use super::validation::nth_letter;
 use proptest::prelude::{Just, Strategy, any, prop};
-use std::string::{String, ToString};
 
 /// A strategy producing taxonomically valid [`Cfi`] values by walking the embedded ISO 10962 table:
 /// it picks a category, then a group within it, then a permitted letter for each of the four

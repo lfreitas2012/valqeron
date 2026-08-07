@@ -149,7 +149,7 @@ mod arbitrary;
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
 
-pub use error::LeiError;
+pub use error::{CharacterClass, LeiError};
 
 use core::convert::TryFrom;
 use core::str::{FromStr, from_utf8_unchecked};

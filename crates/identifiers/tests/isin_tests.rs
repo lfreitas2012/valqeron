@@ -1,10 +1,9 @@
-use super::{Isin, IsinError};
-
 const APPLE: &str = "US0378331005";
 const PETROBRAS: &str = "BRPETRACNOR9";
 
 mod construction {
     use super::*;
+    use valqeron_identifiers::{Isin, IsinError};
 
     #[test]
     fn parse_accepts_numeric_nsin() {
@@ -66,6 +65,7 @@ mod construction {
 
 mod accessors {
     use super::*;
+    use valqeron_identifiers::Isin;
 
     #[test]
     fn segments_are_split_correctly() {
@@ -94,9 +94,9 @@ mod accessors {
 }
 
 mod error_paths {
-    use super::*;
-    use crate::isin::error::CharacterClass;
     use std::string::ToString;
+    use valqeron_identifiers::isin::CharacterClass;
+    use valqeron_identifiers::{Isin, IsinError};
 
     #[test]
     fn reports_invalid_length() {
@@ -158,6 +158,7 @@ mod trait_impls {
     use std::collections::BTreeSet;
     use std::format;
     use std::string::ToString;
+    use valqeron_identifiers::{CountryCode, Isin, IsinError};
 
     #[test]
     fn from_str_delegates_to_parse() {
@@ -202,7 +203,6 @@ mod trait_impls {
 
     #[test]
     fn country_maps_assigned_prefix() {
-        use crate::CountryCode;
         let isin = Isin::parse(APPLE).unwrap();
         assert_eq!(isin.country(), Some(CountryCode::parse("US").unwrap()));
     }

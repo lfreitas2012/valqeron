@@ -1,4 +1,4 @@
-//! CFI (Classification of Financial Instruments) — the ISO 10962 six-letter code that classifies a
+//! CFI (Classification of Financial Instruments), the ISO 10962 six-letter code that classifies a
 //! financial instrument by category, group, and four attributes.
 //!
 //! This module provides the validated Rust representation ([`Cfi`]) and the parsing, validation,
@@ -11,11 +11,11 @@
 //!
 //! A CFI has 6 characters, all uppercase letters, split into three parts:
 //!
-//! | Positions | Length | Segment    | Meaning                                                          |
+//! | Positions | Length | Segment | Meaning |
 //! |-----------|--------|------------|------------------------------------------------------------------|
-//! | 1         | 1      | Category   | The broadest class of instrument (e.g. `E` = equities)           |
-//! | 2         | 1      | Group      | A subdivision within the category (meaning depends on the category) |
-//! | 3–6       | 4      | Attributes | Four attribute codes whose meaning depends on the category and group |
+//! | 1 | 1 | Category | The broadest class of instrument (e.g. `E` = equities) |
+//! | 2 | 1 | Group | A subdivision within the category (meaning depends on the category) |
+//! | 3–6 | 4 | Attributes | Four attribute codes whose meaning depends on the category and group |
 //!
 //! ```text
 //! ┌────────────────────────────────────────┐
@@ -35,49 +35,49 @@
 //! as a generated, lookup table. Every fallible constructor runs the same rules, in order,
 //! and each maps to one [`CfiError`] variant:
 //!
-//! 1. **Length** — after surrounding whitespace is trimmed, the input must contain exactly 6
+//! 1. **Length**: after the surrounding whitespace is trimmed, the input must contain exactly 6
 //!    characters ([`CfiError::InvalidLength`]). [`Cfi::parse`] rejects empty input up front
 //!    ([`CfiError::Empty`]).
-//! 2. **Character class** — every position must be an uppercase ASCII letter
+//! 2. **Character class**: every position must be an uppercase ASCII letter
 //!    ([`CfiError::InvalidCharacter`]).
-//! 3. **Category** — position 1 must be a category defined by ISO 10962
+//! 3. **Category**: position 1 must be a category defined by ISO 10962
 //!    ([`CfiError::UnknownCategory`]).
-//! 4. **Group** — position 2 must be a group defined for that category ([`CfiError::UnknownGroup`]).
-//! 5. **Attributes** — each of positions 3–6 must be a code the standard permits for the resolved
+//! 4. **Group**: position 2 must be a group defined for that category ([`CfiError::UnknownGroup`]).
+//! 5. **Attributes**: each of positions 3–6 must be a code the standard permits for the resolved
 //!    category and group at that attribute position ([`CfiError::InvalidAttribute`]).
 //!
-//! Only the classification *codes* are embedded — not ISO's descriptive text — so this crate can
+//! Only the classification *codes* are embedded, not ISO's descriptive text, so this crate can
 //! tell you a CFI is well-formed and which position is wrong, but it does not resolve the codes to
 //! their human-readable meanings.
 //!
 //! # Design notes
 //!
 //! - **No invalid state is representable.** [`Cfi`]'s only field is private; the only ways to
-//!   obtain one — [`Cfi::parse`], [`Cfi::new`], [`Cfi::from_bytes`], [`FromStr`], and
-//!   [`TryFrom<&str>`] — all run full validation. There is no unchecked constructor.
+//!   get one — [`Cfi::parse`], [`Cfi::new`], [`Cfi::from_bytes`], [`FromStr`], and
+//!   [`TryFrom<&str>`], all run full validation. There is no unchecked constructor.
 //! - **Zero allocation, `Copy`, allocation-free.** [`Cfi`] is a 6-byte value type wrapping
 //!   `[u8; 6]`. Parsing, validating, and every accessor operate on the stack; the taxonomy lookup
 //!   is a couple of binary searches and bitmask tests over a `static` table.
 //! - **Ordering and hashing are byte-wise.** [`Cfi`] derives [`Ord`] and [`Hash`] directly over its
-//!   ASCII bytes, matching [`str`] ordering on [`Cfi::as_str`]. This is lexicographic string order,
+//!   ASCII bytes, matching [`str`] ordering on [`Cfi::as_str`]. This is a lexicographic string order,
 //!   with no taxonomic meaning.
 //! - **Safe to use as a map/set key.** [`Cfi`] implements [`Eq`] and [`Hash`] consistently with
 //!   [`PartialEq`], so it works as a `HashMap`/`HashSet` or `BTreeMap`/`BTreeSet` key out of the box.
 //!
 //! # Feature flags
 //!
-//! This module's optional integrations are off by default and purely additive — enabling one never
+//! This module's optional integrations are off by default and purely additive, enabling one never
 //! changes the behavior of [`Cfi::parse`] or the validation rules above:
 //!
-//! - **`serde`** — (de)serializes [`Cfi`] as its 6-character string (e.g. `"ESVUFR"`).
+//! - **`serde`**: (de)serializes [`Cfi`] as its 6-character string (e.g. `"ESVUFR"`).
 //!   Deserialization re-runs full validation, so an untrusted payload can never produce an invalid
 //!   [`Cfi`].
-//! - **`schemars`** — implements `JsonSchema` for [`Cfi`], describing it as a pattern-constrained
+//! - **`schemars`**: implements `JsonSchema` for [`Cfi`], describing it as a pattern-constrained
 //!   string (`^[A-Z]{6}$`). The pattern is structural only; it cannot express which combinations are
 //!   taxonomically valid. Implies `serde`.
-//! - **`arbitrary`** — implements `Arbitrary` for [`Cfi`], generating taxonomically valid values for
+//! - **`arbitrary`**: implements `Arbitrary` for [`Cfi`], generating taxonomically valid values for
 //!   fuzz targets by walking the embedded table.
-//! - **`proptest`** — exposes reusable `proptest` strategies (`valqeron_identifiers::cfi::proptest`,
+//! - **`proptest`**: exposes reusable `proptest` strategies (`valqeron_identifiers::cfi::proptest`,
 //!   when this feature is enabled) for generating valid [`Cfi`] values.
 //!
 //! # Error handling
@@ -110,7 +110,7 @@
 //! assert_eq!(cfi.as_str(), "ESVUFR");
 //! ```
 //!
-//! Sorting and deduplicating a batch of CFIs, e.g. after importing them from a spreadsheet:
+//! Sorting and deduplicating a batch of CFIs, e.g., after importing them from a spreadsheet:
 //!
 //! ```
 //! use valqeron_identifiers::Cfi;

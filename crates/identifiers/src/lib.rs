@@ -12,7 +12,7 @@
 //!   11 checksum.
 //! * [`Isin`]: the ISO 6166 International Securities Identification Number, a 12-character
 //!   securities identifier validated with the ISO 6166 Luhn check digit.
-//! * [`Cfi`]: the ISO 10962 Classification of Financial Instruments code, a six letter taxonomy
+//! * [`Cfi`]: the ISO 10962 Classification of Financial Instruments code, a six-letter taxonomy
 //!   code validated against an embedded copy of the standard's code table.
 //! * [`CountryCode`]: the ISO 3166-1 alpha-2 country code, two letters validated against the
 //!   officially assigned set.

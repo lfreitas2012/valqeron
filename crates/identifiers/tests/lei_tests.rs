@@ -1,10 +1,9 @@
-use super::{Lei, LeiError};
-
 const BBC: &str = "5493000IBP32UQZ0KL24";
 const JLR: &str = "213800WSGIIZCXF1P572";
 
 mod construction {
-    use super::*;
+    use crate::{BBC, JLR};
+    use valqeron_identifiers::{Lei, LeiError};
 
     #[test]
     fn parse_accepts_canonical_input() {
@@ -61,7 +60,8 @@ mod construction {
 }
 
 mod accessors {
-    use super::*;
+    use crate::{BBC, JLR};
+    use valqeron_identifiers::Lei;
 
     #[test]
     fn segments_are_split_correctly() {
@@ -90,9 +90,8 @@ mod accessors {
 }
 
 mod error_paths {
-    use super::*;
-    use crate::lei::error::CharacterClass;
-    use std::string::ToString;
+    use valqeron_identifiers::lei::CharacterClass;
+    use valqeron_identifiers::{Lei, LeiError};
 
     #[test]
     fn reports_invalid_length() {
@@ -149,11 +148,10 @@ mod error_paths {
 }
 
 mod trait_impls {
-    use super::*;
+    use crate::{BBC, JLR};
     use proptest::std_facade::HashSet;
     use std::collections::BTreeSet;
-    use std::format;
-    use std::string::ToString;
+    use valqeron_identifiers::{Lei, LeiError};
 
     #[test]
     fn from_str_delegates_to_parse() {

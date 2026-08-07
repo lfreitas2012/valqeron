@@ -7,7 +7,6 @@
 use super::Lei;
 use super::validation::{ALPHANUMERIC, BASE_LEN, build_valid_lei_bytes};
 use proptest::prelude::{Strategy, prop};
-use std::string::{String, ToString};
 
 /// A strategy producing structurally valid, checksum-correct [`Lei`] values: eighteen alphanumeric
 /// base characters and two matching ISO/IEC 7064 MOD 97-10 check digits.

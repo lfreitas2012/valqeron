@@ -34,10 +34,16 @@ pub(super) fn normalize(input: &str) -> Result<[u8; 20], LeiError> {
     let mut buf = [0u8; 20];
     for (i, ch) in trimmed.chars().enumerate() {
         if !ch.is_ascii() {
+            let expected = if i < 18 {
+                CharacterClass::Alphanumeric
+            } else {
+                CharacterClass::Digit
+            };
+
             return Err(LeiError::InvalidCharacter {
                 character: ch,
                 position: (i + 1) as u8,
-                expected: CharacterClass::Alphanumeric,
+                expected,
             });
         }
         buf[i] = ch.to_ascii_uppercase() as u8;
@@ -89,8 +95,8 @@ mod tests {
         // An interior space survives normalization (count is still 20) and is left for
         // `validation` to reject as a non-alphanumeric character.
         assert_eq!(
-            normalize("5493000IBP32UQZ0KL2 ".replace(' ', "_").as_str()),
-            Ok(*b"5493000IBP32UQZ0KL2_")
+            normalize("5493000IBP32UQZ0K 24"),
+            Ok(*b"5493000IBP32UQZ0K 24")
         );
     }
 

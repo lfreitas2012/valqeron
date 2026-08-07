@@ -29,6 +29,11 @@ pub(super) fn avoid_all_repeated(base: &mut [u8; BASE_LEN]) {
     if base.iter().all(|&b| b == base[0]) {
         base[0] = if base[0] == b'0' { b'1' } else { b'0' };
     }
+
+    debug_assert!(
+        !base.iter().all(|&b| b == base[0]),
+        "Base segment must not consist of entirely repeated characters. Is BASE_LEN too small?"
+    );
 }
 
 /// Runs every validation rule against a normalized candidate, in order from cheapest/most-specific

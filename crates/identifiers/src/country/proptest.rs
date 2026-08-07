@@ -7,7 +7,6 @@
 use super::CountryCode;
 use super::table::ASSIGNED_CODES;
 use proptest::prelude::Strategy;
-use std::string::{String, ToString};
 
 /// A strategy producing valid [`CountryCode`] values by picking from the officially assigned set.
 pub fn valid_country_code() -> impl Strategy<Value = CountryCode> {

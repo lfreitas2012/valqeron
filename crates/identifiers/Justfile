@@ -1,4 +1,17 @@
-# Fuzzing commands for valqeron-identifiers.
+# Regenerate the committed CFI taxonomy table from data/cfi.json
+cfi-generate:
+    cargo run --bin generate_cfi_table --features codegen
+    cargo fmt
+
+# Check that the committed CFI taxonomy table is up to date with data/cfi.json
+cfi-check:
+    cargo run --bin generate_cfi_table --features codegen
+    cargo fmt
+    git diff --exit-code -- src/cfi/table.rs
+
+# Generate the third-party license report
+licenses-generate:
+    cargo about generate about.hbs > third-party-licenses.html
 
 _fuzz-setup:
     #!/usr/bin/env bash
@@ -27,7 +40,7 @@ fuzz-all time="60": _fuzz-setup
     for target_path in fuzz/fuzz_targets/*.rs; do
         target="${target_path##*/}"
         target="${target%.rs}"
-        just --justfile Justfile fuzz "$target" "{{ time }}"
+        just fuzz "$target" "{{ time }}"
     done
 
 # Show line coverage of a fuzz target over its corpus, then print a summary report.
@@ -35,8 +48,8 @@ fuzz-coverage target: _fuzz-setup
     #!/usr/bin/env bash
     set -euo pipefail
     rustup component add llvm-tools --toolchain nightly
-    mkdir -p crates/identifiers/fuzz/corpus/{{ target }}
-    cargo +nightly fuzz coverage --fuzz-dir fuzz {{ target }} crates/identifiers/fuzz/corpus/{{ target }} crates/identifiers/fuzz/seeds/{{ target }}
+    mkdir -p fuzz/corpus/{{ target }}
+    cargo +nightly fuzz coverage --fuzz-dir fuzz {{ target }} fuzz/corpus/{{ target }} fuzz/seeds/{{ target }}
     triple="$(rustc +nightly -vV | sed -n 's/host: //p')"
     llvm_cov="$(rustc +nightly --print sysroot)/lib/rustlib/${triple}/bin/llvm-cov"
     case "{{ target }}" in
@@ -44,6 +57,6 @@ fuzz-coverage target: _fuzz-setup
         *) module="{{ target }}" ;;
     esac
     "${llvm_cov}" report \
-        "crates/identifiers/fuzz/target/${triple}/coverage/${triple}/release/{{ target }}" \
-        -instr-profile="crates/identifiers/fuzz/coverage/{{ target }}/coverage.profdata" \
+        "fuzz/target/${triple}/coverage/${triple}/release/{{ target }}" \
+        -instr-profile="fuzz/coverage/{{ target }}/coverage.profdata" \
         -sources "src/${module}.rs" "src/${module}"

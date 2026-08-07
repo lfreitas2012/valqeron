@@ -134,7 +134,7 @@ mod arbitrary;
 #[cfg(any(test, feature = "proptest"))]
 pub mod proptest;
 
-pub use error::IsinError;
+pub use error::{CharacterClass, IsinError};
 
 use core::convert::TryFrom;
 use core::str::{FromStr, from_utf8_unchecked};
