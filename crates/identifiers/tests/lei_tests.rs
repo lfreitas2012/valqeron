@@ -149,8 +149,7 @@ mod error_paths {
 
 mod trait_impls {
     use crate::{BBC, JLR};
-    use proptest::std_facade::HashSet;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeSet, HashSet};
     use valqeron_identifiers::{Lei, LeiError};
 
     #[test]

@@ -38,8 +38,8 @@
 //! 1. **Length**: after the surrounding whitespace is trimmed, the input must contain exactly 6
 //!    characters ([`CfiError::InvalidLength`]). [`Cfi::parse`] rejects empty input up front
 //!    ([`CfiError::Empty`]).
-//! 2. **Character class**: every position must be an uppercase ASCII letter
-//!    ([`CfiError::InvalidCharacter`]).
+//! 2. **Character class**: every position must be an ASCII letter; ASCII lowercase letters are
+//!    folded to uppercase before taxonomy validation.
 //! 3. **Category**: position 1 must be a category defined by ISO 10962
 //!    ([`CfiError::UnknownCategory`]).
 //! 4. **Group**: position 2 must be a group defined for that category ([`CfiError::UnknownGroup`]).
@@ -52,9 +52,9 @@
 //!
 //! # Design notes
 //!
-//! - **No invalid state is representable.** [`Cfi`]'s only field is private; the only ways to
-//!   get one — [`Cfi::parse`], [`Cfi::new`], [`Cfi::from_bytes`], [`FromStr`], and
-//!   [`TryFrom<&str>`], all run full validation. There is no unchecked constructor.
+//! - **No invalid state is representable.** [`Cfi`]'s only field is private. There is no unchecked
+//!   constructor. Every public constructor and conversion, including byte-array and byte-slice
+//!   conversions, runs full validation.
 //! - **Zero allocation, `Copy`, allocation-free.** [`Cfi`] is a 6-byte value type wrapping
 //!   `[u8; 6]`. Parsing, validating, and every accessor operate on the stack; the taxonomy lookup
 //!   is a couple of binary searches and bitmask tests over a `static` table.

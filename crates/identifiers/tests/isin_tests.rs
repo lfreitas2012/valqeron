@@ -154,10 +154,7 @@ mod error_paths {
 
 mod trait_impls {
     use super::*;
-    use proptest::std_facade::HashSet;
-    use std::collections::BTreeSet;
-    use std::format;
-    use std::string::ToString;
+    use std::collections::{BTreeSet, HashSet};
     use valqeron_identifiers::{CountryCode, Isin, IsinError};
 
     #[test]

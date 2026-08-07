@@ -7,7 +7,7 @@ cfi-generate:
 cfi-check:
     cargo run --bin generate_cfi_table --features codegen
     cargo fmt
-    git diff --exit-code -- src/cfi/table.rs
+    git diff --exit-code HEAD -- src/cfi/table.rs
 
 # Generate the third-party license report
 licenses-generate:
