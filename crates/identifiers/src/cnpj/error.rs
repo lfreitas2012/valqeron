@@ -33,7 +33,7 @@ pub enum CnpjError {
     /// The input was an empty string.
     Empty,
 
-    /// After stripping punctuation (`.`, `/`, `-`, ASCII whitespace), the input did not contain exactly
+    /// After stripping punctuation (`.`, `/`, `-`, Unicode whitespace), the input did not contain exactly
     /// 14 meaningful characters.
     InvalidLength {
         /// The number of meaningful (non-punctuation) characters found.

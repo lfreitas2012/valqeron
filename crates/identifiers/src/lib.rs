@@ -25,6 +25,9 @@
 //!
 //! * No invalid state is representable. Every constructor runs the full validation rules and
 //!   returns a typed error on failure. There is no unchecked public constructor.
+//! * Parsers trim surrounding Unicode whitespace using Rust's [`char::is_whitespace`] semantics.
+//!   CNPJ additionally removes that whitespace anywhere alongside its conventional punctuation;
+//!   identifier contents remain ASCII and are validated afterward.
 //! * Zero allocation and `Copy`. Each type wraps a fixed size byte array, and parsing, validation,
 //!   and every accessor operate on the stack.
 //! * Consistent ordering and hashing. Ordering and hashing operate over the raw ASCII bytes and

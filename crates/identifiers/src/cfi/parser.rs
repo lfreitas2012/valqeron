@@ -1,6 +1,6 @@
 //! Turns raw user input into a normalized 6-byte ASCII candidate ready for [`super::validation`].
 //!
-//! This module only knows about *formatting*: trimming surrounding ASCII whitespace a CFI might pick up
+//! This module only knows about *formatting*: trimming surrounding Unicode whitespace a CFI might pick up
 //! from a spreadsheet cell or CSV column, and folding an ASCII case. A CFI has no conventional
 //! internal punctuation, so nothing is stripped from the interior — an interior space or separator
 //! is left in place and rejected later as an invalid character.
@@ -13,7 +13,7 @@ use super::error::CfiError;
 /// Normalizes `input` into a 6-byte ASCII array.
 ///
 /// - Empty input is rejected as [`CfiError::Empty`].
-/// - Leading and trailing ASCII whitespace is trimmed; interior characters are left untouched.
+/// - Leading and trailing Unicode whitespace is trimmed; interior characters are left untouched.
 /// - Remaining characters are ASCII-uppercased (so a lowercase CFI is accepted transparently).
 /// - Any non-ASCII character, or a character count other than 6 after trimming, is rejected.
 ///
@@ -24,7 +24,7 @@ pub(super) fn normalize(input: &str) -> Result<[u8; 6], CfiError> {
         return Err(CfiError::Empty);
     }
 
-    let trimmed = input.trim_matches(|ch: char| ch.is_ascii_whitespace());
+    let trimmed = input.trim();
     let found = trimmed.chars().count();
     if found != 6 {
         return Err(CfiError::InvalidLength { found });
@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[test]
-    fn trims_surrounding_ascii_whitespace() {
+    fn trims_surrounding_whitespace() {
         assert_eq!(normalize("  ESVUFR \t\n"), normalize("ESVUFR"));
     }
 
@@ -92,12 +92,7 @@ mod tests {
     }
 
     #[test]
-    fn does_not_trim_non_ascii_whitespace() {
-        // U+00A0 is a non-breaking space, which is whitespace but not ASCII whitespace.
-        // It should not be trimmed, causing a length error (8 chars instead of 6).
-        assert_eq!(
-            normalize("\u{00A0}ESVUFR\u{00A0}"),
-            Err(CfiError::InvalidLength { found: 8 })
-        );
+    fn trims_non_ascii_whitespace() {
+        assert_eq!(normalize("\u{00A0}ESVUFR\u{00A0}"), normalize("ESVUFR"));
     }
 }
