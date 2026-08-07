@@ -18,6 +18,8 @@
 //!   officially assigned set.
 //! * [`Lei`]: the ISO 17442 Legal Entity Identifier, a 20-character alphanumeric code validated
 //!   with the ISO/IEC 7064 MOD 97-10 check digits.
+//! * [`Mic`]: the ISO 10383 Market Identifier Code, a 4-character exchange and trading venue code
+//!   validated against an embedded snapshot of the official registry.
 //!
 //! # Design
 //!
@@ -42,7 +44,7 @@
 //! # Example
 //!
 //! ```
-//! use valqeron_identifiers::{Cnpj, Isin, Cfi, CountryCode, Lei};
+//! use valqeron_identifiers::{Cnpj, Isin, Cfi, CountryCode, Lei, Mic};
 //!
 //! let cnpj = Cnpj::parse("00.000.000/0001-91").unwrap();
 //! assert_eq!(cnpj.as_str(), "00000000000191");
@@ -58,6 +60,9 @@
 //!
 //! let lei = Lei::parse("5493000IBP32UQZ0KL24").unwrap();
 //! assert_eq!(lei.lou_prefix(), "5493");
+//!
+//! let mic = Mic::parse("xnys").unwrap();
+//! assert_eq!(mic.as_str(), "XNYS");
 //! ```
 #![warn(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -93,3 +98,7 @@ pub use country::{CountryCode, CountryCodeError};
 pub mod lei;
 #[doc(inline)]
 pub use lei::{Lei, LeiError};
+
+pub mod mic;
+#[doc(inline)]
+pub use mic::{Mic, MicError};

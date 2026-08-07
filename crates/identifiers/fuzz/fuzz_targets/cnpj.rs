@@ -95,10 +95,11 @@ fuzz_target!(|data: &[u8]| {
                 let _ = err.to_string();
                 if let CnpjError::InvalidLength { found } = err {
                     // `found` counts meaningful characters, i.e. everything except the
-                    // formatting characters the parser strips (`.`, `/`, `-`, space).
+                    // formatting characters the parser strips (`.`, `/`, `-`, and ASCII
+                    // whitespace, so tabs and newlines are formatting too).
                     let meaningful = text
                         .chars()
-                        .filter(|c| !matches!(c, '.' | '/' | '-' | ' '))
+                        .filter(|c| !(matches!(c, '.' | '/' | '-') || c.is_ascii_whitespace()))
                         .count();
                     assert_eq!(found, meaningful);
                     assert_ne!(found, LEN);

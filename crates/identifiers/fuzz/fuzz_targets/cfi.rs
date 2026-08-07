@@ -70,8 +70,11 @@ fuzz_target!(|data: &[u8]| {
             Err(err) => {
                 let _ = err.to_string();
                 if let CfiError::InvalidLength { found } = err {
-                    // `found` counts characters after trimming surrounding whitespace.
-                    assert_eq!(found, text.trim().chars().count());
+                    // `found` counts characters after trimming surrounding ASCII whitespace. The
+                    // CFI parser deliberately leaves Unicode-only whitespace (e.g. U+000B or
+                    // U+00A0) in place, so a Unicode `str::trim` would disagree with it here.
+                    let ascii_trimmed = text.trim_matches(|ch: char| ch.is_ascii_whitespace());
+                    assert_eq!(found, ascii_trimmed.chars().count());
                     assert_ne!(found, LEN);
                 }
             }

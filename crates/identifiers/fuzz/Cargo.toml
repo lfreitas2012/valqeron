@@ -55,3 +55,10 @@ path = "fuzz_targets/lei.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "mic"
+path = "fuzz_targets/mic.rs"
+test = false
+doc = false
+bench = false
