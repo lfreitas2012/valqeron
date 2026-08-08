@@ -12,7 +12,6 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 valqeron-identifiers = { workspace = true }
-directories = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }

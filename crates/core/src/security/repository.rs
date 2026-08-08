@@ -1,13 +1,15 @@
 use crate::common::{RepositoryResult, Versioned, WriteOutcome};
 use crate::issuer::IssuerId;
-use crate::security::Security;
 use crate::security::patch::SecurityPatch;
+use crate::security::{Security, SecurityId};
 use std::rc::Rc;
 use std::sync::Arc;
 use valqeron_identifiers::Isin;
 
 #[cfg_attr(test, mockall::automock)]
 pub trait SecurityRepository {
+    fn find_by_id(&self, id: &SecurityId) -> RepositoryResult<Option<Versioned<Security>>>;
+
     fn find_by_isin(&self, isin: &Isin) -> RepositoryResult<Option<Versioned<Security>>>;
 
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Security>>>;
@@ -16,9 +18,11 @@ pub trait SecurityRepository {
 
     fn list_paged(
         &self,
-        after: Option<Isin>,
+        after: Option<SecurityId>,
         limit: u32,
     ) -> RepositoryResult<Vec<Versioned<Security>>>;
+
+    fn exists(&self, id: &SecurityId) -> RepositoryResult<bool>;
 
     fn exists_by_isin(&self, isin: &Isin) -> RepositoryResult<bool>;
 
@@ -26,19 +30,22 @@ pub trait SecurityRepository {
 
     fn apply_patch(
         &self,
-        isin: &Isin,
+        id: &SecurityId,
         expected_version: u32,
         patch: SecurityPatch,
     ) -> RepositoryResult<WriteOutcome>;
 
     fn update(&self, security: &Security, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 
-    fn delete(&self, isin: &Isin, expected_version: u32) -> RepositoryResult<WriteOutcome>;
+    fn delete(&self, id: &SecurityId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 }
 
 macro_rules! delegate_security_repository {
     ($ty:ty) => {
         impl<R: SecurityRepository + ?Sized> SecurityRepository for $ty {
+            fn find_by_id(&self, id: &SecurityId) -> RepositoryResult<Option<Versioned<Security>>> {
+                (**self).find_by_id(id)
+            }
             fn find_by_isin(&self, isin: &Isin) -> RepositoryResult<Option<Versioned<Security>>> {
                 (**self).find_by_isin(isin)
             }
@@ -53,10 +60,13 @@ macro_rules! delegate_security_repository {
             }
             fn list_paged(
                 &self,
-                after: Option<Isin>,
+                after: Option<SecurityId>,
                 limit: u32,
             ) -> RepositoryResult<Vec<Versioned<Security>>> {
                 (**self).list_paged(after, limit)
+            }
+            fn exists(&self, id: &SecurityId) -> RepositoryResult<bool> {
+                (**self).exists(id)
             }
             fn exists_by_isin(&self, isin: &Isin) -> RepositoryResult<bool> {
                 (**self).exists_by_isin(isin)
@@ -66,11 +76,11 @@ macro_rules! delegate_security_repository {
             }
             fn apply_patch(
                 &self,
-                isin: &Isin,
+                id: &SecurityId,
                 expected_version: u32,
                 patch: SecurityPatch,
             ) -> RepositoryResult<WriteOutcome> {
-                (**self).apply_patch(isin, expected_version, patch)
+                (**self).apply_patch(id, expected_version, patch)
             }
             fn update(
                 &self,
@@ -79,8 +89,12 @@ macro_rules! delegate_security_repository {
             ) -> RepositoryResult<WriteOutcome> {
                 (**self).update(security, expected_version)
             }
-            fn delete(&self, isin: &Isin, expected_version: u32) -> RepositoryResult<WriteOutcome> {
-                (**self).delete(isin, expected_version)
+            fn delete(
+                &self,
+                id: &SecurityId,
+                expected_version: u32,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).delete(id, expected_version)
             }
         }
     };

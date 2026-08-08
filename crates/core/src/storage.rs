@@ -1,4 +1,5 @@
 use crate::issuer::repository::IssuerRepository;
+use crate::security::repository::SecurityRepository;
 
 mod error;
 
@@ -6,10 +7,12 @@ pub use error::{StorageError, StorageFault};
 
 pub struct Repositories<E: StorageEngine> {
     pub issuers: E::Issuers,
+    pub securities: E::Securities,
 }
 
 pub trait StorageEngine: Sized + Send + Sync {
     type Issuers: IssuerRepository;
+    type Securities: SecurityRepository;
 
     fn repositories(&self) -> Repositories<Self>;
 

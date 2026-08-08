@@ -1,12 +1,13 @@
 use crate::common::{Empty, NonEmpty};
 use crate::security::{DepositaryReceiptRatio, SecurityName, SecurityStatus};
 use std::marker::PhantomData;
-use valqeron_identifiers::Cfi;
+use valqeron_identifiers::{Cfi, Isin};
 
 #[derive(Debug, Clone)]
 pub struct SecurityPatch {
     pub(crate) name: Option<SecurityName>,
     pub(crate) status: Option<SecurityStatus>,
+    pub(crate) isin: Option<Isin>,
     pub(crate) cfi: Option<Cfi>,
     pub(crate) dr_ratio: Option<DepositaryReceiptRatio>,
 }
@@ -21,6 +22,7 @@ impl SecurityPatch {
         Self {
             name: None,
             status: None,
+            isin: None,
             cfi: None,
             dr_ratio: None,
         }
@@ -34,6 +36,11 @@ impl SecurityPatch {
     #[must_use]
     pub const fn status(&self) -> Option<SecurityStatus> {
         self.status
+    }
+
+    #[must_use]
+    pub const fn isin(&self) -> Option<&Isin> {
+        self.isin.as_ref()
     }
 
     #[must_use]
@@ -85,6 +92,17 @@ impl<State> SecurityPatchBuilder<State> {
     }
 
     #[must_use]
+    pub fn isin(self, isin: Isin) -> SecurityPatchBuilder<NonEmpty> {
+        SecurityPatchBuilder {
+            inner: SecurityPatch {
+                isin: Some(isin),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
     pub fn cfi(self, cfi: Cfi) -> SecurityPatchBuilder<NonEmpty> {
         SecurityPatchBuilder {
             inner: SecurityPatch {
@@ -129,6 +147,7 @@ mod tests {
 
         assert_eq!(patch.name, Some(name));
         assert!(patch.status.is_none());
+        assert!(patch.isin.is_none());
         assert!(patch.cfi.is_none());
         assert!(patch.dr_ratio.is_none());
     }
