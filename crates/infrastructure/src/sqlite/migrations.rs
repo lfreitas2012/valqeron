@@ -2,9 +2,10 @@ use rusqlite::{Connection, TransactionBehavior};
 
 use crate::sqlite::error::SqliteError;
 
-pub const MIGRATIONS: &[&str] = &[include_str!(
-    "../../../../migrations/001_create_initial_issuer_schema.sql"
-)];
+pub const MIGRATIONS: &[&str] = &[
+    include_str!("../../../../migrations/001_create_initial_issuer_schema.sql"),
+    include_str!("../../../../migrations/002_create_security_schema.sql"),
+];
 
 pub fn run(connection: &mut Connection) -> Result<(), SqliteError> {
     fn migration_err(source: impl std::error::Error + Send + Sync + 'static) -> SqliteError {
