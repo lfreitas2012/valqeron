@@ -8,10 +8,3 @@
 /test_app.db-shm
 
 .DS_Store
-
-### Identifiers Fuzz ###
-crates/identifiers/fuzz/target
-crates/identifiers/fuzz/corpus
-crates/identifiers/fuzz/artifacts
-crates/identifiers/fuzz/coverage
-crates/identifiers/fuzz/reports
