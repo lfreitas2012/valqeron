@@ -4,7 +4,7 @@ use clap::Args;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use valqeron_core::IssuerId;
+use valqeron_core::{IssuerId, LoadMode};
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
@@ -47,7 +47,7 @@ impl Command for ListArgs {
             None => None,
         };
 
-        let found = repo.list_paged(after, self.limit)?;
+        let found = repo.list_paged(after, self.limit, LoadMode::Lazy)?;
         let items: Vec<IssuerView> = found.iter().map(IssuerView::from).collect();
 
         // Cursor for the next page: the last id in this page, if any.

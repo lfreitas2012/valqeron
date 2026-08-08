@@ -4,7 +4,7 @@ use clap::Args;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use valqeron_core::IssuerId;
+use valqeron_core::{IssuerId, LoadMode};
 
 use crate::commands::{AccessMode, Command};
 use crate::context::AppContext;
@@ -26,7 +26,7 @@ impl Command for InfoArgs {
         let uuid = Uuid::from_str(&self.id).map_err(|e| AppError::InvalidId(e.to_string()))?;
         let id = IssuerId::from_uuid(uuid);
 
-        let found = repo.find_by_id(&id)?;
+        let found = repo.find_by_id(&id, LoadMode::Lazy)?;
         let items: Vec<IssuerView> = found.iter().map(IssuerView::from).collect();
 
         tracing::info!(
