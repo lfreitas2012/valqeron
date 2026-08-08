@@ -1,31 +1,19 @@
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc};
 use rusqlite::Row;
 use rusqlite::types::Type;
 use valqeron_core::{IssuerId, IssuerName, IssuerStatus};
 use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
-use crate::sqlite::row::{column_index, conversion_failure};
+use crate::sqlite::row::{column_index, column_uuid, conversion_failure};
 
 pub(crate) fn column_issuer_id(row: &Row, name: &str) -> rusqlite::Result<IssuerId> {
-    let bytes: Vec<u8> = row.get(name)?;
-    let idx = column_index(row, name);
-    let uuid =
-        uuid::Uuid::from_slice(&bytes).map_err(|e| conversion_failure(idx, Type::Blob, e))?;
-    Ok(IssuerId::from_uuid(uuid))
+    column_uuid(row, name).map(IssuerId::from_uuid)
 }
 
 pub(crate) fn column_status(row: &Row, name: &str) -> rusqlite::Result<IssuerStatus> {
     let raw: String = row.get(name)?;
     IssuerStatus::from_str(&raw)
-        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
-}
-
-pub(crate) fn column_datetime(row: &Row, name: &str) -> rusqlite::Result<DateTime<Utc>> {
-    let raw: String = row.get(name)?;
-    DateTime::parse_from_rfc3339(&raw)
-        .map(|dt| dt.with_timezone(&Utc))
         .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
 }
 

@@ -1,17 +1,14 @@
-use chrono::SecondsFormat;
 use rusqlite::{Connection, OptionalExtension, params};
 use valqeron_core::{Issuer, IssuerId, IssuerName, IssuerPatch};
 use valqeron_identifiers::{Cnpj, Lei};
 
 use crate::sqlite::issuer::mapping::status_as_str;
 use crate::sqlite::issuer::model::IssuerRow;
-use crate::sqlite::row::FromRow;
+use crate::sqlite::row::{FromRow, canonical_timestamp};
+use crate::sqlite::security::model::SecurityRow;
+use crate::sqlite::security::queries::security_columns_qualified;
 
 const ISSUER_COLUMNS: &str = "id, name, status, created_at, cnpj, lei, country_code, version";
-
-fn canonical_timestamp(dt: chrono::DateTime<chrono::Utc>) -> String {
-    dt.to_rfc3339_opts(SecondsFormat::Millis, true)
-}
 
 pub(crate) fn find_by_id(conn: &Connection, id: &IssuerId) -> rusqlite::Result<Option<IssuerRow>> {
     let sql = format!("SELECT {ISSUER_COLUMNS} FROM issuer WHERE id = ?1");
@@ -146,4 +143,48 @@ pub(crate) fn delete(
 ) -> rusqlite::Result<usize> {
     let mut stmt = conn.prepare_cached("DELETE FROM issuer WHERE id = ?1 AND version = ?2")?;
     stmt.execute(params![id.as_bytes(), expected_version])
+}
+
+/// Securities of every issuer, ordered by the owner for in-memory grouping. Companion to `list_all`.
+pub(crate) fn securities_for_all_issuers(conn: &Connection) -> rusqlite::Result<Vec<SecurityRow>> {
+    let columns = security_columns_qualified("s");
+    let sql = format!("SELECT {columns} FROM security s ORDER BY s.issuer_id, s.id");
+    let mut stmt = conn.prepare_cached(&sql)?;
+
+    stmt.query_map([], SecurityRow::from_row)?.collect()
+}
+
+/// Securities of exactly the issuers a `list_paged` call returns, obtained
+/// by joining against the identical keyset-page subquery. Companion to
+/// `list_paged`.
+pub(crate) fn securities_for_issuer_page(
+    conn: &Connection,
+    after: Option<&IssuerId>,
+    limit: u32,
+) -> rusqlite::Result<Vec<SecurityRow>> {
+    let columns = security_columns_qualified("s");
+    match after {
+        Some(id) => {
+            let sql = format!(
+                "SELECT {columns} FROM security s
+                 JOIN (SELECT id FROM issuer WHERE id > ?1 ORDER BY id LIMIT ?2) page
+                   ON s.issuer_id = page.id
+                 ORDER BY s.issuer_id, s.id"
+            );
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![id.as_bytes(), limit], SecurityRow::from_row)?
+                .collect()
+        }
+        None => {
+            let sql = format!(
+                "SELECT {columns} FROM security s
+                 JOIN (SELECT id FROM issuer ORDER BY id LIMIT ?1) page
+                   ON s.issuer_id = page.id
+                 ORDER BY s.issuer_id, s.id"
+            );
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![limit], SecurityRow::from_row)?
+                .collect()
+        }
+    }
 }
