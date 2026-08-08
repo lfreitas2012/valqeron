@@ -1,5 +1,5 @@
 [package]
-name = "valqeron-core"
+name = "valqeron-config"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,16 +9,11 @@ publish = false
 
 [dependencies]
 thiserror = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
-valqeron-identifiers = { workspace = true }
 directories = { workspace = true }
 
-[dev-dependencies]
-mockall = { workspace = true }
-
 [lib]
-name = "valqeron_core"
+name = "valqeron_config"
 
 [lints]
 workspace = true
+    
