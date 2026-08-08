@@ -4,6 +4,7 @@ use valqeron_core::{Repositories, StorageEngine, StorageError};
 
 use crate::sqlite::connection::{Database, DatabaseConfig, WalCheckpointStats};
 use crate::sqlite::issuer::SqliteIssuerRepository;
+use crate::sqlite::security::SqliteSecurityRepository;
 
 pub struct SqliteStorageEngine {
     db: Database,
@@ -33,10 +34,12 @@ impl SqliteStorageEngine {
 
 impl StorageEngine for SqliteStorageEngine {
     type Issuers = SqliteIssuerRepository;
+    type Securities = SqliteSecurityRepository;
 
     fn repositories(&self) -> Repositories<Self> {
         Repositories {
             issuers: SqliteIssuerRepository::new(self.db.handle()),
+            securities: SqliteSecurityRepository::new(self.db.handle()),
         }
     }
 
@@ -47,6 +50,7 @@ impl StorageEngine for SqliteStorageEngine {
         self.db.dry_run(|handle| {
             let repositories = Repositories {
                 issuers: SqliteIssuerRepository::new(handle.clone()),
+                securities: SqliteSecurityRepository::new(handle.clone()),
             };
             f(&repositories)
         })
