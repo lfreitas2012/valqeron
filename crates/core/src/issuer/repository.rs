@@ -4,18 +4,23 @@ use std::rc::Rc;
 use std::sync::Arc;
 use valqeron_identifiers::{Cnpj, Lei};
 
-use crate::common::{RepositoryResult, Versioned, WriteOutcome};
+use crate::common::{LoadMode, RepositoryResult, Versioned, WriteOutcome};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait IssuerRepository {
-    fn find_by_id(&self, id: &IssuerId) -> RepositoryResult<Option<Versioned<Issuer>>>;
+    fn find_by_id(
+        &self,
+        id: &IssuerId,
+        mode: LoadMode,
+    ) -> RepositoryResult<Option<Versioned<Issuer>>>;
 
-    fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>>;
+    fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>>;
 
     fn list_paged(
         &self,
         after: Option<IssuerId>,
         limit: u32,
+        mode: LoadMode,
     ) -> RepositoryResult<Vec<Versioned<Issuer>>>;
 
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool>;
@@ -41,18 +46,23 @@ pub trait IssuerRepository {
 macro_rules! delegate_issuer_repository {
     ($ty:ty) => {
         impl<R: IssuerRepository + ?Sized> IssuerRepository for $ty {
-            fn find_by_id(&self, id: &IssuerId) -> RepositoryResult<Option<Versioned<Issuer>>> {
-                (**self).find_by_id(id)
+            fn find_by_id(
+                &self,
+                id: &IssuerId,
+                mode: LoadMode,
+            ) -> RepositoryResult<Option<Versioned<Issuer>>> {
+                (**self).find_by_id(id, mode)
             }
-            fn list_all(&self) -> RepositoryResult<Vec<Versioned<Issuer>>> {
-                (**self).list_all()
+            fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+                (**self).list_all(mode)
             }
             fn list_paged(
                 &self,
                 after: Option<IssuerId>,
                 limit: u32,
+                mode: LoadMode,
             ) -> RepositoryResult<Vec<Versioned<Issuer>>> {
-                (**self).list_paged(after, limit)
+                (**self).list_paged(after, limit, mode)
             }
             fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
                 (**self).exists(id)
