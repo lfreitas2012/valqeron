@@ -1,10 +1,10 @@
-use crate::Security;
+use crate::common::Loading;
 use crate::issuer::error::{IssuerBuilderError, IssuerNameError, IssuerStatusError};
+use crate::security::Security;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use std::str::FromStr;
 use uuid::Uuid;
-use valqeron_identifiers::{Cnpj, CountryCode, Isin, Lei};
+use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
 pub mod error;
 pub mod patch;
@@ -118,7 +118,26 @@ pub struct Issuer {
     cnpj: Option<Cnpj>,
     lei: Option<Lei>,
     country_code: Option<CountryCode>,
-    securities: HashMap<Isin, Security>,
+
+    // Securities issued by this issuer. Read-side enrichment only: it is populated by eager reads
+    // ([`crate::LoadMode::Eager`]) and never persisted through the issuer repository; securities
+    // are written through their own repository.
+    securities: Loading<Vec<Security>>,
+}
+
+// Raw state of an [`Issuer`] as persisted. Used by storage adapters to rehydrate the entity without
+// re-running builder validation (grouped in a struct because the field count outgrew a positional
+// constructor).
+#[derive(Debug)]
+pub struct IssuerSnapshot {
+    pub id: IssuerId,
+    pub status: IssuerStatus,
+    pub created_at: DateTime<Utc>,
+    pub name: Option<IssuerName>,
+    pub cnpj: Option<Cnpj>,
+    pub lei: Option<Lei>,
+    pub country_code: Option<CountryCode>,
+    pub securities: Loading<Vec<Security>>,
 }
 
 impl Issuer {
@@ -148,25 +167,24 @@ impl Issuer {
         self.country_code.as_ref()
     }
 
-    pub fn reconstitute(
-        id: IssuerId,
-        status: IssuerStatus,
-        created_at: DateTime<Utc>,
-        name: Option<IssuerName>,
-        cnpj: Option<Cnpj>,
-        lei: Option<Lei>,
-        country_code: Option<CountryCode>,
-        securities: HashMap<Isin, Security>,
-    ) -> Self {
+    // Securities issued by this issuer, when they were loaded.
+    //
+    // `None` means the relation was not fetched (lazy read); load it through the security
+    // repository when needed. `Some(&[])` means the issuer is known to have no securities.
+    pub fn securities(&self) -> Option<&[Security]> {
+        self.securities.as_loaded().map(Vec::as_slice)
+    }
+
+    pub fn reconstitute(snapshot: IssuerSnapshot) -> Self {
         Self {
-            id,
-            status,
-            created_at,
-            name,
-            cnpj,
-            lei,
-            country_code,
-            securities,
+            id: snapshot.id,
+            status: snapshot.status,
+            created_at: snapshot.created_at,
+            name: snapshot.name,
+            cnpj: snapshot.cnpj,
+            lei: snapshot.lei,
+            country_code: snapshot.country_code,
+            securities: snapshot.securities,
         }
     }
 }
@@ -180,7 +198,6 @@ pub struct IssuerBuilder {
     cnpj: Option<Cnpj>,
     lei: Option<Lei>,
     country_code: Option<CountryCode>,
-    securities: Option<Vec<Security>>,
 }
 
 impl IssuerBuilder {
@@ -223,11 +240,6 @@ impl IssuerBuilder {
         self
     }
 
-    pub fn securities(mut self, securities: Vec<Security>) -> Self {
-        self.securities = Some(securities);
-        self
-    }
-
     pub fn build(self) -> Result<Issuer, IssuerBuilderError> {
         let id = self.id.unwrap_or_default();
         let status = self.status.unwrap_or_default();
@@ -250,13 +262,6 @@ impl IssuerBuilder {
             }
         }
 
-        let securities = self
-            .securities
-            .unwrap_or_default()
-            .into_iter()
-            .map(|security| (security.isin(), security))
-            .collect::<HashMap<_, _>>();
-
         Ok(Issuer {
             id,
             status,
@@ -265,7 +270,8 @@ impl IssuerBuilder {
             cnpj: self.cnpj,
             lei: self.lei,
             country_code,
-            securities,
+            // A freshly registered issuer factually has no securities yet.
+            securities: Loading::Loaded(Vec::new()),
         })
     }
 }
@@ -273,13 +279,9 @@ impl IssuerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SecurityKind, SecurityName, SecurityStatus};
     use std::str::FromStr;
-    use valqeron_identifiers::{Cfi, Isin};
 
     const US_COUNTRY_CODE: &str = "US";
-
-    const BANCO_DO_BRASIL_ISIN: &str = "BRBBASACNOR3";
 
     #[test]
     fn test_issuer_name_valid() {
@@ -375,6 +377,30 @@ mod tests {
         assert!(issuer.lei.is_none());
         assert!(issuer.country_code.is_none());
         assert!(issuer.created_at <= Utc::now());
+        assert!(
+            matches!(issuer.securities(), Some(securities) if securities.is_empty()),
+            "A newly built issuer is known to have no securities"
+        );
+    }
+
+    #[test]
+    fn test_reconstitute_from_snapshot_defaults_to_not_loaded() {
+        let snapshot = IssuerSnapshot {
+            id: IssuerId::new(),
+            status: IssuerStatus::Active,
+            created_at: Utc::now(),
+            name: None,
+            cnpj: None,
+            lei: None,
+            country_code: None,
+            securities: Loading::NotLoaded,
+        };
+        let issuer = Issuer::reconstitute(snapshot);
+
+        assert!(
+            issuer.securities().is_none(),
+            "Lazy reconstitution must not pretend the relation is empty"
+        );
     }
 
     #[test]
@@ -495,34 +521,5 @@ mod tests {
             matches!(result, Err(IssuerBuilderError::InvalidCountryForCnpj(code)) if code == "US"),
             "Should reject non-BR country codes when a CNPJ is present"
         );
-    }
-
-    #[test]
-    fn test_add_valid_securities() {
-        let security = Isin::new(BANCO_DO_BRASIL_ISIN);
-        assert!(security.is_ok());
-        let Some(isin) = security.ok() else {
-            return;
-        };
-
-        let security_builder = Security::builder(isin, SecurityKind::CommonShare);
-
-        let bbas3 = security_builder
-            .status(SecurityStatus::Active)
-            .created_at(Utc::now())
-            .name(SecurityName::new("BBAS3").unwrap())
-            .cfi(Cfi::new("ESVUFR").unwrap())
-            .build()
-            .unwrap();
-
-        let issuer = Issuer::builder()
-            .name(IssuerName::new("Banco do Brasil S.A.").unwrap())
-            .securities(vec![bbas3])
-            .build();
-
-        assert!(issuer.is_ok());
-        let issuer = issuer.unwrap();
-
-        assert_eq!(1, issuer.securities.iter().len());
     }
 }

@@ -1,9 +1,11 @@
+use crate::issuer::IssuerId;
 use crate::security::error::{
     DrRatioError, SecurityBuilderError, SecurityKindError, SecurityNameError, SecurityStatusError,
 };
 use chrono::{DateTime, Utc};
 use std::num::NonZeroU32;
 use std::str::FromStr;
+use uuid::Uuid;
 use valqeron_identifiers::{Cfi, Isin};
 
 pub mod error;
@@ -38,15 +40,42 @@ impl SecurityName {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct SecurityId(Uuid);
+
+impl SecurityId {
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    pub fn value(&self) -> String {
+        self.0.to_string()
+    }
+
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl Default for SecurityId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SecurityKind {
-    /// Ordinary/common shares (B3 "ON", e.g., VALE3).
     CommonShare,
-    /// Preference shares (B3 "PN"; US preferred stock).
     PreferredShare,
-    /// Bundled certificates such as B3 units (e.g., SANB11).
     Unit,
-    /// Depositary receipts (ADR/BDR/GDR) wrapping underlying security.
     DepositaryReceipt,
 }
 
@@ -148,38 +177,44 @@ impl DepositaryReceiptRatio {
 
 #[derive(Debug)]
 pub struct Security {
-    isin: Isin,
+    id: SecurityId,
+    issuer_id: IssuerId,
     kind: SecurityKind,
     status: SecurityStatus,
     created_at: DateTime<Utc>,
 
     name: Option<SecurityName>,
+    isin: Option<Isin>,
     cfi: Option<Cfi>,
-    underlying_security_id: Option<Isin>,
+    underlying_security_id: Option<SecurityId>,
     dr_ratio: Option<DepositaryReceiptRatio>,
 }
 
 #[derive(Debug)]
 pub struct SecuritySnapshot {
-    pub isin: Isin,
+    pub id: SecurityId,
+    pub issuer_id: IssuerId,
     pub kind: SecurityKind,
     pub status: SecurityStatus,
     pub created_at: DateTime<Utc>,
     pub name: Option<SecurityName>,
+    pub isin: Option<Isin>,
     pub cfi: Option<Cfi>,
-    pub underlying_security_id: Option<Isin>,
+    pub underlying_security_id: Option<SecurityId>,
     pub dr_ratio: Option<DepositaryReceiptRatio>,
 }
 
 impl Security {
-    pub fn builder(isin: Isin, kind: SecurityKind) -> SecurityBuilder {
-        SecurityBuilder::new(isin, kind)
+    pub fn builder(issuer_id: IssuerId, kind: SecurityKind) -> SecurityBuilder {
+        SecurityBuilder::new(issuer_id, kind)
     }
 
-    pub fn isin(&self) -> Isin {
-        self.isin
+    pub fn id(&self) -> &SecurityId {
+        &self.id
     }
-
+    pub fn issuer_id(&self) -> &IssuerId {
+        &self.issuer_id
+    }
     pub fn kind(&self) -> SecurityKind {
         self.kind
     }
@@ -192,10 +227,13 @@ impl Security {
     pub fn name(&self) -> Option<&SecurityName> {
         self.name.as_ref()
     }
+    pub fn isin(&self) -> Option<&Isin> {
+        self.isin.as_ref()
+    }
     pub fn cfi(&self) -> Option<&Cfi> {
         self.cfi.as_ref()
     }
-    pub fn underlying_security_isin(&self) -> Option<&Isin> {
+    pub fn underlying_security_id(&self) -> Option<&SecurityId> {
         self.underlying_security_id.as_ref()
     }
     pub fn dr_ratio(&self) -> Option<&DepositaryReceiptRatio> {
@@ -204,11 +242,13 @@ impl Security {
 
     pub fn reconstitute(snapshot: SecuritySnapshot) -> Self {
         Self {
-            isin: snapshot.isin,
+            id: snapshot.id,
+            issuer_id: snapshot.issuer_id,
             kind: snapshot.kind,
             status: snapshot.status,
             created_at: snapshot.created_at,
             name: snapshot.name,
+            isin: snapshot.isin,
             cfi: snapshot.cfi,
             underlying_security_id: snapshot.underlying_security_id,
             dr_ratio: snapshot.dr_ratio,
@@ -217,28 +257,37 @@ impl Security {
 }
 
 pub struct SecurityBuilder {
-    isin: Isin,
+    issuer_id: IssuerId,
     kind: SecurityKind,
+    id: Option<SecurityId>,
     status: Option<SecurityStatus>,
     created_at: Option<DateTime<Utc>>,
     name: Option<SecurityName>,
+    isin: Option<Isin>,
     cfi: Option<Cfi>,
-    underlying_security_id: Option<Isin>,
+    underlying_security_id: Option<SecurityId>,
     dr_ratio: Option<DepositaryReceiptRatio>,
 }
 
 impl SecurityBuilder {
-    pub fn new(isin: Isin, kind: SecurityKind) -> Self {
+    pub fn new(issuer_id: IssuerId, kind: SecurityKind) -> Self {
         Self {
+            issuer_id,
             kind,
-            isin,
+            id: None,
             status: None,
             created_at: None,
             name: None,
+            isin: None,
             cfi: None,
             underlying_security_id: None,
             dr_ratio: None,
         }
+    }
+
+    pub fn id(mut self, id: SecurityId) -> Self {
+        self.id = Some(id);
+        self
     }
 
     pub fn status(mut self, status: SecurityStatus) -> Self {
@@ -256,12 +305,17 @@ impl SecurityBuilder {
         self
     }
 
+    pub fn isin(mut self, isin: Isin) -> Self {
+        self.isin = Some(isin);
+        self
+    }
+
     pub fn cfi(mut self, cfi: Cfi) -> Self {
         self.cfi = Some(cfi);
         self
     }
 
-    pub fn underlying_security_id(mut self, underlying_security_id: Isin) -> Self {
+    pub fn underlying_security_id(mut self, underlying_security_id: SecurityId) -> Self {
         self.underlying_security_id = Some(underlying_security_id);
         self
     }
@@ -272,6 +326,7 @@ impl SecurityBuilder {
     }
 
     pub fn build(self) -> Result<Security, SecurityBuilderError> {
+        let id = self.id.unwrap_or_default();
         let status = self.status.unwrap_or_default();
         let created_at = self.created_at.unwrap_or_else(Utc::now);
 
@@ -292,17 +347,19 @@ impl SecurityBuilder {
 
         // Cross-field validation: a depositary receipt cannot wrap itself.
         if let Some(underlying) = &self.underlying_security_id
-            && underlying == &self.isin
+            && underlying == &id
         {
             return Err(SecurityBuilderError::SelfUnderlying);
         }
 
         Ok(Security {
-            isin: self.isin,
+            id,
+            issuer_id: self.issuer_id,
             kind: self.kind,
             status,
             created_at,
             name: self.name,
+            isin: self.isin,
             cfi: self.cfi,
             underlying_security_id: self.underlying_security_id,
             dr_ratio: self.dr_ratio,
@@ -313,9 +370,11 @@ impl SecurityBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Vale S.A. common shares (B3: VALE3).
     const VALE_ON_ISIN: &str = "BRVALEACNOR0";
+    // Vale S.A. sponsored ADR (NYSE: VALE).
     const VALE_ADR_ISIN: &str = "US91912E1055";
-    const APPLE_ISIN: &str = "US0378331005";
 
     #[test]
     fn security_name_trims_and_validates() {
@@ -342,6 +401,17 @@ mod tests {
             SecurityName::new(long_string),
             Err(SecurityNameError::TooLong { max: 200 })
         ));
+    }
+
+    #[test]
+    fn security_id_creation_and_conversions() {
+        let original_uuid = Uuid::now_v7();
+        let id = SecurityId::from_uuid(original_uuid);
+
+        assert_eq!(id.as_uuid(), &original_uuid);
+        assert_eq!(id.value(), original_uuid.to_string());
+        assert_eq!(id.as_bytes(), original_uuid.as_bytes());
+        assert_ne!(SecurityId::new(), SecurityId::new());
     }
 
     #[test]
@@ -410,8 +480,7 @@ mod tests {
 
     #[test]
     fn builder_resolves_defaults() {
-        let apple = Isin::new("US0378331005").unwrap();
-        let security_result = Security::builder(apple, SecurityKind::CommonShare).build();
+        let security_result = Security::builder(IssuerId::new(), SecurityKind::CommonShare).build();
         assert!(security_result.is_ok());
         let Some(security) = security_result.ok() else {
             return;
@@ -420,20 +489,35 @@ mod tests {
         assert!(security.status().is_active());
         assert!(matches!(security.kind(), SecurityKind::CommonShare));
         assert!(security.name().is_none());
+        assert!(security.isin().is_none());
         assert!(security.cfi().is_none());
-        assert!(security.underlying_security_isin().is_none());
+        assert!(security.underlying_security_id().is_none());
         assert!(security.dr_ratio().is_none());
         assert!(security.created_at() <= Utc::now());
     }
 
     #[test]
-    fn builder_accepts_depositary_receipt_with_underlying_and_ratio() {
-        let underlying_security = Isin::new(VALE_ON_ISIN);
-        assert!(underlying_security.is_ok());
-        let Some(underlying_id) = underlying_security.ok() else {
+    fn builder_accepts_common_share_with_isin() {
+        let isin_result = Isin::new(VALE_ON_ISIN);
+        assert!(isin_result.is_ok());
+        let Some(isin) = isin_result.ok() else {
             return;
         };
 
+        let security_result = Security::builder(IssuerId::new(), SecurityKind::CommonShare)
+            .isin(isin)
+            .build();
+        assert!(security_result.is_ok());
+        let Some(security) = security_result.ok() else {
+            return;
+        };
+
+        assert!(matches!(security.isin(), Some(i) if i.as_str() == VALE_ON_ISIN));
+    }
+
+    #[test]
+    fn builder_accepts_depositary_receipt_with_underlying_and_ratio() {
+        let underlying_id = SecurityId::new();
         let isin_result = Isin::new(VALE_ADR_ISIN);
         assert!(isin_result.is_ok());
         let Some(isin) = isin_result.ok() else {
@@ -445,7 +529,8 @@ mod tests {
             return;
         };
 
-        let adr_result = Security::builder(isin, SecurityKind::DepositaryReceipt)
+        let adr_result = Security::builder(IssuerId::new(), SecurityKind::DepositaryReceipt)
+            .isin(isin)
             .underlying_security_id(underlying_id)
             .dr_ratio(ratio)
             .build();
@@ -456,27 +541,37 @@ mod tests {
 
         assert!(adr.kind().is_depositary_receipt());
         assert!(matches!(
-            adr.underlying_security_isin(),
+            adr.underlying_security_id(),
             Some(id) if id == &underlying_id
         ));
         assert!(matches!(adr.dr_ratio(), Some(r) if r.receipts().get() == 1));
     }
 
     #[test]
-    fn builder_rejects_dr_ratio_on_non_depositary_receipt() {
-        let security = Isin::new(VALE_ON_ISIN);
-        assert!(security.is_ok());
-        let Some(isin) = security.ok() else {
-            return;
-        };
+    fn builder_rejects_underlying_on_non_depositary_receipt() {
+        let result = Security::builder(IssuerId::new(), SecurityKind::CommonShare)
+            .underlying_security_id(SecurityId::new())
+            .build();
 
+        assert!(
+            matches!(
+                result,
+                Err(SecurityBuilderError::UnderlyingRequiresDepositaryReceipt(kind))
+                    if kind == "COMMON_SHARE"
+            ),
+            "Only depositary receipts may reference an underlying security"
+        );
+    }
+
+    #[test]
+    fn builder_rejects_dr_ratio_on_non_depositary_receipt() {
         let ratio_result = DepositaryReceiptRatio::new(1, 1);
         assert!(ratio_result.is_ok());
         let Some(ratio) = ratio_result.ok() else {
             return;
         };
 
-        let result = Security::builder(isin, SecurityKind::PreferredShare)
+        let result = Security::builder(IssuerId::new(), SecurityKind::PreferredShare)
             .dr_ratio(ratio)
             .build();
 
@@ -489,14 +584,10 @@ mod tests {
 
     #[test]
     fn builder_rejects_self_referencing_underlying() {
-        let security = Isin::new(VALE_ON_ISIN);
-        assert!(security.is_ok());
-        let Some(isin) = security.ok() else {
-            return;
-        };
-
-        let result = Security::builder(isin, SecurityKind::DepositaryReceipt)
-            .underlying_security_id(isin)
+        let id = SecurityId::new();
+        let result = Security::builder(IssuerId::new(), SecurityKind::DepositaryReceipt)
+            .id(id)
+            .underlying_security_id(id)
             .build();
 
         assert!(matches!(result, Err(SecurityBuilderError::SelfUnderlying)));
