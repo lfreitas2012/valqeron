@@ -1,8 +1,10 @@
+use crate::Security;
 use crate::issuer::error::{IssuerBuilderError, IssuerNameError, IssuerStatusError};
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 use std::str::FromStr;
 use uuid::Uuid;
-use valqeron_identifiers::{Cnpj, CountryCode, Lei};
+use valqeron_identifiers::{Cnpj, CountryCode, Isin, Lei};
 
 pub mod error;
 pub mod patch;
@@ -116,6 +118,7 @@ pub struct Issuer {
     cnpj: Option<Cnpj>,
     lei: Option<Lei>,
     country_code: Option<CountryCode>,
+    securities: HashMap<Isin, Security>,
 }
 
 impl Issuer {
@@ -153,6 +156,7 @@ impl Issuer {
         cnpj: Option<Cnpj>,
         lei: Option<Lei>,
         country_code: Option<CountryCode>,
+        securities: HashMap<Isin, Security>,
     ) -> Self {
         Self {
             id,
@@ -162,6 +166,7 @@ impl Issuer {
             cnpj,
             lei,
             country_code,
+            securities,
         }
     }
 }
@@ -175,6 +180,7 @@ pub struct IssuerBuilder {
     cnpj: Option<Cnpj>,
     lei: Option<Lei>,
     country_code: Option<CountryCode>,
+    securities: Option<Vec<Security>>,
 }
 
 impl IssuerBuilder {
@@ -217,6 +223,11 @@ impl IssuerBuilder {
         self
     }
 
+    pub fn securities(mut self, securities: Vec<Security>) -> Self {
+        self.securities = Some(securities);
+        self
+    }
+
     pub fn build(self) -> Result<Issuer, IssuerBuilderError> {
         let id = self.id.unwrap_or_default();
         let status = self.status.unwrap_or_default();
@@ -239,6 +250,13 @@ impl IssuerBuilder {
             }
         }
 
+        let securities = self
+            .securities
+            .unwrap_or_default()
+            .into_iter()
+            .map(|security| (security.isin(), security))
+            .collect::<HashMap<_, _>>();
+
         Ok(Issuer {
             id,
             status,
@@ -247,6 +265,7 @@ impl IssuerBuilder {
             cnpj: self.cnpj,
             lei: self.lei,
             country_code,
+            securities,
         })
     }
 }
@@ -254,9 +273,13 @@ impl IssuerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{SecurityKind, SecurityName, SecurityStatus};
     use std::str::FromStr;
+    use valqeron_identifiers::{Cfi, Isin};
 
     const US_COUNTRY_CODE: &str = "US";
+
+    const BANCO_DO_BRASIL_ISIN: &str = "BRBBASACNOR3";
 
     #[test]
     fn test_issuer_name_valid() {
@@ -472,5 +495,34 @@ mod tests {
             matches!(result, Err(IssuerBuilderError::InvalidCountryForCnpj(code)) if code == "US"),
             "Should reject non-BR country codes when a CNPJ is present"
         );
+    }
+
+    #[test]
+    fn test_add_valid_securities() {
+        let security = Isin::new(BANCO_DO_BRASIL_ISIN);
+        assert!(security.is_ok());
+        let Some(isin) = security.ok() else {
+            return;
+        };
+
+        let security_builder = Security::builder(isin, SecurityKind::CommonShare);
+
+        let bbas3 = security_builder
+            .status(SecurityStatus::Active)
+            .created_at(Utc::now())
+            .name(SecurityName::new("BBAS3").unwrap())
+            .cfi(Cfi::new("ESVUFR").unwrap())
+            .build()
+            .unwrap();
+
+        let issuer = Issuer::builder()
+            .name(IssuerName::new("Banco do Brasil S.A.").unwrap())
+            .securities(vec![bbas3])
+            .build();
+
+        assert!(issuer.is_ok());
+        let issuer = issuer.unwrap();
+
+        assert_eq!(1, issuer.securities.iter().len());
     }
 }
