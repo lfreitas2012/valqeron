@@ -1,3 +1,4 @@
+use crate::common::{Empty, NonEmpty};
 use crate::issuer::{IssuerName, IssuerStatus};
 use std::marker::PhantomData;
 use valqeron_identifiers::{Cnpj, CountryCode, Lei};
@@ -52,9 +53,6 @@ impl IssuerPatch {
         self.country_code.as_ref()
     }
 }
-
-pub struct Empty;
-pub struct NonEmpty;
 
 pub struct IssuerPatchBuilder<State> {
     inner: IssuerPatch,
