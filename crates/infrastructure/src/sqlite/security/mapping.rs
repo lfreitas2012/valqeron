@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use rusqlite::Row;
 use rusqlite::types::Type;
-use valqeron_core::{DrRatio, IssuerId, SecurityId, SecurityKind, SecurityName, SecurityStatus};
+use valqeron_core::{DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityName, SecurityStatus};
 use valqeron_identifiers::{Cfi, Isin};
 
 use crate::sqlite::row::{column_index, column_opt_uuid, column_uuid, conversion_failure};
@@ -63,13 +63,13 @@ pub(crate) fn column_opt_dr_ratio(
     row: &Row,
     receipts_name: &str,
     underlying_name: &str,
-) -> rusqlite::Result<Option<DrRatio>> {
+) -> rusqlite::Result<Option<DepositaryReceiptRatio>> {
     let receipts: Option<u32> = row.get(receipts_name)?;
     let underlying: Option<u32> = row.get(underlying_name)?;
     let idx = column_index(row, receipts_name);
 
     match (receipts, underlying) {
-        (Some(receipts), Some(underlying)) => DrRatio::new(receipts, underlying)
+        (Some(receipts), Some(underlying)) => DepositaryReceiptRatio::new(receipts, underlying)
             .map(Some)
             .map_err(|e| conversion_failure(idx, Type::Integer, e)),
         (None, None) => Ok(None),

@@ -30,6 +30,9 @@ pub const DB_PATH_ENV: &str = "VALQERON_DB";
 /// Default level for the JSON file log layer when the env override is absent.
 pub const DEFAULT_FILE_LOG_LEVEL: &str = "info";
 
+/// Per-binary identity: where its private files (logs) live and which environment variables configure them.
+///
+/// The database is deliberately *not* part of this; it is a shared state resolved identically for every binary via [`resolve_db_path`].
 #[derive(Debug, Clone, Copy)]
 pub struct AppIdentity {
     /// `ProjectDirs` application name for per-binary files.

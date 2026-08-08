@@ -16,4 +16,3 @@ name = "valqeron_config"
 
 [lints]
 workspace = true
-    

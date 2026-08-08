@@ -126,7 +126,7 @@ mod tests {
     use crate::sqlite::connection::Database;
     use crate::sqlite::issuer::SqliteIssuerRepository;
     use valqeron_core::{
-        DrRatio, Issuer, IssuerRepository, SecurityKind, SecurityName, SecuritySnapshot,
+        DepositaryReceiptRatio, Issuer, IssuerRepository, SecurityKind, SecurityName, SecuritySnapshot,
         SecurityStatus,
     };
     use valqeron_identifiers::Cfi;
@@ -177,14 +177,14 @@ mod tests {
 
         let adr = Security::builder(issuer_id, SecurityKind::DepositaryReceipt)
             .underlying_security_id(*underlying.id())
-            .dr_ratio(DrRatio::new(1, 2).unwrap())
+            .dr_ratio(DepositaryReceiptRatio::new(1, 2).unwrap())
             .build()
             .unwrap();
         repo.insert(&adr).unwrap();
 
         let found = repo.find_by_id(adr.id()).unwrap().unwrap();
         assert_eq!(found.data.underlying_security_id(), Some(underlying.id()));
-        assert_eq!(found.data.dr_ratio(), Some(&DrRatio::new(1, 2).unwrap()));
+        assert_eq!(found.data.dr_ratio(), Some(&DepositaryReceiptRatio::new(1, 2).unwrap()));
     }
 
     #[test]
@@ -238,7 +238,7 @@ mod tests {
             isin: None,
             cfi: None,
             underlying_security_id: None,
-            dr_ratio: Some(DrRatio::new(1, 1).unwrap()),
+            dr_ratio: Some(DepositaryReceiptRatio::new(1, 1).unwrap()),
         });
 
         assert!(
@@ -310,14 +310,14 @@ mod tests {
 
         let adr = Security::builder(issuer_id, SecurityKind::DepositaryReceipt)
             .underlying_security_id(*underlying.id())
-            .dr_ratio(DrRatio::new(1, 1).unwrap())
+            .dr_ratio(DepositaryReceiptRatio::new(1, 1).unwrap())
             .build()
             .unwrap();
         repo.insert(&adr).unwrap();
 
         let patch = SecurityPatch::builder()
             .status(SecurityStatus::Retired)
-            .dr_ratio(DrRatio::new(2, 1).unwrap())
+            .dr_ratio(DepositaryReceiptRatio::new(2, 1).unwrap())
             .build();
 
         assert_eq!(
@@ -327,7 +327,7 @@ mod tests {
 
         let updated = repo.find_by_id(adr.id()).unwrap().unwrap();
         assert!(updated.data.status().is_retired());
-        assert_eq!(updated.data.dr_ratio(), Some(&DrRatio::new(2, 1).unwrap()));
+        assert_eq!(updated.data.dr_ratio(), Some(&DepositaryReceiptRatio::new(2, 1).unwrap()));
         assert_eq!(updated.version, 2, "Version should be incremented to 2");
     }
 

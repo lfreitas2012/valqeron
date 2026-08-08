@@ -43,7 +43,7 @@ impl FromRow for SecurityRow {
 mod tests {
     use super::*;
     use crate::sqlite::connection::{Database, Db};
-    use valqeron_core::{DrRatio, IssuerId, SecurityId, SecurityKind, SecurityStatus};
+    use valqeron_core::{DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityStatus};
     use valqeron_identifiers::{Cfi, Isin};
 
     fn insert_issuer(handle: &crate::sqlite::connection::DbHandle, id: &IssuerId) {
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(data.isin().unwrap(), &Isin::new("US91912E1055").unwrap());
         assert_eq!(data.cfi().unwrap(), &Cfi::new("ESVUFR").unwrap());
         assert_eq!(data.underlying_security_id().unwrap(), &underlying_id);
-        assert_eq!(data.dr_ratio().unwrap(), &DrRatio::new(1, 2).unwrap());
+        assert_eq!(data.dr_ratio().unwrap(), &DepositaryReceiptRatio::new(1, 2).unwrap());
         assert_eq!(version, 7);
     }
 
