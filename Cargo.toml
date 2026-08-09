@@ -5,8 +5,9 @@ members = [
     "crates/infrastructure",
     "crates/cli",
     "crates/identifiers",
-    "crates/config",
     "crates/engine",
+    "crates/proto",
+    "crates/client",
 ]
 
 [workspace.package]
@@ -21,7 +22,8 @@ valqeron-core = { path = "crates/core" }
 valqeron-cli = { path = "crates/cli" }
 valqeron-infrastructure = { path = "crates/infrastructure" }
 valqeron-identifiers = { path = "crates/identifiers" }
-valqeron-config = { path = "crates/config" }
+valqeron-proto = { path = "crates/proto" }
+valqeron-client = { path = "crates/client" }
 
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
@@ -38,7 +40,23 @@ clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 directories = "6"
-tokio = { version = "1", features = ["rt", "time", "signal", "macros"] }
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "time",
+    "signal",
+    "macros",
+    "sync",
+    "net",
+] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = "0.14"
+tonic-prost = "0.14"
+prost = "0.14"
+tower = "0.5"
+hyper-util = "0.1"
+tonic-prost-build = "0.14"
+protox = "0.9"
 
 [profile.release]
 codegen-units = 1
