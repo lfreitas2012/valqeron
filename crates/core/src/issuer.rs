@@ -119,15 +119,9 @@ pub struct Issuer {
     lei: Option<Lei>,
     country_code: Option<CountryCode>,
 
-    // Securities issued by this issuer. Read-side enrichment only: it is populated by eager reads
-    // ([`crate::LoadMode::Eager`]) and never persisted through the issuer repository; securities
-    // are written through their own repository.
     securities: Loading<Vec<Security>>,
 }
 
-// Raw state of an [`Issuer`] as persisted. Used by storage adapters to rehydrate the entity without
-// re-running builder validation (grouped in a struct because the field count outgrew a positional
-// constructor).
 #[derive(Debug)]
 pub struct IssuerSnapshot {
     pub id: IssuerId,
@@ -167,10 +161,6 @@ impl Issuer {
         self.country_code.as_ref()
     }
 
-    // Securities issued by this issuer, when they were loaded.
-    //
-    // `None` means the relation was not fetched (lazy read); load it through the security
-    // repository when needed. `Some(&[])` means the issuer is known to have no securities.
     pub fn securities(&self) -> Option<&[Security]> {
         self.securities.as_loaded().map(Vec::as_slice)
     }
