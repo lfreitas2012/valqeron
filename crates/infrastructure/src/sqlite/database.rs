@@ -1,20 +1,45 @@
-use std::path::Path;
-use valqeron_core::{StorageError, StorageFault};
-
-use crate::sqlite::connection::config::DatabaseConfig;
-use crate::sqlite::connection::dry_run::{is_dry_run_active, with_dry_run_conn};
-use crate::sqlite::connection::handle::DbHandle;
-use crate::sqlite::connection::pool::{ReaderPool, ReaderSource, lock_writer};
-use crate::sqlite::connection::pragmas::{self, ConnectionRole, DbPath, SharedConnection};
-use crate::sqlite::connection::sync::{Arc, Mutex};
 use crate::sqlite::error::SqliteError;
 use crate::sqlite::migrations;
+#[cfg(loom)]
+pub(crate) use loom::sync::{Arc, Condvar, Mutex, MutexGuard};
+use rusqlite::{Connection, OpenFlags};
+use std::cell::Cell;
+use std::cmp::min;
+use std::path::Path;
+#[cfg(not(loom))]
+pub(crate) use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::thread;
+use std::time::{Duration, Instant};
+use valqeron_core::{StorageError, StorageFault};
 
-/// Result of a `PRAGMA wal_checkpoint` invocation.
+#[derive(Debug, Clone)]
+pub struct DatabaseConfig {
+    pub reader_pool_size: usize,
+    pub synchronous: Synchronous,
+    pub busy_timeout: Duration,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            reader_pool_size: default_reader_pool_size(),
+            synchronous: Synchronous::default(),
+            busy_timeout: Duration::from_secs(5),
+        }
+    }
+}
+
+fn default_reader_pool_size() -> usize {
+    match thread::available_parallelism() {
+        Ok(available_parallelism) => min(available_parallelism.into(), 6),
+        Err(_) => 2,
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct WalCheckpointStats {
-    /// `1` when the checkpoint could not run to completion because another
-    /// connection kept the WAL busy, `0` otherwise.
+    /// `1` when the checkpoint could not run to completion because another connection kept the WAL
+    /// busy, `0` otherwise.
     pub busy: i64,
     /// Total number of frames in the WAL file.
     pub log_frames: i64,
@@ -22,10 +47,309 @@ pub struct WalCheckpointStats {
     pub checkpointed_frames: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Synchronous {
+    #[default]
+    Normal,
+    Full,
+}
+
+impl Synchronous {
+    fn as_pragma(self) -> &'static str {
+        match self {
+            Synchronous::Normal => "NORMAL",
+            Synchronous::Full => "FULL",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ConnectionRole {
+    Writer,
+    Reader,
+}
+
+fn open_connection(path: &Path, role: ConnectionRole) -> Result<Connection, SqliteError> {
+    let flags = match role {
+        ConnectionRole::Writer => OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
+        ConnectionRole::Reader => OpenFlags::SQLITE_OPEN_READ_ONLY,
+    };
+    Connection::open_with_flags(path, flags).map_err(|source| SqliteError::Connection { source })
+}
+
+#[cfg(not(loom))]
+const READER_CHECKOUT_WARN_AFTER: Duration = Duration::from_secs(5);
+
+pub(crate) struct WaitPool<T> {
+    idle: Mutex<Vec<T>>,
+    available: Condvar,
+}
+
+impl<T> WaitPool<T> {
+    fn new(items: Vec<T>) -> Self {
+        Self {
+            idle: Mutex::new(items),
+            available: Condvar::new(),
+        }
+    }
+
+    fn take(&self) -> T {
+        let mut idle = lock(&self.idle);
+        loop {
+            if let Some(item) = idle.pop() {
+                return item;
+            }
+            idle = self.wait_for_item(idle);
+        }
+    }
+
+    #[cfg(loom)]
+    fn wait_for_item<'a>(&self, idle: MutexGuard<'a, Vec<T>>) -> MutexGuard<'a, Vec<T>> {
+        self.available
+            .wait(idle)
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[cfg(not(loom))]
+    fn wait_for_item<'a>(&self, idle: MutexGuard<'a, Vec<T>>) -> MutexGuard<'a, Vec<T>> {
+        let (guard, timeout) = self
+            .available
+            .wait_timeout_while(idle, READER_CHECKOUT_WARN_AFTER, |idle| idle.is_empty())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if timeout.timed_out() {
+            tracing::warn!(
+                waited_secs = READER_CHECKOUT_WARN_AFTER.as_secs(),
+                "reader pool checkout has been blocked for a while; a ReadGuard may be leaked or long-held"
+            );
+        }
+        guard
+    }
+
+    fn put(&self, item: T) {
+        lock(&self.idle).push(item);
+        self.available.notify_one();
+    }
+}
+
+pub(crate) type ReaderPool = WaitPool<Connection>;
+
+impl ReaderPool {
+    pub(crate) fn checkout(pool: &Arc<Self>) -> PooledReader {
+        PooledReader {
+            pool: Arc::clone(pool),
+            conn: Some(pool.take()),
+        }
+    }
+
+    pub(crate) fn checkin(&self, conn: Connection) {
+        self.put(conn);
+    }
+}
+
+pub(crate) struct PooledReader {
+    pool: Arc<ReaderPool>,
+    conn: Option<Connection>,
+}
+
+impl Drop for PooledReader {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.take() {
+            self.pool.checkin(conn);
+        }
+    }
+}
+
+impl std::ops::Deref for PooledReader {
+    type Target = Connection;
+    #[allow(clippy::expect_used)]
+    fn deref(&self) -> &Connection {
+        self.conn.as_ref().expect("connection present until drop")
+    }
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn lock_writer(m: &Mutex<Connection>) -> MutexGuard<'_, Connection> {
+    m.lock().unwrap_or_else(|poisoned| {
+        let guard = poisoned.into_inner();
+        if !guard.is_autocommit() {
+            tracing::warn!(
+                "recovered a poisoned writer mutex with an open transaction; forcing ROLLBACK"
+            );
+            if let Err(e) = guard.execute_batch("ROLLBACK") {
+                tracing::error!(
+                    error = %e,
+                    "failed to ROLLBACK a stranded transaction after writer poison recovery"
+                );
+            }
+        } else {
+            tracing::warn!("recovered a poisoned writer mutex (connection was in autocommit)");
+        }
+        guard
+    })
+}
+
+pub(crate) enum ReadGuard<'a> {
+    Pooled(PooledReader),
+    Borrowed(&'a Connection),
+}
+
+impl ReadGuard<'_> {
+    fn start_operation(&self) {
+        install_sqlite_progress_handler(self);
+    }
+}
+
+impl Drop for ReadGuard<'_> {
+    fn drop(&mut self) {
+        clear_sqlite_progress_handler(self);
+    }
+}
+
+impl std::ops::Deref for ReadGuard<'_> {
+    type Target = Connection;
+
+    fn deref(&self) -> &Connection {
+        match self {
+            ReadGuard::Pooled(p) => p,
+            ReadGuard::Borrowed(c) => c,
+        }
+    }
+}
+
+pub(crate) enum WriteGuard<'a> {
+    Locked(MutexGuard<'a, Connection>),
+    Borrowed(&'a Connection),
+}
+
+impl WriteGuard<'_> {
+    fn start_operation(&self) {
+        install_sqlite_progress_handler(self);
+    }
+}
+
+impl Drop for WriteGuard<'_> {
+    fn drop(&mut self) {
+        clear_sqlite_progress_handler(self);
+    }
+}
+
+impl std::ops::Deref for WriteGuard<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        match self {
+            WriteGuard::Locked(g) => g,
+            WriteGuard::Borrowed(c) => c,
+        }
+    }
+}
+
+fn clear_sqlite_progress_handler(conn: &Connection) {
+    let _ = conn.progress_handler(0, None::<fn() -> bool>);
+}
+
+const MAX_OPERATION_EXECUTION_TIME: Duration = Duration::from_secs(15);
+
+fn install_sqlite_progress_handler(conn: &Connection) {
+    install_sqlite_progress_handler_with_timeout(conn, MAX_OPERATION_EXECUTION_TIME);
+}
+
+fn install_sqlite_progress_handler_with_timeout(conn: &Connection, timeout: Duration) {
+    let operation_start = Instant::now();
+
+    let _ = conn.progress_handler(
+        5_000,
+        Some(move || {
+            if Instant::now().duration_since(operation_start) > timeout {
+                tracing::error!(
+                    "SQLite operation interrupted: execution exceeded time limit of {:?}",
+                    timeout
+                );
+                true
+            } else {
+                false
+            }
+        }),
+    );
+}
+
+thread_local! {
+    static DRY_RUN_CONN: Cell<Option<*const Connection>> = const { Cell::new(None) };
+}
+
+fn with_dry_run_conn<T>(conn: &Connection, f: impl FnOnce() -> T) -> T {
+    struct Restore(Option<*const Connection>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            DRY_RUN_CONN.set(self.0);
+        }
+    }
+
+    let _restore = Restore(DRY_RUN_CONN.replace(Some(std::ptr::from_ref(conn))));
+    f()
+}
+
+fn is_dry_run_active() -> bool {
+    DRY_RUN_CONN.get().is_some()
+}
+
+fn current_dry_run_conn() -> &'static Connection {
+    #[allow(clippy::expect_used)]
+    let ptr = DRY_RUN_CONN
+        .get()
+        .expect("DbHandle::DryRun used outside an active dry-run");
+    // SAFETY: the pointer was published by `with_dry_run_conn` from a live, locked `&Connection`
+    // that outlives every access on this thread; the slot is cleared before that connection is
+    // released, so a dangling pointer can never be observed here.
+    unsafe { &*ptr }
+}
+
+pub(crate) trait Db {
+    fn write(&self) -> WriteGuard<'_>;
+
+    fn read(&self) -> ReadGuard<'_>;
+}
+
+#[derive(Clone)]
+pub(crate) enum DbHandle {
+    Live {
+        writer: Arc<Mutex<Connection>>,
+        readers: Arc<ReaderPool>,
+    },
+    DryRun,
+}
+
+impl Db for DbHandle {
+    fn write(&self) -> WriteGuard<'_> {
+        let guard = match self {
+            DbHandle::Live { writer, .. } => WriteGuard::Locked(lock_writer(writer)),
+            DbHandle::DryRun => WriteGuard::Borrowed(current_dry_run_conn()),
+        };
+        guard.start_operation();
+        guard
+    }
+
+    fn read(&self) -> ReadGuard<'_> {
+        let guard = match self {
+            DbHandle::Live { readers, .. } => ReadGuard::Pooled(ReaderPool::checkout(readers)),
+            DbHandle::DryRun => ReadGuard::Borrowed(current_dry_run_conn()),
+        };
+        guard.start_operation();
+        guard
+    }
+}
+
+/// A file-backed SQLite database in WAL mode.
+///
+/// Connection topology: one shared read/write connection (the writer, behind
+/// a mutex) plus a pool of `reader_pool_size` read-only connections that
+/// serve concurrent reads. Tests that need a database create a temporary
+/// file-backed one via [`Database::open_temp`].
 pub(crate) struct Database {
-    writer: SharedConnection,
-    readers: ReaderSource,
-    path: DbPath,
+    writer: Arc<Mutex<Connection>>,
+    readers: Arc<ReaderPool>,
 }
 
 impl Database {
@@ -38,77 +362,69 @@ impl Database {
         path: impl AsRef<Path>,
         config: DatabaseConfig,
     ) -> Result<Self, SqliteError> {
-        let path = DbPath::File(path.as_ref().to_path_buf());
-        Self::open_inner(path, config)
-    }
+        let path = path.as_ref();
 
-    pub(crate) fn open_in_memory() -> Result<Self, SqliteError> {
-        Self::open_in_memory_with_config(DatabaseConfig::default())
-    }
-
-    pub(crate) fn open_in_memory_with_config(config: DatabaseConfig) -> Result<Self, SqliteError> {
-        Self::open_inner(DbPath::Memory, config)
-    }
-
-    fn open_inner(path: DbPath, config: DatabaseConfig) -> Result<Self, SqliteError> {
         if config.reader_pool_size < 1 {
             return Err(SqliteError::InvalidPoolSize);
         }
 
-        let is_memory = path.is_memory();
-
-        let mut writer = pragmas::open_connection(&path, ConnectionRole::Writer)?;
-        pragmas::configure(
+        let mut writer = open_connection(path, ConnectionRole::Writer)?;
+        configure(
             &writer,
             ConnectionRole::Writer,
-            is_memory,
             config.synchronous,
             config.busy_timeout,
         )?;
         migrations::run(&mut writer)?;
 
-        let readers = if is_memory {
-            ReaderSource::SharedWithWriter
-        } else {
-            let mut pool = Vec::with_capacity(config.reader_pool_size);
-            for _ in 0..config.reader_pool_size {
-                let conn = pragmas::open_connection(&path, ConnectionRole::Reader)?;
-                pragmas::configure(
-                    &conn,
-                    ConnectionRole::Reader,
-                    is_memory,
-                    config.synchronous,
-                    config.busy_timeout,
-                )?;
-                pool.push(conn);
-            }
-            ReaderSource::Pool(Arc::new(ReaderPool::new(pool)))
-        };
+        let mut pool = Vec::with_capacity(config.reader_pool_size);
+        for _ in 0..config.reader_pool_size {
+            let conn = open_connection(path, ConnectionRole::Reader)?;
+            configure(
+                &conn,
+                ConnectionRole::Reader,
+                config.synchronous,
+                config.busy_timeout,
+            )?;
+            pool.push(conn);
+        }
 
         Ok(Self {
             writer: Arc::new(Mutex::new(writer)),
-            readers,
-            path,
+            readers: Arc::new(ReaderPool::new(pool)),
         })
+    }
+
+    /// Test helper: a fresh database in its own temporary directory, bundled
+    /// with that directory so it lives exactly as long as the database.
+    #[cfg(test)]
+    pub(crate) fn open_temp() -> TempDatabase {
+        Self::open_temp_with_config(DatabaseConfig::default())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_temp_with_config(config: DatabaseConfig) -> TempDatabase {
+        let dir = tempfile::tempdir().expect("create temp dir for test database");
+        let db = Self::open_with_config(dir.path().join("test.db"), config)
+            .expect("open temp test database");
+        TempDatabase { db, _dir: dir }
     }
 
     pub(crate) fn handle(&self) -> DbHandle {
         DbHandle::Live {
             writer: Arc::clone(&self.writer),
-            readers: self.readers.clone(),
+            readers: Arc::clone(&self.readers),
         }
     }
 
     /// Periodic maintenance for long-lived processes: `PRAGMA optimize` plus
-    /// a **passive** WAL checkpoint for file-backed databases.
+    /// a **passive** WAL checkpoint.
     ///
     /// `PASSIVE` is deliberate — it never blocks readers or writers in other
-    /// processes (the CLI may be using the database concurrently). The
-    /// aggressive `TRUNCATE` checkpoint remains reserved for [`Drop`], when
-    /// all in-process work has stopped.
-    ///
-    /// Returns `None` for in-memory databases (no WAL to checkpoint).
-    pub(crate) fn run_maintenance(&self) -> Result<Option<WalCheckpointStats>, SqliteError> {
+    /// processes (the database may be in use concurrently). The aggressive
+    /// `TRUNCATE` checkpoint remains reserved for [`Drop`], when all
+    /// in-process work has stopped.
+    pub(crate) fn run_maintenance(&self) -> Result<WalCheckpointStats, SqliteError> {
         fn maintenance_err(source: rusqlite::Error) -> SqliteError {
             SqliteError::Maintenance { source }
         }
@@ -118,21 +434,14 @@ impl Database {
         conn.execute_batch("PRAGMA optimize;")
             .map_err(maintenance_err)?;
 
-        if !matches!(self.path, DbPath::File(_)) {
-            return Ok(None);
-        }
-
-        let stats = conn
-            .query_row("PRAGMA wal_checkpoint(PASSIVE);", [], |row| {
-                Ok(WalCheckpointStats {
-                    busy: row.get(0)?,
-                    log_frames: row.get(1)?,
-                    checkpointed_frames: row.get(2)?,
-                })
+        conn.query_row("PRAGMA wal_checkpoint(PASSIVE);", [], |row| {
+            Ok(WalCheckpointStats {
+                busy: row.get(0)?,
+                log_frames: row.get(1)?,
+                checkpointed_frames: row.get(2)?,
             })
-            .map_err(maintenance_err)?;
-
-        Ok(Some(stats))
+        })
+        .map_err(maintenance_err)
     }
 
     pub(crate) fn dry_run<F, T>(&self, f: F) -> Result<T, StorageError>
@@ -176,25 +485,83 @@ impl Drop for Database {
             tracing::warn!(error = %e, "PRAGMA optimize failed on close");
         }
 
-        if matches!(self.path, DbPath::File(_))
-            && let Err(e) = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE")
-        {
+        if let Err(e) = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE") {
             tracing::warn!(error = %e, "WAL checkpoint(TRUNCATE) failed on close");
         }
     }
 }
 
+fn configure(
+    conn: &Connection,
+    role: ConnectionRole,
+    synchronous: Synchronous,
+    busy_timeout: Duration,
+) -> Result<(), SqliteError> {
+    let pragma_err = |source| SqliteError::Pragma { source };
+
+    match role {
+        ConnectionRole::Writer => conn
+            .pragma_update(None, "journal_mode", "WAL")
+            .map_err(pragma_err)?,
+        ConnectionRole::Reader => {
+            conn.pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))
+                .map_err(pragma_err)?;
+        }
+    }
+
+    conn.pragma_update(None, "synchronous", synchronous.as_pragma())
+        .map_err(pragma_err)?;
+
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(pragma_err)?;
+
+    conn.busy_timeout(busy_timeout).map_err(pragma_err)?;
+
+    conn.pragma_update(None, "cache_size", -64_000i64)
+        .map_err(pragma_err)?;
+
+    conn.pragma_update(None, "temp_store", "MEMORY")
+        .map_err(pragma_err)?;
+
+    conn.pragma_update(None, "mmap_size", 256i64 * 1024 * 1024)
+        .map_err(pragma_err)?;
+
+    conn.pragma_update(None, "wal_autocheckpoint", 1000i64)
+        .map_err(pragma_err)?;
+
+    conn.set_prepared_statement_cache_capacity(64);
+
+    if let ConnectionRole::Reader = role {
+        conn.pragma_update(None, "query_only", "ON")
+            .map_err(pragma_err)?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) struct TempDatabase {
+    db: Database,
+    _dir: tempfile::TempDir,
+}
+
+#[cfg(test)]
+impl std::ops::Deref for TempDatabase {
+    type Target = Database;
+
+    fn deref(&self) -> &Database {
+        &self.db
+    }
+}
+
+#[cfg(test)]
+mod db_tests {
     use super::*;
-    use crate::sqlite::connection::handle::Db;
-    use crate::sqlite::connection::pragmas::{ConnectionRole, Synchronous, configure};
     use crate::sqlite::migrations::{self, MIGRATIONS};
     use rusqlite::Connection;
     use std::sync::Arc as StdArc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
-    use std::time::Duration;
 
     fn insert_dummy(conn: &Connection) {
         insert_dummy_result(conn).unwrap();
@@ -212,16 +579,9 @@ mod tests {
             .unwrap()
     }
 
-    fn temp_file_db(config: DatabaseConfig) -> (tempfile::TempDir, Database) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("stress.db");
-        let db = Database::open_with_config(path, config).unwrap();
-        (dir, db)
-    }
-
     #[test]
     fn fresh_database_ends_up_at_latest_version() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
         let conn = handle.read();
         let version: i64 = conn
@@ -242,15 +602,8 @@ mod tests {
 
     #[test]
     fn schema_from_the_future_is_rejected_rather_than_silently_skipped() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        configure(
-            &conn,
-            ConnectionRole::Writer,
-            true,
-            Synchronous::Normal,
-            Duration::from_secs(5),
-        )
-        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = Connection::open(dir.path().join("future.db")).unwrap();
 
         conn.pragma_update(None, "user_version", (MIGRATIONS.len() as i64) + 5)
             .unwrap();
@@ -264,16 +617,20 @@ mod tests {
 
     #[test]
     fn invalid_pool_size_is_rejected() {
-        let result = Database::open_in_memory_with_config(DatabaseConfig {
-            reader_pool_size: 0,
-            ..Default::default()
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let result = Database::open_with_config(
+            dir.path().join("invalid.db"),
+            DatabaseConfig {
+                reader_pool_size: 0,
+                ..Default::default()
+            },
+        );
         assert!(matches!(result, Err(SqliteError::InvalidPoolSize)));
     }
 
     #[test]
     fn dry_run_rolls_back_writes() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
 
         db.dry_run(|h| {
             insert_dummy(&h.write());
@@ -287,7 +644,7 @@ mod tests {
 
     #[test]
     fn dry_run_returns_closure_value() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let n = db
             .dry_run(|h| {
                 insert_dummy(&h.write());
@@ -299,7 +656,7 @@ mod tests {
 
     #[test]
     fn dry_run_does_not_roll_back_committed_writes_on_other_connections() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
 
         insert_dummy(&db.handle().write());
         assert_eq!(count(&db.handle().read()), 1);
@@ -315,22 +672,17 @@ mod tests {
 
     #[test]
     fn without_a_dry_run_writes_persist_normally() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         insert_dummy(&db.handle().write());
         assert_eq!(count(&db.handle().read()), 1);
     }
 
     #[test]
     fn concurrent_reads_are_served_while_a_write_lock_is_held() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::open_with_config(
-            dir.path().join("test.db"),
-            DatabaseConfig {
-                reader_pool_size: 2,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        let db = Database::open_temp_with_config(DatabaseConfig {
+            reader_pool_size: 2,
+            ..Default::default()
+        });
         let handle = db.handle();
         let write_guard = handle.write();
         let h2 = handle.clone();
@@ -344,23 +696,11 @@ mod tests {
     }
 
     #[test]
-    fn in_memory_reads_share_the_writer_connection_and_are_not_query_only() {
-        let db = Database::open_in_memory().unwrap();
-        let handle = db.handle();
-        assert_eq!(
-            query_only(&handle.read()),
-            0,
-            "in-memory reads share the writer connection and are never query_only"
-        );
-    }
-
-    #[test]
     fn reader_pool_blocks_then_resumes_when_exhausted() {
-        let db = Database::open_in_memory_with_config(DatabaseConfig {
+        let db = Database::open_temp_with_config(DatabaseConfig {
             reader_pool_size: 1,
             ..Default::default()
-        })
-        .unwrap();
+        });
         let handle = db.handle();
 
         let counter = StdArc::new(AtomicUsize::new(0));
@@ -408,7 +748,7 @@ mod tests {
 
     #[test]
     fn poisoned_writer_with_open_transaction_is_healed_on_next_write() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let h2 = handle.clone();
@@ -447,7 +787,8 @@ mod tests {
     fn dry_run_serializes_against_a_concurrent_writer() {
         use std::sync::mpsc;
 
-        let db = StdArc::new(Database::open_in_memory().unwrap());
+        let db = Database::open_temp();
+        let db = StdArc::new(db);
         let handle = db.handle();
 
         let (inside_tx, inside_rx) = mpsc::channel();
@@ -486,10 +827,8 @@ mod tests {
     }
 
     #[test]
-    fn file_reader_connections_are_read_only_at_the_sqlite_level() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("readonly.db");
-        let db = Database::open(&path).unwrap();
+    fn reader_connections_are_read_only_at_the_sqlite_level() {
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let reader = handle.read();
@@ -517,40 +856,22 @@ mod tests {
     }
 
     #[test]
-    fn journal_mode_is_wal_on_a_file_database() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("wal.db");
-        let db = Database::open(&path).unwrap();
+    fn journal_mode_is_wal() {
+        let db = Database::open_temp();
 
         assert_eq!(
             journal_mode(&db.handle().write()).to_lowercase(),
             "wal",
-            "file-backed writer should be in WAL mode"
-        );
-    }
-
-    #[test]
-    fn in_memory_database_is_not_wal() {
-        let db = Database::open_in_memory().unwrap();
-        let mode = journal_mode(&db.handle().write()).to_lowercase();
-        assert_ne!(
-            mode, "wal",
-            "in-memory database must not use WAL, got {mode:?}"
+            "writer should be in WAL mode"
         );
     }
 
     #[test]
     fn synchronous_full_is_applied_to_the_writer_when_configured() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("durable.db");
-        let db = Database::open_with_config(
-            path,
-            DatabaseConfig {
-                synchronous: Synchronous::Full,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        let db = Database::open_temp_with_config(DatabaseConfig {
+            synchronous: Synchronous::Full,
+            ..Default::default()
+        });
 
         let level: i64 = db
             .handle()
@@ -562,9 +883,7 @@ mod tests {
 
     #[test]
     fn synchronous_defaults_to_normal_on_the_writer() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("relaxed.db");
-        let db = Database::open(&path).unwrap();
+        let db = Database::open_temp();
 
         let level: i64 = db
             .handle()
@@ -576,8 +895,7 @@ mod tests {
 
     #[test]
     fn reader_connections_are_query_only_and_writer_is_not() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::open(dir.path().join("test.db")).unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
         {
             let reader = handle.read();
@@ -591,21 +909,6 @@ mod tests {
             query_only(&handle.write()),
             0,
             "writer pragma query_only must be OFF"
-        );
-    }
-
-    #[test]
-    fn two_in_memory_databases_are_isolated() {
-        let db_a = Database::open_in_memory().unwrap();
-        let db_b = Database::open_in_memory().unwrap();
-
-        insert_dummy(&db_a.handle().write());
-
-        assert_eq!(count(&db_a.handle().read()), 1, "db_a sees its own write");
-        assert_eq!(
-            count(&db_b.handle().read()),
-            0,
-            "db_b must not see db_a's rows (independent in-memory databases)"
         );
     }
 
@@ -648,10 +951,7 @@ mod tests {
         for _ in 0..2_000 {
             insert_dummy(&handle.write());
         }
-        let stats = db
-            .run_maintenance()
-            .unwrap()
-            .expect("file-backed db reports checkpoint stats");
+        let stats = db.run_maintenance().unwrap();
         assert_eq!(stats.busy, 0, "no other connection should block PASSIVE");
         assert_eq!(
             stats.log_frames, stats.checkpointed_frames,
@@ -679,20 +979,13 @@ mod tests {
     }
 
     #[test]
-    fn maintenance_on_in_memory_database_skips_the_checkpoint() {
-        let db = Database::open_in_memory().unwrap();
-        let stats = db.run_maintenance().unwrap();
-        assert!(stats.is_none(), "in-memory databases have no WAL");
-    }
-
-    #[test]
     #[ignore = "stress test; run with --ignored"]
     fn dry_run_does_not_race_concurrent_writes() {
         use std::sync::Barrier;
 
         const ITERS: usize = 200;
 
-        let (_dir, db) = temp_file_db(DatabaseConfig::default());
+        let db = Database::open_temp();
         let db = StdArc::new(db);
         let barrier = StdArc::new(Barrier::new(2));
 
@@ -735,7 +1028,7 @@ mod tests {
         const THREADS: usize = 8;
         const OPS_PER_THREAD: usize = 500;
 
-        let (_dir, db) = temp_file_db(DatabaseConfig {
+        let db = Database::open_temp_with_config(DatabaseConfig {
             reader_pool_size: THREADS,
             ..Default::default()
         });
@@ -858,5 +1151,98 @@ mod tests {
                 .expect("every inserted id must still exist");
             assert!(ver >= 1, "version must be monotonic (>= 1), got {ver}");
         }
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+    use rusqlite::Connection;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn dropping_a_guard_clears_its_expired_progress_handler() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        {
+            let guard = ReadGuard::Borrowed(&conn);
+            install_sqlite_progress_handler_with_timeout(&guard, Duration::from_millis(1));
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let value: i64 = conn
+            .query_row(
+                "WITH RECURSIVE counter(x) AS (
+                     SELECT 1
+                     UNION ALL
+                     SELECT x + 1 FROM counter LIMIT 100000
+                 )
+                 SELECT sum(x) FROM counter",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, 5_000_050_000);
+    }
+}
+
+#[cfg(all(loom, test))]
+mod loom_tests {
+    use super::WaitPool;
+    use loom::sync::Arc;
+    use loom::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn single_item_is_never_lost_or_duplicated_under_contention() {
+        loom::model(|| {
+            let pool = Arc::new(WaitPool::new(vec![0usize]));
+
+            let in_use = Arc::new(AtomicUsize::new(0));
+
+            let handles: Vec<_> = (0..2)
+                .map(|_| {
+                    let pool = Arc::clone(&pool);
+                    let in_use = Arc::clone(&in_use);
+                    loom::thread::spawn(move || {
+                        let item = pool.take();
+                        let concurrent = in_use.fetch_add(1, Ordering::Acquire);
+                        assert_eq!(
+                            concurrent, 0,
+                            "two threads held the single pooled item at once"
+                        );
+                        in_use.fetch_sub(1, Ordering::Release);
+                        pool.put(item);
+                    })
+                })
+                .collect();
+
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            let item = pool.take();
+            assert_eq!(item, 0);
+            pool.put(item);
+        });
+    }
+
+    #[test]
+    fn blocked_take_is_woken_by_a_later_put() {
+        loom::model(|| {
+            let pool: Arc<WaitPool<usize>> = Arc::new(WaitPool::new(vec![]));
+
+            let taker = {
+                let pool = Arc::clone(&pool);
+                loom::thread::spawn(move || {
+                    let item = pool.take();
+                    assert_eq!(item, 7);
+                })
+            };
+
+            pool.put(7);
+
+            taker.join().unwrap();
+        });
     }
 }
