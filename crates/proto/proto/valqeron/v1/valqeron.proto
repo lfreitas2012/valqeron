@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package valqeron.v1;
+
+// An issuer of financial instruments, as stored by the engine.
+message IssuerProto {
+  // Canonical UUID string (UUIDv7).
+  string id = 1;
+  // "ACTIVE" or "RETIRED".
+  string status = 2;
+  // RFC-3339 UTC timestamp.
+  string created_at = 3;
+  // Optimistic-concurrency version; increments on every applied write.
+  uint32 version = 4;
+  optional string name = 5;
+  // Brazilian CNPJ (compact 14-digit form).
+  optional string cnpj = 6;
+  // ISO 17442 LEI (20 characters).
+  optional string lei = 7;
+  // ISO 3166-1 alpha-2 country code.
+  optional string country_code = 8;
+}
+
+message RegisterIssuerRequestProto {
+  optional string name = 1;
+  // "ACTIVE" or "RETIRED"; defaults to "ACTIVE" when absent.
+  optional string status = 2;
+  // Punctuated or compact forms are accepted; validated server-side.
+  optional string cnpj = 3;
+  optional string lei = 4;
+  optional string country_code = 5;
+  bool dry_run = 6;
+}
+
+message RegisterIssuerResponseProto {
+  IssuerProto issuer = 1;
+}
+
+message GetIssuerRequestProto {
+  string id = 1;
+}
+
+message GetIssuerResponseProto {
+  // Absent when no issuer has the requested id.
+  optional IssuerProto issuer = 1;
+}
+
+message ListIssuersRequestProto {
+  // Keyset cursor: return issuers whose id sorts after this UUID.
+  optional string after = 1;
+  uint32 limit = 2;
+}
+
+message ListIssuersResponseProto {
+  repeated IssuerProto issuers = 1;
+}
+
+message PatchIssuerRequestProto {
+  string id = 1;
+  uint32 expected_version = 2;
+  // Present fields are set to the given value; absent fields stay unchanged. At least one field must be present.
+  optional string name = 3;
+  optional string status = 4;
+  optional string cnpj = 5;
+  optional string lei = 6;
+  optional string country_code = 7;
+  bool dry_run = 8;
+}
+
+message PatchIssuerResponseProto {
+  WriteOutcomeProto outcome = 1;
+}
+
+message DeleteIssuerRequestProto {
+  string id = 1;
+  uint32 expected_version = 2;
+  bool dry_run = 3;
+}
+
+message DeleteIssuerResponseProto {
+  WriteOutcomeProto outcome = 1;
+}
+
+// Mirrors the domain `WriteOutcome` for optimistic-concurrency writes.
+message WriteOutcomeProto {
+  message Applied {}
+  message VersionMismatch {
+    uint32 expected = 1;
+    uint32 actual = 2;
+  }
+  message Missing {}
+
+  oneof outcome {
+    Applied applied = 1;
+    VersionMismatch version_mismatch = 2;
+    Missing missing = 3;
+  }
+}
+
+// RFC-7807 problem document. Carried in the gRPC status details so clients can render the same error envelope a direct
+// CLI run would produce.
+message ProblemDetailProto {
+  string type = 1;
+  string title = 2;
+  uint32 status = 3;
+  string detail = 4;
+  // JSON object with problem-specific extension members ("{}" when empty).
+  string extensions_json = 5;
+  repeated string causes = 6;
+}
+
+message HealthRequestProto {}
+
+message HealthResponseProto {
+  string engine_version = 1;
+  uint32 protocol_version = 2;
+}
+
+message StatusRequestProto {}
+
+message StatusResponseProto {
+  string engine_version = 1;
+  uint32 protocol_version = 2;
+  string db_path = 3;
+  uint64 uptime_secs = 4;
+  uint32 pid = 5;
+}
+
+service RpcIssuerService {
+  rpc Register(RegisterIssuerRequestProto) returns (RegisterIssuerResponseProto);
+  rpc Get(GetIssuerRequestProto) returns (GetIssuerResponseProto);
+  rpc List(ListIssuersRequestProto) returns (ListIssuersResponseProto);
+  rpc Patch(PatchIssuerRequestProto) returns (PatchIssuerResponseProto);
+  rpc Delete(DeleteIssuerRequestProto) returns (DeleteIssuerResponseProto);
+}
+
+service RpcAdminService {
+  rpc Health(HealthRequestProto) returns (HealthResponseProto);
+  rpc Status(StatusRequestProto) returns (StatusResponseProto);
+}
