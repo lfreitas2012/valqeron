@@ -9,8 +9,8 @@ publish = false
 
 [dependencies]
 valqeron-core = { workspace = true }
-valqeron-infrastructure = { workspace = true }
-valqeron-config = { workspace = true }
+valqeron-client = { workspace = true }
+valqeron-common = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
@@ -20,7 +20,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 directories = { workspace = true }
-valqeron-identifiers = { workspace = true }
 
 [[bin]]
 name = "valqeron"

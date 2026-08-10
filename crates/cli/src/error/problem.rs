@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::borrow::Cow;
+use valqeron_common::collect_problem_detail_cause;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProblemDetail {
@@ -51,19 +52,9 @@ pub trait IntoProblem: std::error::Error {
             status: self.status(),
             detail: self.to_string(),
             extensions: self.extensions(),
-            causes: collect_causes(self),
+            causes: collect_problem_detail_cause(self),
         }
     }
-}
-
-fn collect_causes(err: &dyn std::error::Error) -> Vec<String> {
-    let mut causes = Vec::new();
-    let mut current = err.source();
-    while let Some(source) = current {
-        causes.push(source.to_string());
-        current = source.source();
-    }
-    causes
 }
 
 #[cfg(test)]
