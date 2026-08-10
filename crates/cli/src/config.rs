@@ -1,9 +1,7 @@
+use anyhow::Context;
+use directories::ProjectDirs;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-
-use directories::ProjectDirs;
-
-use crate::error::{AppError, AppResult};
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "valqeron";
@@ -24,7 +22,10 @@ pub struct ValqeronConfig {
 }
 
 impl ValqeronConfig {
-    pub fn resolve(log_file_flag: Option<Option<PathBuf>>, no_log_file: bool) -> AppResult<Self> {
+    pub fn resolve(
+        log_file_flag: Option<Option<PathBuf>>,
+        no_log_file: bool,
+    ) -> anyhow::Result<Self> {
         let log_file = if no_log_file {
             None
         } else {
@@ -50,10 +51,9 @@ impl ValqeronConfig {
     }
 }
 
-fn default_log_file() -> AppResult<PathBuf> {
-    let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, CLI_APP).ok_or_else(|| {
-        AppError::Config("could not determine a home directory for application files".into())
-    })?;
+fn default_log_file() -> anyhow::Result<PathBuf> {
+    let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, CLI_APP)
+        .context("could not determine a home directory for application files")?;
     let dir = dirs
         .state_dir()
         .map(|p| p.to_path_buf())

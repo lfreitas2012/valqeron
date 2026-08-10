@@ -1,10 +1,8 @@
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-
+use anyhow::Context;
 use serde::Serialize;
 use serde_json::Value;
-
-use crate::error::{AppError, AppResult};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum InputSource {
@@ -21,19 +19,19 @@ impl InputSource {
         }
     }
 
-    pub fn read_json(&self) -> AppResult<Value> {
+    pub fn read_json(&self) -> anyhow::Result<Value> {
         let raw = match self {
             InputSource::File(path) => std::fs::read_to_string(path)
-                .map_err(|e| AppError::Input(format!("reading {}: {e}", path.display())))?,
+                .with_context(|| format!("failed to read input file {}", path.display()))?,
             InputSource::Stdin => {
                 let mut buf = String::new();
                 std::io::stdin()
                     .read_to_string(&mut buf)
-                    .map_err(|e| AppError::Input(format!("reading stdin: {e}")))?;
+                    .context("failed to read JSON input from stdin")?;
                 buf
             }
         };
-        serde_json::from_str(&raw).map_err(|e| AppError::Input(e.to_string()))
+        serde_json::from_str(&raw).context("failed to parse JSON input")
     }
 }
 
@@ -51,13 +49,13 @@ impl OutputDest {
         }
     }
 
-    pub fn write<T: Serialize>(&self, value: &T, pretty: bool) -> AppResult<()> {
+    pub fn write<T: Serialize>(&self, value: &T, pretty: bool) -> anyhow::Result<()> {
         let mut body = if pretty {
             serde_json::to_string_pretty(value)
         } else {
             serde_json::to_string(value)
         }
-        .map_err(|e| AppError::Serialize(e.to_string()))?;
+        .context("failed to serialize JSON output")?;
         body.push('\n');
 
         match self {
@@ -66,10 +64,10 @@ impl OutputDest {
                 let mut lock = stdout.lock();
                 lock.write_all(body.as_bytes())
                     .and_then(|_| lock.flush())
-                    .map_err(|e| AppError::Io(format!("writing stdout: {e}")))
+                    .context("failed to write JSON output to stdout")
             }
             OutputDest::File(path) => std::fs::write(path, body)
-                .map_err(|e| AppError::Io(format!("writing {}: {e}", path.display()))),
+                .with_context(|| format!("failed to write JSON output to {}", path.display())),
         }
     }
 }

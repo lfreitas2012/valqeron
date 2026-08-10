@@ -1,6 +1,6 @@
 use crate::commands::Command;
 use crate::context::AppContext;
-use crate::error::{AppError, AppResult};
+use anyhow::Context;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -42,8 +42,9 @@ pub struct InfoArgs {
 }
 
 impl Command for InfoArgs {
-    fn execute(&self, client: &Client, _ctx: &AppContext) -> AppResult<Value> {
-        let uuid = Uuid::from_str(&self.id).map_err(|e| AppError::InvalidId(e.to_string()))?;
+    fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
+        let uuid =
+            Uuid::from_str(&self.id).with_context(|| format!("invalid issuer id: {}", self.id))?;
         let id = IssuerId::from_uuid(uuid);
 
         let found = client.get_issuer(&id)?;
@@ -90,10 +91,11 @@ pub struct ListArgs {
 }
 
 impl Command for ListArgs {
-    fn execute(&self, client: &Client, _ctx: &AppContext) -> AppResult<Value> {
+    fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
         let after: Option<IssuerId> = match &self.after {
             Some(raw) => {
-                let uuid = Uuid::from_str(raw).map_err(|e| AppError::InvalidId(e.to_string()))?;
+                let uuid = Uuid::from_str(raw)
+                    .with_context(|| format!("invalid issuer pagination cursor: {raw}"))?;
                 Some(IssuerId::from_uuid(uuid))
             }
             None => None,
@@ -146,11 +148,9 @@ pub struct RegisterArgs {
 }
 
 impl Command for RegisterArgs {
-    fn execute(&self, client: &Client, ctx: &AppContext) -> AppResult<Value> {
+    fn execute(&self, client: &Client, ctx: &AppContext) -> anyhow::Result<Value> {
         let base: IssuerInput = match ctx.read_input()? {
-            Some(value) => {
-                serde_json::from_value(value).map_err(|e| AppError::Input(e.to_string()))?
-            }
+            Some(value) => serde_json::from_value(value).context("invalid issuer input")?,
             None => IssuerInput::default(),
         };
 
@@ -177,7 +177,7 @@ impl Command for RegisterArgs {
         );
 
         let view = IssuerView::from(&registered);
-        let payload = serde_json::to_value(view).map_err(|e| AppError::Serialize(e.to_string()))?;
+        let payload = serde_json::to_value(view).context("failed to serialize issuer response")?;
         Ok(payload)
     }
 }
@@ -220,7 +220,7 @@ impl IssuerInput {
         self
     }
 
-    pub fn into_issuer(self) -> AppResult<Issuer> {
+    pub fn into_issuer(self) -> anyhow::Result<Issuer> {
         let mut builder: IssuerBuilder = Issuer::builder();
 
         if let Some(name) = self.name.as_deref() {

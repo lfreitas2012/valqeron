@@ -4,7 +4,6 @@ use valqeron_client::Client;
 
 use crate::commands::Command;
 use crate::context::AppContext;
-use crate::error::{AppError, AppResult};
 
 #[derive(Subcommand, Debug)]
 pub enum EngineCommand {
@@ -28,8 +27,8 @@ impl EngineCommand {
 pub struct PingArgs {}
 
 impl Command for PingArgs {
-    fn execute(&self, client: &Client, _ctx: &AppContext) -> AppResult<Value> {
-        let info = client.health().map_err(AppError::from)?;
+    fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
+        let info = client.health()?;
 
         tracing::info!(
             target: "valqeron::audit",
@@ -50,8 +49,8 @@ impl Command for PingArgs {
 pub struct StatusArgs {}
 
 impl Command for StatusArgs {
-    fn execute(&self, client: &Client, _ctx: &AppContext) -> AppResult<Value> {
-        let status = client.engine_status().map_err(AppError::from)?;
+    fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
+        let status = client.engine_status()?;
 
         tracing::info!(
             target: "valqeron::audit",

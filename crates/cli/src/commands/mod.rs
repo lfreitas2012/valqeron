@@ -3,14 +3,13 @@ pub mod issuer;
 
 use crate::commands::issuer::IssuerCommand;
 use crate::context::AppContext;
-use crate::error::AppResult;
 use clap::Subcommand;
 use serde_json::Value;
 use valqeron_client::Client;
 
 /// A CLI command executed against a connected engine client.
 pub trait Command {
-    fn execute(&self, client: &Client, ctx: &AppContext) -> AppResult<Value>;
+    fn execute(&self, client: &Client, ctx: &AppContext) -> anyhow::Result<Value>;
 }
 
 #[derive(Subcommand, Debug)]
@@ -25,7 +24,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn execute(&self, client: &Client, ctx: &AppContext) -> AppResult<Value> {
+    pub fn execute(&self, client: &Client, ctx: &AppContext) -> anyhow::Result<Value> {
         match self {
             Commands::Issuer(cmd) => cmd.as_command().execute(client, ctx),
             Commands::Engine(cmd) => cmd.as_command().execute(client, ctx),

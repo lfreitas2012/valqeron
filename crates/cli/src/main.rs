@@ -12,12 +12,13 @@ mod cli;
 mod commands;
 mod config;
 mod context;
-mod error;
 mod io_util;
 
 use std::io::IsTerminal;
 
 use clap::Parser;
+use non_blocking::WorkerGuard;
+use tracing_appender::non_blocking;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt};
@@ -26,8 +27,6 @@ use valqeron_client::{Client, ClientOptions};
 use crate::cli::Cli;
 use crate::config::ValqeronConfig;
 use crate::context::AppContext;
-use crate::error::AppResult;
-use crate::error::problem::ProblemDetail;
 use crate::io_util::{InputSource, OutputDest};
 
 fn main() {
@@ -36,27 +35,23 @@ fn main() {
     let _log_guard = match run(&cli) {
         Ok(guard) => guard,
         Err(err) => {
-            let problem = err.problem();
-            print_problem(&problem);
-            std::process::exit(problem.exit_code());
+            print_error(&err);
+            std::process::exit(1);
         }
     };
 }
 
-fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuard>> {
+fn run(cli: &Cli) -> anyhow::Result<Option<WorkerGuard>> {
     let config = ValqeronConfig::resolve(cli.log_file_arg(), cli.no_log_file)?;
 
     let guard = init_logging(cli, &config)?;
 
     if let Err(err) = dispatch(cli) {
-        let problem = err.problem();
         tracing::error!(
             target: "valqeron::audit",
             operation = "error",
-            error.type = %problem.r#type,
-            error.status = problem.status,
-            "{}",
-            problem.human_summary()
+            error = %err,
+            "command failed"
         );
         return Err(err);
     }
@@ -64,7 +59,7 @@ fn run(cli: &Cli) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuar
     Ok(guard)
 }
 
-fn dispatch(cli: &Cli) -> AppResult<()> {
+fn dispatch(cli: &Cli) -> anyhow::Result<()> {
     let pretty = cli.pretty || std::io::stdout().is_terminal();
     let output = OutputDest::from_arg(cli.output.as_deref());
     let input = cli.input.as_deref().map(InputSource::from_arg);
@@ -87,10 +82,7 @@ fn dispatch(cli: &Cli) -> AppResult<()> {
     ctx.write_success(&payload)
 }
 
-fn init_logging(
-    cli: &Cli,
-    config: &ValqeronConfig,
-) -> AppResult<Option<tracing_appender::non_blocking::WorkerGuard>> {
+fn init_logging(cli: &Cli, config: &ValqeronConfig) -> anyhow::Result<Option<WorkerGuard>> {
     let stderr_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         let mut filter = EnvFilter::new(cli.log_level().to_string());
         if let Ok(directive) = "valqeron::audit=off".parse() {
@@ -140,10 +132,7 @@ fn init_logging(
 
 fn open_log_file(
     path: &std::path::Path,
-) -> std::io::Result<(
-    tracing_appender::non_blocking::NonBlocking,
-    tracing_appender::non_blocking::WorkerGuard,
-)> {
+) -> std::io::Result<(non_blocking::NonBlocking, WorkerGuard)> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -154,8 +143,14 @@ fn open_log_file(
     Ok(tracing_appender::non_blocking(file))
 }
 
-fn print_problem(problem: &ProblemDetail) {
-    let envelope = serde_json::json!({ "success": false, "error": problem });
+fn print_error(error: &anyhow::Error) {
+    let envelope = serde_json::json!({
+        "success": false,
+        "error": {
+            "message": error.to_string()
+        }
+    });
+
     let rendered = if std::io::stderr().is_terminal() {
         serde_json::to_string_pretty(&envelope)
     } else {
