@@ -2168,6 +2168,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "valqeron-client",
+ "valqeron-common",
  "valqeron-core",
 ]
 
@@ -2184,6 +2185,13 @@ dependencies = [
  "tracing",
  "valqeron-core",
  "valqeron-proto",
+]
+
+[[package]]
+name = "valqeron-common"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
@@ -2213,6 +2221,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "valqeron-client",
+ "valqeron-common",
  "valqeron-core",
  "valqeron-infrastructure",
  "valqeron-proto",
