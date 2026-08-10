@@ -7,6 +7,11 @@ use crate::sqlite::issuer::mapping::{
 };
 use crate::sqlite::row::{FromRow, column_datetime};
 
+/// One `issuer` row, mapped to a snapshot rather than the entity so the
+/// repository can decide how to satisfy the requested
+/// [`valqeron_core::LoadMode`]: reconstitute immediately (lazy,
+/// `Loading::NotLoaded`) or attach the batch-loaded securities first
+/// (eager).
 #[derive(Debug)]
 pub(crate) struct IssuerRow(pub Versioned<IssuerSnapshot>);
 
@@ -40,14 +45,14 @@ impl FromRow for IssuerRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sqlite::connection::{Database, Db};
+    use crate::sqlite::database::{Database, Db};
     use std::str::FromStr;
     use valqeron_core::{IssuerId, IssuerStatus};
     use valqeron_identifiers::{Cnpj, CountryCode};
 
     #[test]
     fn issuer_row_round_trips_all_columns() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let id = IssuerId::new();
@@ -100,7 +105,7 @@ mod tests {
 
     #[test]
     fn issuer_row_maps_null_optionals_to_none() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let id = IssuerId::new();
@@ -133,7 +138,7 @@ mod tests {
 
     #[test]
     fn issuer_row_rejects_invalid_status() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let conn = handle.read();

@@ -7,6 +7,8 @@ use valqeron_identifiers::{Cfi, Isin};
 
 use crate::sqlite::row::{column_index, column_opt_uuid, column_uuid, conversion_failure};
 
+/// The schema enforces the same pairing with a CHECK constraint; this error
+/// only surfaces if a row bypassed it.
 #[derive(Debug, thiserror::Error)]
 #[error("dr_ratio columns must be both set or both NULL")]
 struct DrRatioPairError;

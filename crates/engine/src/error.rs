@@ -4,9 +4,8 @@ pub type EngineResult<T> = Result<T, EngineError>;
 
 /// Exit codes for the engine binary.
 ///
-/// Distinct codes let service managers and scripts distinguish "another
-/// instance already runs" (a benign race that must only be throttled, not
-/// treated as a crash loop bug) from real failures.
+/// Distinct codes let service managers and scripts distinguish "another instance already runs"
+/// (a benign race that must only be throttled, not treated as a crash loop bug) from real failures.
 pub mod exit_code {
     /// Generic runtime failure (also: `status` reporting a stopped engine).
     pub const RUNTIME: i32 = 1;

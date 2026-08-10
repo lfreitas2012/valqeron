@@ -43,9 +43,21 @@ pub struct Cli {
         env = "VALQERON_DB",
         help = "Database file path.",
         long_help = "Path to the SQLite database file. Overrides VALQERON_DB and the default. \
-                     Must resolve to the same file the CLI uses."
+                     The engine owns this file exclusively; clients reach it via the socket."
     )]
     pub db_path: Option<PathBuf>,
+
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        env = "VALQERON_SOCKET",
+        help = "Engine gRPC socket path.",
+        long_help = "Path of the Unix domain socket the gRPC server binds. Overrides \
+                     VALQERON_SOCKET and the platform default. Must resolve to the same \
+                     path clients use."
+    )]
+    pub socket: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -125,10 +137,7 @@ impl Cli {
 }
 
 impl RunArgs {
-    /// Tri-state `--log-file` flag, mirroring the CLI's semantics:
-    /// absent → `None`; bare `--log-file` → `Some(None)` (default location);
-    /// `--log-file PATH` → `Some(Some(path))`.
-    pub fn log_file_arg(&self) -> Option<Option<PathBuf>> {
+    pub(crate) fn log_file_arg(&self) -> Option<Option<PathBuf>> {
         match &self.log_file {
             None => None,
             Some(p) if p.as_os_str().is_empty() => Some(None),

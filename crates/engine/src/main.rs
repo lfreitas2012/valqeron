@@ -8,28 +8,30 @@
     )
 )]
 
-//! `valqeron-engine` — a user-bounded background daemon for Valqeron.
+//! `valqeron-engine` — the daemon that owns the Valqeron database.
 //!
-//! v1 scope: own long-lived database duties (migrations at startup, periodic
-//! `PRAGMA optimize` + passive WAL checkpoints) behind a single-instance
-//! lock, with graceful shutdown and launchd/systemd service management.
+//! The engine holds the SQLite file exclusively behind a single-instance
+//! lock, runs migrations at startup, serves the gRPC API over a Unix domain
+//! socket (`IssuerService` + `AdminService`), performs periodic maintenance
+//! (`PRAGMA optimize` + passive WAL checkpoints), and shuts down gracefully.
+//! Clients (`valqeron` CLI, future desktop app) reach the database only
+//! through `valqeron-client` — no other process opens the file.
 //!
-//! The engine deliberately does **not** lock the CLI out of the database yet
-//! (phase 1 of the ownership plan): SQLite's WAL mode plus busy timeouts make
-//! cross-process coexistence safe. Exclusive ownership arrives with the gRPC
-//! surface and the client library.
-//!
-//! tokio note: this is the only crate in the workspace allowed to use tokio
-//! (`current_thread` today, `multi_thread` when the gRPC edge lands).
-//! `valqeron-core` and `valqeron-infrastructure` stay async-free.
+//! Async containment: the gRPC edge runs on a `multi_thread` tokio runtime,
+//! but every storage call crosses to tokio's blocking pool through the
+//! bounded [`storage::AsyncStorage`] facade. `valqeron-core` and
+//! `valqeron-infrastructure` stay fully synchronous and async-free.
 
 mod cli;
 mod config;
 mod error;
+mod grpc;
 mod lockfile;
 mod logging;
+mod paths;
 mod runtime;
 mod service;
+mod storage;
 
 use clap::Parser;
 

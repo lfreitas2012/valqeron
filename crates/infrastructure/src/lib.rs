@@ -14,6 +14,4 @@
 
 mod sqlite;
 
-pub use sqlite::{
-    DatabaseConfig, SqliteError, SqliteStorageEngine, Synchronous, WalCheckpointStats,
-};
+pub use sqlite::{DatabaseConfig, SqliteError, SqliteStorageEngine, Synchronous};

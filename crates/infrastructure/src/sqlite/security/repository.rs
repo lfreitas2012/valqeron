@@ -1,6 +1,6 @@
-use crate::sqlite::connection::{Db, DbHandle};
+use crate::sqlite::database::{Db, DbHandle};
 use crate::sqlite::security::queries;
-use crate::sqlite::support::{create_storage_fault_from_error, with_busy_retry, write_outcome};
+use crate::sqlite::support::{backend, with_busy_retry, write_outcome};
 use valqeron_core::{
     IssuerId, RepositoryResult, Security, SecurityId, SecurityPatch, SecurityRepository, Versioned,
     WriteOutcome,
@@ -24,14 +24,14 @@ impl SecurityRepository for SqliteSecurityRepository {
         let conn = self.db.read();
         queries::find_by_id(&conn, id)
             .map(|opt| opt.map(|row| row.into_inner()))
-            .map_err(create_storage_fault_from_error)
+            .map_err(backend)
     }
 
     fn find_by_isin(&self, isin: &Isin) -> RepositoryResult<Option<Versioned<Security>>> {
         let conn = self.db.read();
         queries::find_by_isin(&conn, isin)
             .map(|opt| opt.map(|row| row.into_inner()))
-            .map_err(create_storage_fault_from_error)
+            .map_err(backend)
     }
 
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Security>>> {
@@ -39,7 +39,7 @@ impl SecurityRepository for SqliteSecurityRepository {
 
         queries::list_all(&conn)
             .map(|rows| rows.into_iter().map(|row| row.into_inner()).collect())
-            .map_err(create_storage_fault_from_error)
+            .map_err(backend)
     }
 
     fn list_by_issuer(&self, issuer_id: &IssuerId) -> RepositoryResult<Vec<Versioned<Security>>> {
@@ -47,7 +47,7 @@ impl SecurityRepository for SqliteSecurityRepository {
 
         queries::list_by_issuer(&conn, issuer_id)
             .map(|rows| rows.into_iter().map(|row| row.into_inner()).collect())
-            .map_err(create_storage_fault_from_error)
+            .map_err(backend)
     }
 
     fn list_paged(
@@ -59,17 +59,17 @@ impl SecurityRepository for SqliteSecurityRepository {
 
         queries::list_paged(&conn, after.as_ref(), limit)
             .map(|rows| rows.into_iter().map(|row| row.into_inner()).collect())
-            .map_err(create_storage_fault_from_error)
+            .map_err(backend)
     }
 
     fn exists(&self, id: &SecurityId) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists(&conn, id).map_err(create_storage_fault_from_error)
+        queries::exists(&conn, id).map_err(backend)
     }
 
     fn exists_by_isin(&self, isin: &Isin) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists_by_isin(&conn, isin).map_err(create_storage_fault_from_error)
+        queries::exists_by_isin(&conn, isin).map_err(backend)
     }
 
     fn insert(&self, security: &Security) -> RepositoryResult<()> {
@@ -77,23 +77,23 @@ impl SecurityRepository for SqliteSecurityRepository {
             let conn = self.db.write();
             queries::insert(&conn, security).map(|_| ())
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 
     fn apply_patch(
         &self,
-        security_id: &SecurityId,
+        id: &SecurityId,
         expected_version: u32,
         patch: SecurityPatch,
     ) -> RepositoryResult<WriteOutcome> {
         with_busy_retry(|| {
             let conn = self.db.write();
-            match queries::apply_patch(&conn, security_id, expected_version, &patch)? {
-                0 => write_outcome(&conn, SECURITY_VERSION_SQL, security_id.as_bytes(), expected_version),
+            match queries::apply_patch(&conn, id, expected_version, &patch)? {
+                0 => write_outcome(&conn, SECURITY_VERSION_SQL, id.as_bytes(), expected_version),
                 _ => Ok(WriteOutcome::Applied),
             }
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 
     fn update(&self, security: &Security, expected_version: u32) -> RepositoryResult<WriteOutcome> {
@@ -105,7 +105,7 @@ impl SecurityRepository for SqliteSecurityRepository {
                 _ => Ok(WriteOutcome::Applied),
             }
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 
     fn delete(&self, id: &SecurityId, expected_version: u32) -> RepositoryResult<WriteOutcome> {
@@ -116,14 +116,14 @@ impl SecurityRepository for SqliteSecurityRepository {
                 _ => Ok(WriteOutcome::Applied),
             }
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sqlite::connection::Database;
+    use crate::sqlite::database::{Database, TempDatabase};
     use crate::sqlite::issuer::SqliteIssuerRepository;
     use valqeron_core::{
         DepositaryReceiptRatio, Issuer, IssuerRepository, SecurityKind, SecurityName, SecuritySnapshot,
@@ -131,8 +131,8 @@ mod tests {
     };
     use valqeron_identifiers::Cfi;
 
-    fn test_repo() -> (Database, SqliteSecurityRepository, IssuerId) {
-        let db = Database::open_in_memory().unwrap();
+    fn test_repo() -> (TempDatabase, SqliteSecurityRepository, IssuerId) {
+        let db = Database::open_temp();
         let issuers = SqliteIssuerRepository::new(db.handle());
         let issuer = Issuer::builder().build().unwrap();
         issuers.insert(&issuer).unwrap();
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn insert_with_unknown_issuer_is_a_storage_fault() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let repo = SqliteSecurityRepository::new(db.handle());
 
         let security = Security::builder(IssuerId::new(), SecurityKind::CommonShare)

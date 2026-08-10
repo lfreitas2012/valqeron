@@ -1,18 +1,17 @@
 use std::collections::HashMap;
 
-use crate::sqlite::connection::{Db, DbHandle};
+use crate::sqlite::database::{Db, DbHandle};
+use crate::sqlite::issuer::model::IssuerRow;
 use crate::sqlite::issuer::queries;
 use crate::sqlite::security::model::SecurityRow;
 use crate::sqlite::security::queries as security_queries;
-use crate::sqlite::support::{create_storage_fault_from_error, with_busy_retry, write_outcome};
+use crate::sqlite::support::{backend, with_busy_retry, write_outcome};
 use uuid::Uuid;
 use valqeron_core::{
     Issuer, IssuerId, IssuerPatch, IssuerRepository, IssuerSnapshot, LoadMode, Loading,
     RepositoryResult, Security, Versioned, WriteOutcome,
 };
 use valqeron_identifiers::{Cnpj, Lei};
-
-use crate::sqlite::issuer::model::IssuerRow;
 
 const ISSUER_VERSION_SQL: &str = "SELECT version FROM issuer WHERE id = ?1";
 
@@ -26,6 +25,8 @@ impl SqliteIssuerRepository {
     }
 }
 
+/// Reconstitutes without touching the securities relation
+/// ([`Loading::NotLoaded`], as mapped by `IssuerRow`).
 fn reconstitute_lazy(row: IssuerRow) -> Versioned<Issuer> {
     let Versioned { data, version } = row.into_inner();
     Versioned {
@@ -45,6 +46,10 @@ fn reconstitute_with(
     }
 }
 
+/// Attaches one batched securities result to many issuer rows. Issuers
+/// without a match get `Loaded(vec![])`; securities whose issuer is not in
+/// `rows` (possible when a concurrent write lands between the two read
+/// statements) are dropped.
 fn hydrate_rows(rows: Vec<IssuerRow>, securities: Vec<SecurityRow>) -> Vec<Versioned<Issuer>> {
     let mut grouped: HashMap<Uuid, Vec<Security>> = HashMap::new();
     for row in securities {
@@ -73,7 +78,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         mode: LoadMode,
     ) -> RepositoryResult<Option<Versioned<Issuer>>> {
         let conn = self.db.read();
-        let Some(row) = queries::find_by_id(&conn, id).map_err(create_storage_fault_from_error)? else {
+        let Some(row) = queries::find_by_id(&conn, id).map_err(backend)? else {
             return Ok(None);
         };
 
@@ -81,7 +86,7 @@ impl IssuerRepository for SqliteIssuerRepository {
             LoadMode::Lazy => Ok(Some(reconstitute_lazy(row))),
             LoadMode::Eager => {
                 let securities = security_queries::list_by_issuer(&conn, id)
-                    .map_err(create_storage_fault_from_error)?
+                    .map_err(backend)?
                     .into_iter()
                     .map(|row| row.into_inner().data)
                     .collect();
@@ -92,12 +97,12 @@ impl IssuerRepository for SqliteIssuerRepository {
 
     fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>> {
         let conn = self.db.read();
-        let rows = queries::list_all(&conn).map_err(create_storage_fault_from_error)?;
+        let rows = queries::list_all(&conn).map_err(backend)?;
 
         match mode {
             LoadMode::Lazy => Ok(rows.into_iter().map(reconstitute_lazy).collect()),
             LoadMode::Eager => {
-                let securities = queries::securities_for_all_issuers(&conn).map_err(create_storage_fault_from_error)?;
+                let securities = queries::securities_for_all_issuers(&conn).map_err(backend)?;
                 Ok(hydrate_rows(rows, securities))
             }
         }
@@ -110,13 +115,13 @@ impl IssuerRepository for SqliteIssuerRepository {
         mode: LoadMode,
     ) -> RepositoryResult<Vec<Versioned<Issuer>>> {
         let conn = self.db.read();
-        let rows = queries::list_paged(&conn, after.as_ref(), limit).map_err(create_storage_fault_from_error)?;
+        let rows = queries::list_paged(&conn, after.as_ref(), limit).map_err(backend)?;
 
         match mode {
             LoadMode::Lazy => Ok(rows.into_iter().map(reconstitute_lazy).collect()),
             LoadMode::Eager => {
                 let securities = queries::securities_for_issuer_page(&conn, after.as_ref(), limit)
-                    .map_err(create_storage_fault_from_error)?;
+                    .map_err(backend)?;
                 Ok(hydrate_rows(rows, securities))
             }
         }
@@ -124,17 +129,17 @@ impl IssuerRepository for SqliteIssuerRepository {
 
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists(&conn, id).map_err(create_storage_fault_from_error)
+        queries::exists(&conn, id).map_err(backend)
     }
 
     fn exists_by_cnpj(&self, cnpj: &Cnpj) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists_by_cnpj(&conn, cnpj).map_err(create_storage_fault_from_error)
+        queries::exists_by_cnpj(&conn, cnpj).map_err(backend)
     }
 
     fn exists_by_lei(&self, lei: &Lei) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists_by_lei(&conn, lei).map_err(create_storage_fault_from_error)
+        queries::exists_by_lei(&conn, lei).map_err(backend)
     }
 
     fn insert(&self, issuer: &Issuer) -> RepositoryResult<()> {
@@ -142,23 +147,23 @@ impl IssuerRepository for SqliteIssuerRepository {
             let conn = self.db.write();
             queries::insert(&conn, issuer).map(|_| ())
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 
     fn apply_patch(
         &self,
-        issuer_id: &IssuerId,
+        id: &IssuerId,
         expected_version: u32,
         patch: IssuerPatch,
     ) -> RepositoryResult<WriteOutcome> {
         with_busy_retry(|| {
             let conn = self.db.write();
-            match queries::apply_patch(&conn, issuer_id, expected_version, &patch)? {
-                0 => write_outcome(&conn, ISSUER_VERSION_SQL, issuer_id.as_bytes(), expected_version),
+            match queries::apply_patch(&conn, id, expected_version, &patch)? {
+                0 => write_outcome(&conn, ISSUER_VERSION_SQL, id.as_bytes(), expected_version),
                 _ => Ok(WriteOutcome::Applied),
             }
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 
     fn update(&self, issuer: &Issuer, expected_version: u32) -> RepositoryResult<WriteOutcome> {
@@ -170,7 +175,7 @@ impl IssuerRepository for SqliteIssuerRepository {
                 _ => Ok(WriteOutcome::Applied),
             }
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 
     fn delete(&self, id: &IssuerId, expected_version: u32) -> RepositoryResult<WriteOutcome> {
@@ -181,14 +186,14 @@ impl IssuerRepository for SqliteIssuerRepository {
                 _ => Ok(WriteOutcome::Applied),
             }
         })
-        .map_err(create_storage_fault_from_error)
+        .map_err(backend)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sqlite::connection::Database;
+    use crate::sqlite::database::{Database, TempDatabase};
     use crate::sqlite::security::SqliteSecurityRepository;
     use chrono::Utc;
     use std::str::FromStr;
@@ -197,8 +202,8 @@ mod tests {
     };
     use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
-    fn test_repo() -> (Database, SqliteIssuerRepository) {
-        let db = Database::open_in_memory().unwrap();
+    fn test_repo() -> (TempDatabase, SqliteIssuerRepository) {
+        let db = Database::open_temp();
         let repo = SqliteIssuerRepository::new(db.handle());
         (db, repo)
     }
@@ -330,7 +335,7 @@ mod tests {
 
     #[test]
     fn dry_run_repository_writes_are_rolled_back() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let issuer = Issuer::builder().build().unwrap();
 
         db.dry_run(|h| {
@@ -668,6 +673,9 @@ mod tests {
         assert!(matches!(repo.exists_by_lei(&other_lei), Ok(false)));
     }
 
+    // --- eager/lazy loading -------------------------------------------------
+
+    /// Issuer + N securities inserted through the repositories.
     fn seed_issuer_with_securities(
         db: &Database,
         repo: &SqliteIssuerRepository,

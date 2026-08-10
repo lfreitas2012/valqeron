@@ -122,8 +122,8 @@ pub(crate) fn run_tool(program: &str, args: &[&str]) -> EngineResult<std::proces
 /// from the engine's default log file so everything lands in one place.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) fn engine_log_dir() -> EngineResult<PathBuf> {
-    let log_file = valqeron_config::default_log_file(&valqeron_config::ENGINE_APP)
-        .map_err(|e| EngineError::Config(e.to_string()))?;
+    let log_file =
+        crate::paths::default_log_file().map_err(|e| EngineError::Config(e.to_string()))?;
     Ok(log_file
         .parent()
         .map(std::path::Path::to_path_buf)

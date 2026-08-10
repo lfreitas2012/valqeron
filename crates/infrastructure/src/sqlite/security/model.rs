@@ -42,11 +42,11 @@ impl FromRow for SecurityRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sqlite::connection::{Database, Db};
+    use crate::sqlite::database::{Database, Db, DbHandle};
     use valqeron_core::{DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityStatus};
     use valqeron_identifiers::{Cfi, Isin};
 
-    fn insert_issuer(handle: &crate::sqlite::connection::DbHandle, id: &IssuerId) {
+    fn insert_issuer(handle: &DbHandle, id: &IssuerId) {
         let conn = handle.write();
         conn.execute(
             "INSERT INTO issuer (id, status, created_at) VALUES (?1, 'ACTIVE', ?2)",
@@ -57,7 +57,7 @@ mod tests {
 
     #[test]
     fn security_row_round_trips_all_columns() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let issuer_id = IssuerId::new();
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn security_row_maps_null_optionals_to_none() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let issuer_id = IssuerId::new();
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn security_row_rejects_one_sided_dr_ratio() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let conn = handle.read();
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn security_row_rejects_invalid_kind() {
-        let db = Database::open_in_memory().unwrap();
+        let db = Database::open_temp();
         let handle = db.handle();
 
         let conn = handle.read();

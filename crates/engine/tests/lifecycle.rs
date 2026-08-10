@@ -98,11 +98,21 @@ fn engine_command(db: &Path) -> Command {
     let mut cmd = Command::new(BIN);
     cmd.env_remove("RUST_LOG")
         .env_remove("VALQERON_DB")
+        .env_remove("VALQERON_SOCKET")
         .env_remove("VALQERON_ENGINE_LOG_FILE")
         .env_remove("VALQERON_ENGINE_LOG_LEVEL")
         .arg("--db-path")
-        .arg(db);
+        .arg(db)
+        // Isolate the gRPC socket per test: parallel tests must never
+        // contend on (or clean up) the shared default socket path.
+        .arg("--socket")
+        .arg(socket_path(db));
     cmd
+}
+
+/// Test socket next to the test database, mirroring `<db>.lock`.
+fn socket_path(db: &Path) -> PathBuf {
+    db.with_extension("sock")
 }
 
 fn spawn_engine(db: &Path, maintenance_secs: &str, heartbeat_secs: &str) -> Engine {
@@ -178,6 +188,10 @@ fn starts_heartbeats_and_shuts_down_cleanly_on_sigterm() {
     assert_eq!(engine.wait_exit(), Some(0), "SIGTERM means clean exit 0");
 
     assert!(!lock.exists(), "lock file removed on clean exit");
+    assert!(
+        !socket_path(&db).exists(),
+        "socket file removed on clean exit"
+    );
     let stderr = engine.all_stderr();
     assert!(
         stderr.contains("valqeron-engine starting"),

@@ -6,16 +6,13 @@ use crate::error::{EngineError, EngineResult};
 
 /// Advisory single-instance lock next to the database file.
 ///
-/// The authority is a kernel advisory lock (`std::fs::File::try_lock`,
-/// flock-style), so it is released automatically when the process dies — a
-/// stale lock *file* left behind by `SIGKILL` never prevents the next start.
-/// The holder's PID is stored in the file purely as a diagnostic for
-/// `status` and error messages.
+/// The authority is a kernel advisory lock (`std::fs::File::try_lock`, flock-style), so it is
+/// released automatically when the process dies; a stale lock *file* left behind by `SIGKILL`
+/// never prevents the next start. The holder's PID is stored in the file purely as a diagnostic
+/// for `status` and error messages.
 ///
-/// Scope (phase 1): this guards **engine vs engine** only. The CLI keeps
-/// opening the database directly; cross-process safety comes from SQLite's
-/// WAL mode and busy timeouts. Exclusive database ownership arrives with the
-/// gRPC surface.
+/// The engine owns the database exclusively: clients go through the gRPC socket and never open the
+/// file.
 #[derive(Debug)]
 pub struct EngineLock {
     file: File,
@@ -68,17 +65,16 @@ impl EngineLock {
 
 impl Drop for EngineLock {
     fn drop(&mut self) {
-        // Remove the file first, then let the kernel lock release when the
-        // handle closes: a starter racing the removal still cannot acquire
-        // the flock until this handle is gone, and fresh starts simply
-        // create a new inode.
+        // Remove the file first, then let the kernel lock release when the handle closes: a starter
+        // racing the removal still cannot acquire the flock until this handle is gone, and fresh
+        // starts simply create a new inode.
         let _ = std::fs::remove_file(&self.path);
         let _ = self.file.unlock();
     }
 }
 
-/// PID recorded in a lock file, if any. Diagnostic only — the kernel lock is
-/// the authority, never this value.
+/// PID recorded in a lock file, if any. Diagnostic only, the kernel lock is the authority, never
+/// this value.
 pub fn read_lock_pid(lock_path: &Path) -> Option<String> {
     let contents = std::fs::read_to_string(lock_path).ok()?;
     let pid = contents.trim();

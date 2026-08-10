@@ -5,7 +5,8 @@ use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt};
-use valqeron_config::ENGINE_APP;
+
+use crate::paths;
 
 /// Dual-layer tracing, mirroring the CLI's setup: compact human output on
 /// stderr (the service manager's log stream) plus a JSON file layer.
@@ -36,7 +37,7 @@ pub fn init(
 
     match file {
         Some((non_blocking, guard)) => {
-            let file_filter = EnvFilter::new(valqeron_config::file_log_level(&ENGINE_APP));
+            let file_filter = EnvFilter::new(paths::file_log_level());
 
             let file_layer = fmt::layer()
                 .with_writer(non_blocking)

@@ -10,16 +10,22 @@ publish = false
 [dependencies]
 valqeron-core = { workspace = true }
 valqeron-infrastructure = { workspace = true }
-valqeron-config = { workspace = true }
+valqeron-proto = { workspace = true }
+valqeron-common = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }
+serde_json = { workspace = true }
+directories = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tonic = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+valqeron-client = { workspace = true }
 
 [[bin]]
 name = "valqeron-engine"

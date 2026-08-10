@@ -48,20 +48,36 @@ pub fn install(cli: &Cli, args: &InstallArgs) -> EngineResult<()> {
 
     // The sandbox (ProtectSystem=strict / ProtectHome=read-only) must be
     // punched through for exactly what the engine writes: the database
-    // directory (db + WAL + lock file) and its log directory.
-    let db_path = valqeron_config::resolve_db_path(cli.db_path.clone())
-        .map_err(|e| EngineError::Config(e.to_string()))?;
+    // directory (db + WAL + lock file), the gRPC socket directory, and its
+    // log directory.
+    let db_path = crate::config::resolve_db_path(cli)?;
     let db_dir = db_path
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let rw_paths = format!("\"{}\" \"{}\"", db_dir.display(), log_dir.display());
+    let socket_path = crate::config::resolve_socket_path(cli)?;
+    let socket_dir = socket_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let rw_paths = format!(
+        "\"{}\" \"{}\" \"{}\"",
+        db_dir.display(),
+        socket_dir.display(),
+        log_dir.display()
+    );
 
-    // Propagate an explicit database override into the unit's environment.
-    let env_block = match &cli.db_path {
-        Some(path) => format!("Environment=\"VALQERON_DB={}\"\n", path.display()),
-        None => String::new(),
-    };
+    // Propagate explicit overrides into the unit's environment.
+    let mut env_block = String::new();
+    if let Some(path) = &cli.db_path {
+        env_block.push_str(&format!("Environment=\"VALQERON_DB={}\"\n", path.display()));
+    }
+    if let Some(path) = &cli.socket {
+        env_block.push_str(&format!(
+            "Environment=\"VALQERON_SOCKET={}\"\n",
+            path.display()
+        ));
+    }
 
     let rendered = render(
         crate::service::systemd_template(),

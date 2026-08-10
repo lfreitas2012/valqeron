@@ -18,7 +18,8 @@ pub(crate) fn column_index(row: &Row, name: &str) -> usize {
     row.as_ref().column_index(name).unwrap_or(0)
 }
 
-/// Canonical persisted timestamp form: RFC 3339, millisecond precision, Z-suffixed UTC.
+/// Canonical persisted timestamp form: RFC 3339, millisecond precision,
+/// Z-suffixed UTC.
 pub(crate) fn canonical_timestamp(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::Millis, true)
 }

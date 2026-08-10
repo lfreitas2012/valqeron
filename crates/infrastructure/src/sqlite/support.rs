@@ -1,3 +1,7 @@
+//! Write-path helpers shared by the SQLite repositories: busy/locked retry
+//! with linear backoff, and disambiguation of guarded writes that affected
+//! zero rows.
+
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -7,7 +11,7 @@ const BUSY_MAX_ATTEMPTS: u32 = 5;
 
 const BUSY_BACKOFF_BASE: Duration = Duration::from_millis(10);
 
-pub(crate) fn create_storage_fault_from_error(e: rusqlite::Error) -> StorageFault {
+pub(crate) fn backend(e: rusqlite::Error) -> StorageFault {
     StorageFault::new(e)
 }
 
@@ -39,6 +43,10 @@ pub(crate) fn with_busy_retry<T>(op: impl Fn() -> rusqlite::Result<T>) -> rusqli
     }
 }
 
+/// Disambiguates a version-guarded write that affected zero rows by
+/// re-reading the row's current version. `version_sql` must select the
+/// `version` column by a single `?1` id parameter (e.g.
+/// `SELECT version FROM issuer WHERE id = ?1`).
 pub(crate) fn write_outcome(
     conn: &Connection,
     version_sql: &str,

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use valqeron_core::{Repositories, StorageEngine, StorageError};
 
-use crate::sqlite::connection::{Database, DatabaseConfig, WalCheckpointStats};
+use crate::sqlite::database::{Database, DatabaseConfig, WalCheckpointStats};
 use crate::sqlite::issuer::SqliteIssuerRepository;
 use crate::sqlite::security::SqliteSecurityRepository;
 
@@ -16,18 +16,12 @@ impl SqliteStorageEngine {
         Ok(Self { db })
     }
 
-    pub fn open_in_memory() -> Result<Self, StorageError> {
-        let db = Database::open_in_memory()?;
-        Ok(Self { db })
-    }
-
     /// Periodic maintenance for long-lived processes: `PRAGMA optimize` plus
-    /// a passive WAL checkpoint (file-backed databases only, `None` for
-    /// in-memory databases).
+    /// a passive WAL checkpoint.
     ///
     /// Safe to call while the engine is in use; the passive checkpoint never
     /// blocks concurrent readers or writers in other processes.
-    pub fn run_maintenance(&self) -> Result<Option<WalCheckpointStats>, StorageError> {
+    pub fn run_maintenance(&self) -> Result<WalCheckpointStats, StorageError> {
         Ok(self.db.run_maintenance()?)
     }
 }

@@ -2,12 +2,11 @@
 
 use serde_json::{Map, Value};
 use tonic::{Code, Status};
+use valqeron_common::{collect_problem_detail_cause, extensions_json};
 use valqeron_core::{
     CnpjError, IssuerBuilderError, IssuerNameError, RegisterIssuerError, StorageError, StorageFault,
 };
-use valqeron_proto::mapping::MappingError;
-use valqeron_proto::problem::status_with_problem;
-use valqeron_proto::v1;
+use valqeron_proto::{IssuerMappingError, status_with_problem, v1};
 
 use crate::storage::StorageCallError;
 
@@ -35,7 +34,7 @@ mod exit {
 #[derive(Debug, thiserror::Error)]
 pub enum HandlerError {
     #[error(transparent)]
-    Mapping(#[from] MappingError),
+    Mapping(#[from] IssuerMappingError),
 
     #[error(transparent)]
     Register(#[from] RegisterIssuerError),
@@ -55,13 +54,13 @@ impl HandlerError {
     /// details.
     pub fn into_status(self) -> Status {
         let code = self.code();
-        let problem = v1::ProblemDetail {
+        let problem = v1::ProblemDetailProto {
             r#type: self.problem_type().to_string(),
             title: self.title().to_string(),
             status: self.status(),
             detail: self.to_string(),
             extensions_json: extensions_json(&self.extensions()),
-            causes: collect_causes(&self),
+            causes: collect_problem_detail_cause(&self),
         };
         status_with_problem(code, problem)
     }
@@ -87,25 +86,25 @@ impl HandlerError {
     fn problem_type(&self) -> &'static str {
         match self {
             HandlerError::Mapping(e) => match e {
-                MappingError::InvalidId(_) => "issuer/invalid-id",
-                MappingError::InvalidTimestamp(_) => "issuer/validation/timestamp",
-                MappingError::Name(IssuerNameError::Empty) => "issuer/validation/name-empty",
-                MappingError::Name(IssuerNameError::TooLong { .. }) => {
+                IssuerMappingError::InvalidId(_) => "issuer/invalid-id",
+                IssuerMappingError::InvalidTimestamp(_) => "issuer/validation/timestamp",
+                IssuerMappingError::Name(IssuerNameError::Empty) => "issuer/validation/name-empty",
+                IssuerMappingError::Name(IssuerNameError::TooLong { .. }) => {
                     "issuer/validation/name-too-long"
                 }
-                MappingError::Status(_) => "issuer/validation/status",
-                MappingError::Cnpj(_) => "identifier/cnpj-invalid",
-                MappingError::Lei(_) => "identifier/lei-invalid",
-                MappingError::CountryCode(_) => "identifier/country-code-invalid",
-                MappingError::Builder(b) => match b {
+                IssuerMappingError::Status(_) => "issuer/validation/status",
+                IssuerMappingError::Cnpj(_) => "identifier/cnpj-invalid",
+                IssuerMappingError::Lei(_) => "identifier/lei-invalid",
+                IssuerMappingError::CountryCode(_) => "identifier/country-code-invalid",
+                IssuerMappingError::Builder(b) => match b {
                     IssuerBuilderError::InvalidCountryForCnpj(_) => {
                         "issuer/validation/country-cnpj-mismatch"
                     }
                     IssuerBuilderError::NameError(_) => "issuer/validation/name",
                     IssuerBuilderError::CountryCodeError(_) => "identifier/country-code-invalid",
                 },
-                MappingError::EmptyPatch => "issuer/validation/empty-patch",
-                MappingError::MissingField(_) => "input/parse",
+                IssuerMappingError::EmptyPatch => "issuer/validation/empty-patch",
+                IssuerMappingError::MissingField(_) => "input/parse",
             },
             HandlerError::Register(e) => match e {
                 RegisterIssuerError::DuplicateCnpj => "issuer/duplicate-cnpj",
@@ -124,11 +123,11 @@ impl HandlerError {
     fn title(&self) -> &'static str {
         match self {
             HandlerError::Mapping(e) => match e {
-                MappingError::InvalidId(_) => "Invalid issuer id",
-                MappingError::Cnpj(_) | MappingError::Lei(_) | MappingError::CountryCode(_) => {
-                    "Invalid identifier"
-                }
-                MappingError::MissingField(_) => "Invalid input",
+                IssuerMappingError::InvalidId(_) => "Invalid issuer id",
+                IssuerMappingError::Cnpj(_)
+                | IssuerMappingError::Lei(_)
+                | IssuerMappingError::CountryCode(_) => "Invalid identifier",
+                IssuerMappingError::MissingField(_) => "Invalid input",
                 _ => "Issuer validation failed",
             },
             HandlerError::Register(e) => match e {
@@ -149,7 +148,7 @@ impl HandlerError {
     fn status(&self) -> u32 {
         match self {
             HandlerError::Mapping(e) => match e {
-                MappingError::MissingField(_) => exit::NOINPUT,
+                IssuerMappingError::MissingField(_) => exit::NOINPUT,
                 _ => exit::DATAERR,
             },
             HandlerError::Register(e) => match e {
@@ -171,13 +170,13 @@ impl HandlerError {
         let mut ext = Map::new();
         match self {
             HandlerError::Mapping(e) => match e {
-                MappingError::Name(IssuerNameError::TooLong { max }) => {
+                IssuerMappingError::Name(IssuerNameError::TooLong { max }) => {
                     ext.insert("max".into(), Value::from(*max));
                 }
-                MappingError::Status(_) => {
+                IssuerMappingError::Status(_) => {
                     ext.insert("allowed".into(), Value::from(vec!["ACTIVE", "RETIRED"]));
                 }
-                MappingError::Cnpj(err) => {
+                IssuerMappingError::Cnpj(err) => {
                     ext.insert("field".into(), Value::from("cnpj"));
                     if let CnpjError::InvalidCheckDigits {
                         position,
@@ -190,13 +189,13 @@ impl HandlerError {
                         ext.insert("found".into(), Value::from(*found));
                     }
                 }
-                MappingError::Lei(_) => {
+                IssuerMappingError::Lei(_) => {
                     ext.insert("field".into(), Value::from("lei"));
                 }
-                MappingError::CountryCode(_) => {
+                IssuerMappingError::CountryCode(_) => {
                     ext.insert("field".into(), Value::from("country_code"));
                 }
-                MappingError::Builder(IssuerBuilderError::InvalidCountryForCnpj(cc)) => {
+                IssuerMappingError::Builder(IssuerBuilderError::InvalidCountryForCnpj(cc)) => {
                     ext.insert("country_code".into(), Value::from(cc.clone()));
                 }
                 _ => {}
@@ -219,7 +218,7 @@ impl HandlerError {
 pub fn not_found_problem(id: &str) -> Status {
     let mut ext = Map::new();
     ext.insert("id".into(), Value::from(id));
-    let problem = v1::ProblemDetail {
+    let problem = v1::ProblemDetailProto {
         r#type: "issuer/not-found".to_string(),
         title: "Issuer not found".to_string(),
         status: exit::NOTFOUND,
@@ -230,24 +229,10 @@ pub fn not_found_problem(id: &str) -> Status {
     status_with_problem(Code::NotFound, problem)
 }
 
-fn extensions_json(ext: &Map<String, Value>) -> String {
-    serde_json::to_string(ext).unwrap_or_else(|_| String::from("{}"))
-}
-
-fn collect_causes(err: &dyn std::error::Error) -> Vec<String> {
-    let mut causes = Vec::new();
-    let mut current = err.source();
-    while let Some(source) = current {
-        causes.push(source.to_string());
-        current = source.source();
-    }
-    causes
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use valqeron_proto::problem::problem_from_status;
+    use valqeron_proto::problem_from_status;
 
     #[test]
     fn duplicate_cnpj_keeps_the_cli_contract() {
@@ -263,7 +248,7 @@ mod tests {
     #[test]
     fn bad_cnpj_surfaces_check_digit_extensions() {
         let err = valqeron_core::Cnpj::parse("00000000000192").expect_err("invalid check digit");
-        let status = HandlerError::Mapping(MappingError::Cnpj(err)).into_status();
+        let status = HandlerError::Mapping(IssuerMappingError::Cnpj(err)).into_status();
         assert_eq!(status.code(), Code::InvalidArgument);
         let problem = problem_from_status(&status).expect("problem attached");
         assert_eq!(problem.r#type, "identifier/cnpj-invalid");
@@ -288,7 +273,7 @@ mod tests {
 
     #[test]
     fn name_too_long_reports_max() {
-        let err = MappingError::Name(IssuerNameError::TooLong { max: 200 });
+        let err = IssuerMappingError::Name(IssuerNameError::TooLong { max: 200 });
         let status = HandlerError::Mapping(err).into_status();
         let problem = problem_from_status(&status).expect("problem attached");
         assert_eq!(problem.r#type, "issuer/validation/name-too-long");

@@ -1,9 +1,10 @@
 use std::time::Instant;
 
 use tonic::{Request, Response, Status};
+use v1::{HealthRequestProto, HealthResponseProto, StatusRequestProto, StatusResponseProto};
 use valqeron_proto::PROTOCOL_VERSION;
 use valqeron_proto::v1;
-use valqeron_proto::v1::admin_service_server::AdminService;
+use valqeron_proto::v1::rpc_admin_service_server::RpcAdminService;
 
 pub struct AdminGrpc {
     db_path: String,
@@ -17,12 +18,12 @@ impl AdminGrpc {
 }
 
 #[tonic::async_trait]
-impl AdminService for AdminGrpc {
+impl RpcAdminService for AdminGrpc {
     async fn health(
         &self,
-        _request: Request<v1::HealthRequest>,
-    ) -> Result<Response<v1::HealthResponse>, Status> {
-        Ok(Response::new(v1::HealthResponse {
+        _request: Request<HealthRequestProto>,
+    ) -> Result<Response<HealthResponseProto>, Status> {
+        Ok(Response::new(HealthResponseProto {
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
             protocol_version: PROTOCOL_VERSION,
         }))
@@ -30,9 +31,9 @@ impl AdminService for AdminGrpc {
 
     async fn status(
         &self,
-        _request: Request<v1::StatusRequest>,
-    ) -> Result<Response<v1::StatusResponse>, Status> {
-        Ok(Response::new(v1::StatusResponse {
+        _request: Request<StatusRequestProto>,
+    ) -> Result<Response<StatusResponseProto>, Status> {
+        Ok(Response::new(StatusResponseProto {
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
             protocol_version: PROTOCOL_VERSION,
             db_path: self.db_path.clone(),

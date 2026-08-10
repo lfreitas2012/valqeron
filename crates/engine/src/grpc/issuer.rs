@@ -1,7 +1,14 @@
 use tonic::{Request, Response, Status};
+use v1::{
+    DeleteIssuerRequestProto, DeleteIssuerResponseProto, IssuerProto, ListIssuersResponseProto,
+    PatchIssuerResponseProto,
+};
 use valqeron_core::{IssuerRepository, LoadMode, StorageEngine, Versioned, register_issuer};
-use valqeron_proto::v1::issuer_service_server::IssuerService;
-use valqeron_proto::{mapping, v1};
+use valqeron_proto::v1::rpc_issuer_service_server::RpcIssuerService;
+use valqeron_proto::{
+    issuer_to_proto, parse_issuer_id, patch_request_to_domain, register_request_to_issuer, v1,
+    write_outcome_to_proto,
+};
 
 use crate::grpc::problem::HandlerError;
 use crate::storage::AsyncStorage;
@@ -33,15 +40,15 @@ impl IssuerGrpc {
 }
 
 #[tonic::async_trait]
-impl IssuerService for IssuerGrpc {
+impl RpcIssuerService for IssuerGrpc {
     async fn register(
         &self,
-        request: Request<v1::RegisterIssuerRequest>,
-    ) -> Result<Response<v1::RegisterIssuerResponse>, Status> {
+        request: Request<v1::RegisterIssuerRequestProto>,
+    ) -> Result<Response<v1::RegisterIssuerResponseProto>, Status> {
         let req = request.into_inner();
         let dry_run = req.dry_run;
-        let issuer = mapping::register_request_to_issuer(&req)
-            .map_err(|e| HandlerError::from(e).into_status())?;
+        let issuer =
+            register_request_to_issuer(&req).map_err(|e| HandlerError::from(e).into_status())?;
 
         let registered = self
             .run("issuer.register", move |engine| {
@@ -55,7 +62,7 @@ impl IssuerService for IssuerGrpc {
                         .map_err(HandlerError::from)
                 };
                 outcome.map(|()| {
-                    mapping::issuer_to_proto(&Versioned {
+                    issuer_to_proto(&Versioned {
                         data: issuer,
                         version: 1,
                     })
@@ -71,18 +78,17 @@ impl IssuerService for IssuerGrpc {
             "registered issuer"
         );
 
-        Ok(Response::new(v1::RegisterIssuerResponse {
+        Ok(Response::new(v1::RegisterIssuerResponseProto {
             issuer: Some(registered),
         }))
     }
 
     async fn get(
         &self,
-        request: Request<v1::GetIssuerRequest>,
-    ) -> Result<Response<v1::GetIssuerResponse>, Status> {
+        request: Request<v1::GetIssuerRequestProto>,
+    ) -> Result<Response<v1::GetIssuerResponseProto>, Status> {
         let req = request.into_inner();
-        let id =
-            mapping::parse_issuer_id(&req.id).map_err(|e| HandlerError::from(e).into_status())?;
+        let id = parse_issuer_id(&req.id).map_err(|e| HandlerError::from(e).into_status())?;
 
         let issuer = self
             .run("issuer.get", move |engine| {
@@ -90,7 +96,7 @@ impl IssuerService for IssuerGrpc {
                     .repositories()
                     .issuers
                     .find_by_id(&id, LoadMode::Lazy)
-                    .map(|found| found.as_ref().map(mapping::issuer_to_proto))
+                    .map(|found| found.as_ref().map(issuer_to_proto))
                     .map_err(HandlerError::from)
             })
             .await?;
@@ -103,18 +109,18 @@ impl IssuerService for IssuerGrpc {
             "issuer lookup"
         );
 
-        Ok(Response::new(v1::GetIssuerResponse { issuer }))
+        Ok(Response::new(v1::GetIssuerResponseProto { issuer }))
     }
 
     async fn list(
         &self,
-        request: Request<v1::ListIssuersRequest>,
-    ) -> Result<Response<v1::ListIssuersResponse>, Status> {
+        request: Request<v1::ListIssuersRequestProto>,
+    ) -> Result<Response<ListIssuersResponseProto>, Status> {
         let req = request.into_inner();
         let after = match req.after.as_deref() {
-            Some(raw) => Some(
-                mapping::parse_issuer_id(raw).map_err(|e| HandlerError::from(e).into_status())?,
-            ),
+            Some(raw) => {
+                Some(parse_issuer_id(raw).map_err(|e| HandlerError::from(e).into_status())?)
+            }
             None => None,
         };
         let limit = if req.limit == 0 {
@@ -123,13 +129,13 @@ impl IssuerService for IssuerGrpc {
             req.limit.min(MAX_LIST_LIMIT)
         };
 
-        let issuers: Vec<v1::Issuer> = self
+        let issuers: Vec<IssuerProto> = self
             .run("issuer.list", move |engine| {
                 engine
                     .repositories()
                     .issuers
                     .list_paged(after, limit, LoadMode::Lazy)
-                    .map(|rows| rows.iter().map(mapping::issuer_to_proto).collect())
+                    .map(|rows| rows.iter().map(issuer_to_proto).collect())
                     .map_err(HandlerError::from)
             })
             .await?;
@@ -142,16 +148,15 @@ impl IssuerService for IssuerGrpc {
             "list registered issuers (paged)"
         );
 
-        Ok(Response::new(v1::ListIssuersResponse { issuers }))
+        Ok(Response::new(ListIssuersResponseProto { issuers }))
     }
 
     async fn patch(
         &self,
-        request: Request<v1::PatchIssuerRequest>,
-    ) -> Result<Response<v1::PatchIssuerResponse>, Status> {
+        request: Request<v1::PatchIssuerRequestProto>,
+    ) -> Result<Response<PatchIssuerResponseProto>, Status> {
         let req = request.into_inner();
-        let cmd = mapping::patch_request_to_domain(&req)
-            .map_err(|e| HandlerError::from(e).into_status())?;
+        let cmd = patch_request_to_domain(&req).map_err(|e| HandlerError::from(e).into_status())?;
 
         let outcome = self
             .run("issuer.patch", move |engine| {
@@ -171,7 +176,7 @@ impl IssuerService for IssuerGrpc {
                         .apply_patch(&cmd.id, cmd.expected_version, cmd.patch.clone())
                         .map_err(HandlerError::from)
                 };
-                result.map(mapping::write_outcome_to_proto)
+                result.map(write_outcome_to_proto)
             })
             .await?;
 
@@ -183,18 +188,17 @@ impl IssuerService for IssuerGrpc {
             "patched issuer"
         );
 
-        Ok(Response::new(v1::PatchIssuerResponse {
+        Ok(Response::new(PatchIssuerResponseProto {
             outcome: Some(outcome),
         }))
     }
 
     async fn delete(
         &self,
-        request: Request<v1::DeleteIssuerRequest>,
-    ) -> Result<Response<v1::DeleteIssuerResponse>, Status> {
+        request: Request<DeleteIssuerRequestProto>,
+    ) -> Result<Response<DeleteIssuerResponseProto>, Status> {
         let req = request.into_inner();
-        let id =
-            mapping::parse_issuer_id(&req.id).map_err(|e| HandlerError::from(e).into_status())?;
+        let id = parse_issuer_id(&req.id).map_err(|e| HandlerError::from(e).into_status())?;
         let expected_version = req.expected_version;
         let dry_run = req.dry_run;
 
@@ -212,7 +216,7 @@ impl IssuerService for IssuerGrpc {
                         .delete(&id, expected_version)
                         .map_err(HandlerError::from)
                 };
-                result.map(mapping::write_outcome_to_proto)
+                result.map(write_outcome_to_proto)
             })
             .await?;
 
@@ -224,7 +228,7 @@ impl IssuerService for IssuerGrpc {
             "deleted issuer"
         );
 
-        Ok(Response::new(v1::DeleteIssuerResponse {
+        Ok(Response::new(DeleteIssuerResponseProto {
             outcome: Some(outcome),
         }))
     }

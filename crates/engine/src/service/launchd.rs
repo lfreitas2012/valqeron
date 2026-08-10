@@ -45,15 +45,26 @@ pub fn install(cli: &Cli, args: &InstallArgs) -> EngineResult<()> {
     let stdout_path = log_dir.join("launchd.stdout.log");
     let stderr_path = log_dir.join("launchd.stderr.log");
 
-    // Propagate an explicit database override (flag or VALQERON_DB at
-    // install time) into the agent's environment; the default path needs
-    // nothing since the engine resolves it the same way the CLI does.
-    let env_block = match &cli.db_path {
-        Some(path) => format!(
-            "  <key>EnvironmentVariables</key>\n  <dict>\n    <key>VALQERON_DB</key>\n    <string>{}</string>\n  </dict>\n",
+    // Propagate explicit overrides (flags or env at install time) into the
+    // agent's environment; defaults need nothing since the engine resolves
+    // them the same way clients do.
+    let mut env_entries = String::new();
+    if let Some(path) = &cli.db_path {
+        env_entries.push_str(&format!(
+            "    <key>VALQERON_DB</key>\n    <string>{}</string>\n",
             xml_escape(&path.display().to_string())
-        ),
-        None => String::new(),
+        ));
+    }
+    if let Some(path) = &cli.socket {
+        env_entries.push_str(&format!(
+            "    <key>VALQERON_SOCKET</key>\n    <string>{}</string>\n",
+            xml_escape(&path.display().to_string())
+        ));
+    }
+    let env_block = if env_entries.is_empty() {
+        String::new()
+    } else {
+        format!("  <key>EnvironmentVariables</key>\n  <dict>\n{env_entries}  </dict>\n")
     };
 
     let rendered = render(
@@ -108,7 +119,7 @@ pub fn install(cli: &Cli, args: &InstallArgs) -> EngineResult<()> {
 
 pub fn uninstall() -> EngineResult<()> {
     let domain = gui_domain()?;
-    // Best-effort: the agent may not be loaded (e.g. after a manual bootout).
+    // Best-effort: the agent may not be loaded (e.g., after a manual bootout).
     let _ = run_tool("launchctl", &["bootout", &format!("{domain}/{LABEL}")]);
 
     let plist = plist_path()?;

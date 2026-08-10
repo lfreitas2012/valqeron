@@ -145,7 +145,12 @@ pub(crate) fn delete(
     stmt.execute(params![id.as_bytes(), expected_version])
 }
 
-/// Securities of every issuer, ordered by the owner for in-memory grouping. Companion to `list_all`.
+// Eager-hydration companions: each read shape has exactly one batched
+// securities query, so hydrating N issuers always costs 2 statements
+// (issuers + securities), never 1 + N.
+
+/// Securities of every issuer, ordered by owner for in-memory grouping.
+/// Companion to `list_all`.
 pub(crate) fn securities_for_all_issuers(conn: &Connection) -> rusqlite::Result<Vec<SecurityRow>> {
     let columns = security_columns_qualified("s");
     let sql = format!("SELECT {columns} FROM security s ORDER BY s.issuer_id, s.id");

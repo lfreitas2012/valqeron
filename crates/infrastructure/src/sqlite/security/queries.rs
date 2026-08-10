@@ -9,8 +9,9 @@ use crate::sqlite::security::model::SecurityRow;
 pub(crate) const SECURITY_COLUMNS: &str = "id, issuer_id, name, kind, status, created_at, isin, \
      cfi, underlying_security_id, dr_ratio_receipts, dr_ratio_underlying, version";
 
-/// `SECURITY_COLUMNS` with every column qualified by `alias`, for queries that join `security`
-/// against another relation carrying clashing column names.
+/// `SECURITY_COLUMNS` with every column qualified by `alias`, for queries
+/// that join `security` against another relation carrying clashing column
+/// names.
 pub(crate) fn security_columns_qualified(alias: &str) -> String {
     SECURITY_COLUMNS
         .split(", ")
@@ -144,6 +145,9 @@ pub(crate) fn apply_patch(
     ])
 }
 
+/// Full replace of the mutable state, guarded by version. Identity facts —
+/// `issuer_id`, `kind`, the underlying security link, and `created_at` —
+/// are immutable (mirroring `SecurityPatch`) and deliberately not written.
 pub(crate) fn update(
     conn: &Connection,
     security: &Security,
