@@ -69,7 +69,7 @@ pub enum Command {
     /// Stop the login service and remove its definition.
     Uninstall,
     /// Report engine state: lock holder, process liveness, service registration.
-    Status,
+    Status(StatusArgs),
 }
 
 #[derive(Args, Debug)]
@@ -121,6 +121,37 @@ pub struct RunArgs {
 pub struct InstallArgs {
     #[arg(long, help = "Overwrite an existing service definition.")]
     pub force: bool,
+
+    #[arg(
+        long,
+        help = "Render the service definition to stdout without installing.",
+        long_help = "Render the exact service definition (with all paths resolved) to stdout \
+                     and change nothing: no file is written, nothing is registered or \
+                     (re)started. Use it to inspect or diff what install would do."
+    )]
+    pub print: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "print",
+        help = "Register the service without starting it now.",
+        long_help = "Write and register the service definition but do not start (or restart) \
+                     anything now; the engine starts at the next login. A currently running \
+                     instance keeps its previous definition until restarted."
+    )]
+    pub no_start: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct StatusArgs {
+    #[arg(
+        long,
+        help = "Emit machine-readable JSON on stdout.",
+        long_help = "Emit one JSON object on stdout instead of the human-readable report. \
+                     The exit code contract is unchanged: 0 when the engine is running, \
+                     non-zero otherwise."
+    )]
+    pub json: bool,
 }
 
 impl Cli {

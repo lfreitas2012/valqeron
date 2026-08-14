@@ -3,7 +3,8 @@ use v1::{
     DeleteIssuerRequestProto, DeleteIssuerResponseProto, IssuerProto, ListIssuersResponseProto,
     PatchIssuerResponseProto,
 };
-use valqeron_core::{IssuerRepository, LoadMode, StorageEngine, Versioned, register_issuer};
+use valqeron_core::{IssuerRepository, LoadMode, Repositories, Versioned, register_issuer};
+use valqeron_infrastructure::SqliteStorageEngine;
 use valqeron_proto::v1::rpc_issuer_service_server::RpcIssuerService;
 use valqeron_proto::{
     issuer_to_proto, parse_issuer_id, patch_request_to_domain, register_request_to_issuer, v1,
@@ -25,14 +26,33 @@ impl IssuerGrpc {
         Self { storage }
     }
 
-    async fn run<T, F>(&self, operation: &'static str, f: F) -> Result<T, Status>
+    /// Run a read-only closure on the storage read lane, flattening admission
+    /// failures and handler failures into one `Status`.
+    async fn run_read<T, F>(&self, operation: &'static str, f: F) -> Result<T, Status>
     where
-        F: FnOnce(&valqeron_infrastructure::SqliteStorageEngine) -> Result<T, HandlerError>
-            + Send
-            + 'static,
+        F: FnOnce(&Repositories<SqliteStorageEngine>) -> Result<T, HandlerError> + Send + 'static,
         T: Send + 'static,
     {
-        match self.storage.call(operation, f).await {
+        match self.storage.read(operation, f).await {
+            Ok(inner) => inner.map_err(HandlerError::into_status),
+            Err(call_err) => Err(HandlerError::from(call_err).into_status()),
+        }
+    }
+
+    /// Run a mutating closure on the storage write lane. With `dry_run` the
+    /// same closure executes inside the engine's always-rolled-back
+    /// savepoint — handlers never route dry runs themselves.
+    async fn run_write<T, F>(
+        &self,
+        operation: &'static str,
+        dry_run: bool,
+        f: F,
+    ) -> Result<T, Status>
+    where
+        F: FnOnce(&Repositories<SqliteStorageEngine>) -> Result<T, HandlerError> + Send + 'static,
+        T: Send + 'static,
+    {
+        match self.storage.write(operation, dry_run, f).await {
             Ok(inner) => inner.map_err(HandlerError::into_status),
             Err(call_err) => Err(HandlerError::from(call_err).into_status()),
         }
@@ -51,22 +71,15 @@ impl RpcIssuerService for IssuerGrpc {
             register_request_to_issuer(&req).map_err(|e| HandlerError::from(e).into_status())?;
 
         let registered = self
-            .run("issuer.register", move |engine| {
-                let outcome = if dry_run {
-                    match engine.dry_run(|repos| register_issuer(&repos.issuers, &issuer)) {
-                        Ok(inner) => inner.map_err(HandlerError::from),
-                        Err(storage_err) => Err(HandlerError::from(storage_err)),
-                    }
-                } else {
-                    register_issuer(&engine.repositories().issuers, &issuer)
-                        .map_err(HandlerError::from)
-                };
-                outcome.map(|()| {
-                    issuer_to_proto(&Versioned {
-                        data: issuer,
-                        version: 1,
+            .run_write("issuer.register", dry_run, move |repos| {
+                register_issuer(&repos.issuers, &issuer)
+                    .map_err(HandlerError::from)
+                    .map(|()| {
+                        issuer_to_proto(&Versioned {
+                            data: issuer,
+                            version: 1,
+                        })
                     })
-                })
             })
             .await?;
 
@@ -91,9 +104,8 @@ impl RpcIssuerService for IssuerGrpc {
         let id = parse_issuer_id(&req.id).map_err(|e| HandlerError::from(e).into_status())?;
 
         let issuer = self
-            .run("issuer.get", move |engine| {
-                engine
-                    .repositories()
+            .run_read("issuer.get", move |repos| {
+                repos
                     .issuers
                     .find_by_id(&id, LoadMode::Lazy)
                     .map(|found| found.as_ref().map(issuer_to_proto))
@@ -130,9 +142,8 @@ impl RpcIssuerService for IssuerGrpc {
         };
 
         let issuers: Vec<IssuerProto> = self
-            .run("issuer.list", move |engine| {
-                engine
-                    .repositories()
+            .run_read("issuer.list", move |repos| {
+                repos
                     .issuers
                     .list_paged(after, limit, LoadMode::Lazy)
                     .map(|rows| rows.iter().map(issuer_to_proto).collect())
@@ -157,26 +168,15 @@ impl RpcIssuerService for IssuerGrpc {
     ) -> Result<Response<PatchIssuerResponseProto>, Status> {
         let req = request.into_inner();
         let cmd = patch_request_to_domain(&req).map_err(|e| HandlerError::from(e).into_status())?;
+        let dry_run = cmd.dry_run;
 
         let outcome = self
-            .run("issuer.patch", move |engine| {
-                let result = if cmd.dry_run {
-                    match engine.dry_run(|repos| {
-                        repos
-                            .issuers
-                            .apply_patch(&cmd.id, cmd.expected_version, cmd.patch.clone())
-                    }) {
-                        Ok(inner) => inner.map_err(HandlerError::from),
-                        Err(storage_err) => Err(HandlerError::from(storage_err)),
-                    }
-                } else {
-                    engine
-                        .repositories()
-                        .issuers
-                        .apply_patch(&cmd.id, cmd.expected_version, cmd.patch.clone())
-                        .map_err(HandlerError::from)
-                };
-                result.map(write_outcome_to_proto)
+            .run_write("issuer.patch", dry_run, move |repos| {
+                repos
+                    .issuers
+                    .apply_patch(&cmd.id, cmd.expected_version, cmd.patch.clone())
+                    .map_err(HandlerError::from)
+                    .map(write_outcome_to_proto)
             })
             .await?;
 
@@ -203,20 +203,12 @@ impl RpcIssuerService for IssuerGrpc {
         let dry_run = req.dry_run;
 
         let outcome = self
-            .run("issuer.delete", move |engine| {
-                let result = if dry_run {
-                    match engine.dry_run(|repos| repos.issuers.delete(&id, expected_version)) {
-                        Ok(inner) => inner.map_err(HandlerError::from),
-                        Err(storage_err) => Err(HandlerError::from(storage_err)),
-                    }
-                } else {
-                    engine
-                        .repositories()
-                        .issuers
-                        .delete(&id, expected_version)
-                        .map_err(HandlerError::from)
-                };
-                result.map(write_outcome_to_proto)
+            .run_write("issuer.delete", dry_run, move |repos| {
+                repos
+                    .issuers
+                    .delete(&id, expected_version)
+                    .map_err(HandlerError::from)
+                    .map(write_outcome_to_proto)
             })
             .await?;
 

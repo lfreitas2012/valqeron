@@ -2,7 +2,9 @@ use std::str::FromStr;
 
 use rusqlite::Row;
 use rusqlite::types::Type;
-use valqeron_core::{DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityName, SecurityStatus};
+use valqeron_core::{
+    DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityName, SecurityStatus,
+};
 use valqeron_identifiers::{Cfi, Isin};
 
 use crate::sqlite::row::{column_index, column_opt_uuid, column_uuid, conversion_failure};

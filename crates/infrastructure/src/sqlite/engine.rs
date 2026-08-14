@@ -24,6 +24,14 @@ impl SqliteStorageEngine {
     pub fn run_maintenance(&self) -> Result<WalCheckpointStats, StorageError> {
         Ok(self.db.run_maintenance()?)
     }
+
+    /// Number of reader connections in the pool, as configured at open time.
+    /// Admission control on top of this engine must size its read
+    /// concurrency to exactly this value: more would queue on the pool's
+    /// `Condvar`, fewer would idle readers.
+    pub fn reader_pool_size(&self) -> usize {
+        self.db.reader_pool_size()
+    }
 }
 
 impl StorageEngine for SqliteStorageEngine {

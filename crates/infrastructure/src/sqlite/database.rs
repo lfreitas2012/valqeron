@@ -350,6 +350,9 @@ impl Db for DbHandle {
 pub(crate) struct Database {
     writer: Arc<Mutex<Connection>>,
     readers: Arc<ReaderPool>,
+    /// Number of reader connections the pool was built with; callers size
+    /// their admission control against this so it never drifts from the pool.
+    reader_pool_size: usize,
 }
 
 impl Database {
@@ -392,7 +395,13 @@ impl Database {
         Ok(Self {
             writer: Arc::new(Mutex::new(writer)),
             readers: Arc::new(ReaderPool::new(pool)),
+            reader_pool_size: config.reader_pool_size,
         })
+    }
+
+    /// Number of reader connections in the pool, as configured at open time.
+    pub(crate) fn reader_pool_size(&self) -> usize {
+        self.reader_pool_size
     }
 
     /// Test helper: a fresh database in its own temporary directory, bundled

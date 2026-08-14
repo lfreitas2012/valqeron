@@ -23,39 +23,34 @@
 //! `valqeron-infrastructure` stay fully synchronous and async-free.
 
 mod cli;
-mod config;
+mod engine;
 mod error;
 mod grpc;
-mod lockfile;
-mod logging;
-mod paths;
-mod runtime;
+mod jobs;
+mod notify;
 mod service;
 mod storage;
 
+use crate::cli::Cli;
 use clap::Parser;
-
-use crate::cli::{Cli, Command};
-use crate::config::EngineConfig;
-use crate::error::EngineResult;
 
 fn main() {
     let cli = Cli::parse();
-    if let Err(err) = dispatch(&cli) {
-        eprintln!("error: {err}");
-        std::process::exit(err.exit_code());
-    }
+    // if let Err(err) = dispatch(&cli) {
+    //     eprintln!("error: {err}");
+    //     std::process::exit(err.exit_code());
+    // }
 }
-
-fn dispatch(cli: &Cli) -> EngineResult<()> {
-    match &cli.command {
-        Command::Run(args) => {
-            let config = EngineConfig::resolve(cli, args)?;
-            let _log_guard = logging::init(cli.log_level(), config.log_file());
-            runtime::run(&config)
-        }
-        Command::Install(args) => service::install(cli, args),
-        Command::Uninstall => service::uninstall(),
-        Command::Status => service::status(cli),
-    }
-}
+//
+// fn dispatch(cli: &Cli) -> EngineResult<()> {
+//     match &cli.command {
+//         Command::Run(args) => {
+//             let config = EngineConfig::resolve(cli, args)?;
+//             let _log_guard = logging::init(cli.log_level(), config.log_file());
+//             runtime::run(&config)
+//         }
+//         Command::Install(args) => service::install(cli, args),
+//         Command::Uninstall => service::uninstall(),
+//         Command::Status(args) => service::status(cli, args),
+//     }
+// }

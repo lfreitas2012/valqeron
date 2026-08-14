@@ -116,7 +116,23 @@ fn socket_path(db: &Path) -> PathBuf {
 }
 
 fn spawn_engine(db: &Path, maintenance_secs: &str, heartbeat_secs: &str) -> Engine {
+    spawn_engine_with(db, maintenance_secs, heartbeat_secs, &[])
+}
+
+/// Like [`spawn_engine`] with debug-level stderr (`-v`), for tests that
+/// observe debug-only lines such as the heartbeat.
+fn spawn_engine_verbose(db: &Path, maintenance_secs: &str, heartbeat_secs: &str) -> Engine {
+    spawn_engine_with(db, maintenance_secs, heartbeat_secs, &["-v"])
+}
+
+fn spawn_engine_with(
+    db: &Path,
+    maintenance_secs: &str,
+    heartbeat_secs: &str,
+    extra_flags: &[&str],
+) -> Engine {
     let mut child = engine_command(db)
+        .args(extra_flags)
         .args([
             "run",
             "--no-log-file",
@@ -170,7 +186,8 @@ fn help_and_version_exit_zero() {
 #[test]
 fn starts_heartbeats_and_shuts_down_cleanly_on_sigterm() {
     let (_dir, db) = temp_db();
-    let mut engine = spawn_engine(&db, "3600", "1");
+    // The heartbeat logs at debug level; spawn with `-v` so it reaches stderr.
+    let mut engine = spawn_engine_verbose(&db, "3600", "1");
 
     // Heartbeat proves the run loop (and thus the signal handlers) is live.
     engine.wait_for_line("engine alive");
@@ -184,6 +201,27 @@ fn starts_heartbeats_and_shuts_down_cleanly_on_sigterm() {
     let status = engine_command(&db).arg("status").output().expect("status");
     assert_eq!(status.status.code(), Some(0), "status must report running");
 
+    // `status --json` reports the same over the machine-readable surface.
+    let json_out = engine_command(&db)
+        .args(["status", "--json"])
+        .output()
+        .expect("status --json");
+    assert_eq!(json_out.status.code(), Some(0));
+    let report: serde_json::Value =
+        serde_json::from_slice(&json_out.stdout).expect("stdout must be one JSON object");
+    assert_eq!(report["engine"]["running"], serde_json::Value::Bool(true));
+    assert_eq!(
+        report["engine"]["pid"].to_string(),
+        engine.pid(),
+        "json pid must match the process"
+    );
+    assert!(
+        report["socket"]
+            .as_str()
+            .is_some_and(|s| s.ends_with("it.sock")),
+        "socket path reported: {report}"
+    );
+
     engine.signal("-TERM");
     assert_eq!(engine.wait_exit(), Some(0), "SIGTERM means clean exit 0");
 
@@ -196,6 +234,14 @@ fn starts_heartbeats_and_shuts_down_cleanly_on_sigterm() {
     assert!(
         stderr.contains("valqeron-engine starting"),
         "startup banner missing:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("engine ready"),
+        "readiness audit line missing:\n{stderr}"
+    );
+    assert!(
+        stderr.find("engine ready") < stderr.find("engine alive"),
+        "readiness must precede the first heartbeat:\n{stderr}"
     );
     assert!(
         stderr.contains("engine stopped cleanly"),
@@ -223,8 +269,8 @@ fn maintenance_job_runs_on_its_interval() {
 #[test]
 fn second_instance_fails_fast_naming_holder() {
     let (_dir, db) = temp_db();
-    let mut first = spawn_engine(&db, "3600", "1");
-    first.wait_for_line("engine alive");
+    let mut first = spawn_engine(&db, "3600", "3600");
+    first.wait_for_line("engine ready");
 
     let second = engine_command(&db)
         .args(["run", "--no-log-file"])
@@ -255,8 +301,8 @@ fn sigkill_leaves_stale_lock_file_that_never_blocks_the_next_start() {
     let (_dir, db) = temp_db();
     let lock = lock_path(&db);
 
-    let mut first = spawn_engine(&db, "3600", "1");
-    first.wait_for_line("engine alive");
+    let mut first = spawn_engine(&db, "3600", "3600");
+    first.wait_for_line("engine ready");
     let first_pid = first.pid();
 
     first.signal("-KILL");
@@ -266,8 +312,8 @@ fn sigkill_leaves_stale_lock_file_that_never_blocks_the_next_start() {
         "SIGKILL leaves the lock file behind (kernel lock is released)"
     );
 
-    let mut second = spawn_engine(&db, "3600", "1");
-    second.wait_for_line("engine alive");
+    let mut second = spawn_engine(&db, "3600", "3600");
+    second.wait_for_line("engine ready");
     let recorded = std::fs::read_to_string(&lock).expect("lock readable");
     assert_eq!(
         recorded.trim(),
@@ -282,6 +328,59 @@ fn sigkill_leaves_stale_lock_file_that_never_blocks_the_next_start() {
 }
 
 #[test]
+fn install_print_renders_the_service_definition_without_installing() {
+    let (_dir, db) = temp_db();
+    let output = engine_command(&db)
+        .args(["install", "--print"])
+        .output()
+        .expect("install --print");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "print must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    #[cfg(target_os = "macos")]
+    {
+        assert!(stdout.contains("<plist"), "plist body expected:\n{stdout}");
+        assert!(stdout.contains("io.valqeron.engine"), "{stdout}");
+        // Explicit overrides must be propagated into the agent environment.
+        assert!(stdout.contains("VALQERON_DB"), "{stdout}");
+    }
+    #[cfg(target_os = "linux")]
+    {
+        assert!(
+            stdout.contains("Type=notify"),
+            "unit body expected:\n{stdout}"
+        );
+        assert!(stdout.contains("VALQERON_DB"), "{stdout}");
+    }
+
+    // The target path is reported on stderr, keeping stdout redirectable.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("install target:"),
+        "target note expected on stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn install_print_conflicts_with_no_start() {
+    let (_dir, db) = temp_db();
+    let output = engine_command(&db)
+        .args(["install", "--print", "--no-start"])
+        .output()
+        .expect("run");
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "--print and --no-start must conflict"
+    );
+}
+
+#[test]
 fn status_reports_not_running_with_nonzero_exit() {
     let (_dir, db) = temp_db();
     let output = engine_command(&db).arg("status").output().expect("status");
@@ -290,5 +389,28 @@ fn status_reports_not_running_with_nonzero_exit() {
     assert!(
         stdout.contains("not running"),
         "status must say not running:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("socket:"),
+        "status must report the socket path:\n{stdout}"
+    );
+}
+
+#[test]
+fn status_json_reports_not_running_with_nonzero_exit() {
+    let (_dir, db) = temp_db();
+    let output = engine_command(&db)
+        .args(["status", "--json"])
+        .output()
+        .expect("status --json");
+    assert_eq!(output.status.code(), Some(1), "stopped engine → exit 1");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout must be one JSON object");
+    assert_eq!(report["engine"]["running"], serde_json::Value::Bool(false));
+    assert_eq!(report["engine"]["pid"], serde_json::Value::Null);
+    assert!(
+        report["database"]
+            .as_str()
+            .is_some_and(|s| s.ends_with("it.db"))
     );
 }

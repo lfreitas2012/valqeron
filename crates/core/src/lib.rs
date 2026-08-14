@@ -60,8 +60,8 @@ pub use security::repository::SecurityRepository;
 pub use security::service::register_security;
 
 pub use security::{
-    DepositaryReceiptRatio, Security, SecurityBuilder, SecurityId, SecurityKind, SecurityName, SecuritySnapshot,
-    SecurityStatus,
+    DepositaryReceiptRatio, Security, SecurityBuilder, SecurityId, SecurityKind, SecurityName,
+    SecuritySnapshot, SecurityStatus,
     error::{
         DrRatioError, RegisterSecurityError, SecurityBuilderError, SecurityKindError,
         SecurityNameError, SecurityStatusError,

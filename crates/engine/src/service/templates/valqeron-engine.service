@@ -5,7 +5,9 @@ StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
-Type=simple
+# The engine sends READY=1 (serving) and STOPPING=1 over $NOTIFY_SOCKET;
+# startup completes only once the socket is bound and the gRPC server runs.
+Type=notify
 ExecStart="{{EXE}}" run
 Restart=on-failure
 RestartSec=5

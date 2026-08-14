@@ -1,7 +1,7 @@
 use anyhow::Context;
 use directories::ProjectDirs;
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use valqeron_common::os_str_is_off;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "valqeron";
@@ -33,7 +33,7 @@ impl ValqeronConfig {
                 Some(Some(path)) => Some(path),
                 Some(None) => Some(default_log_file()?),
                 None => match std::env::var_os(LOG_FILE_ENV) {
-                    Some(env) if is_off(&env) => None,
+                    Some(env) if os_str_is_off(&env) => None,
                     Some(env) => Some(PathBuf::from(env)),
                     None => Some(default_log_file()?),
                 },
@@ -59,18 +59,6 @@ fn default_log_file() -> anyhow::Result<PathBuf> {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| dirs.data_dir().join("logs"));
     Ok(dir.join(LOG_FILE_NAME))
-}
-
-fn is_off(value: &OsStr) -> bool {
-    value
-        .to_str()
-        .map(|s| {
-            matches!(
-                s.trim().to_ascii_lowercase().as_str(),
-                "off" | "false" | "0" | "none"
-            )
-        })
-        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -105,15 +93,5 @@ mod tests {
         // `--no-log-file` wins even over an explicit `--log-file PATH`.
         let cfg = ValqeronConfig::resolve(Some(Some(PathBuf::from("/tmp/out.log"))), true).unwrap();
         assert!(cfg.log_file().is_none());
-    }
-
-    #[test]
-    fn is_off_recognizes_disable_values() {
-        for v in ["off", "OFF", "false", "0", "none", "  off  "] {
-            assert!(is_off(OsStr::new(v)), "{v:?} should disable");
-        }
-        for v in ["on", "1", "true", "/tmp/logs/x.log"] {
-            assert!(!is_off(OsStr::new(v)), "{v:?} should not disable");
-        }
     }
 }

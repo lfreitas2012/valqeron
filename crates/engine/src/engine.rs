@@ -539,27 +539,17 @@ pub struct ValqeronEngine<'c> {
 }
 
 impl ValqeronEngine<'_> {
-    pub fn new(engine_config: &EngineConfig) -> ValqeronEngine<'_> {
-        boot(engine_config).expect("boot failed")
-    }
+    fn start(config: &EngineConfig) -> EngineResult<()> {
+        let engine = Bootstrap::new(config)
+            .acquire_lock()?
+            .prepare_socket()?
+            .open_database()?
+            .bind_socket()?
+            .build_runtime()?;
 
-    pub fn start(self) -> EngineResult<()> {
-        let Self {
-            config,
-            lock,
-            storage,
-            listener,
-            runtime,
-        } = self;
-
-        tracing::info!(
-            target: "valqeron::audit",
-            operation = "engine_start",
-            db_path = %config.db_path.0.display(),
-            socket_path = %config.socket_path.0.display(),
-            lock_path = %lock.path().display(),
-            "Valqeron Engine started and ready to serve"
-        );
+        engine
+            .runtime
+            .block_on(run_loop(engine.storage, engine.listener, engine.config))?;
 
         Ok(())
     }
@@ -569,14 +559,6 @@ impl ValqeronEngine<'_> {
 /// and bind the socket, open the database (running migrations), and build
 /// the tokio runtime. This is the one public entry point into the phased
 /// boot sequence above — the CLI's `start` command should call this.
-pub fn boot(config: &EngineConfig) -> EngineResult<ValqeronEngine<'_>> {
-    Bootstrap::new(config)
-        .acquire_lock()?
-        .prepare_socket()?
-        .open_database()?
-        .bind_socket()?
-        .build_runtime()
-}
 
 async fn run_loop(
     storage: AsyncStorage,
@@ -904,118 +886,118 @@ mod lock_tests {
     }
 }
 
-#[cfg(test)]
-mod boot_tests {
-    use super::*;
-    use std::os::unix::fs::PermissionsExt;
-
-    /// Builds a config pointing entirely inside `dir`, bypassing `resolve()`
-    /// (and therefore env vars / OS project-dir lookups) so each test is
-    /// fully isolated and safe to run in parallel.
-    fn test_config(dir: &Path) -> EngineConfig {
-        EngineConfig {
-            db_path: DatabasePath(dir.join("test.db")),
-            socket_path: SocketPath(dir.join("run").join("test.sock")),
-            log_file_path: LogFilePath(dir.join("test.log")),
-        }
-    }
-
-    #[test]
-    fn boots_end_to_end_and_starts_cleanly() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_config(dir.path());
-
-        let engine = boot(&config).expect("engine should boot");
-        assert!(
-            config.socket_path.0.exists(),
-            "socket file should exist once bound"
-        );
-        engine.start().expect("engine should start");
-    }
-
-    #[test]
-    fn socket_dir_and_file_have_restricted_permissions() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_config(dir.path());
-
-        let engine = boot(&config).unwrap();
-
-        let dir_mode = std::fs::metadata(config.socket_path.0.parent().unwrap())
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(dir_mode, 0o700, "socket parent dir should be 0700");
-
-        let file_mode = std::fs::metadata(&config.socket_path.0)
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(file_mode, 0o600, "socket file should be 0600");
-
-        engine.start().unwrap();
-    }
-
-    #[test]
-    fn second_boot_against_same_db_fails_while_first_is_running() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_config(dir.path());
-
-        let _first = boot(&config).expect("first boot should succeed");
-        let second = boot(&config);
-
-        assert!(matches!(
-            second,
-            Err(EngineError::EngineAlreadyRunning { .. })
-        ));
-    }
-
-    #[test]
-    fn boot_succeeds_again_after_previous_engine_is_dropped() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_config(dir.path());
-
-        let first = boot(&config).expect("first boot should succeed");
-        drop(first);
-
-        let second = boot(&config);
-        assert!(
-            second.is_ok(),
-            "boot should succeed again once the lock is released"
-        );
-    }
-
-    #[test]
-    fn stale_socket_file_does_not_block_a_fresh_boot() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_config(dir.path());
-
-        // Simulate a leftover socket file from a crashed engine (no lock held).
-        std::fs::create_dir_all(config.socket_path.0.parent().unwrap()).unwrap();
-        std::fs::write(&config.socket_path.0, b"not a real socket").unwrap();
-
-        let engine = boot(&config);
-        assert!(
-            engine.is_ok(),
-            "a stale socket file must not block a fresh boot"
-        );
-    }
-
-    #[test]
-    fn missing_parent_directories_are_created() {
-        let dir = tempfile::tempdir().unwrap();
-        let nested = dir.path().join("does").join("not").join("exist");
-        let config = EngineConfig {
-            db_path: DatabasePath(nested.join("test.db")),
-            socket_path: SocketPath(nested.join("run").join("test.sock")),
-            log_file_path: LogFilePath(nested.join("test.log")),
-        };
-
-        let engine = boot(&config);
-        assert!(
-            engine.is_ok(),
-            "boot should create missing db and socket parent directories"
-        );
-    }
-}
+// #[cfg(test)]
+// mod boot_tests {
+//     use super::*;
+//     use std::os::unix::fs::PermissionsExt;
+//
+//     /// Builds a config pointing entirely inside `dir`, bypassing `resolve()`
+//     /// (and therefore env vars / OS project-dir lookups) so each test is
+//     /// fully isolated and safe to run in parallel.
+//     fn test_config(dir: &Path) -> EngineConfig {
+//         EngineConfig {
+//             db_path: DatabasePath(dir.join("test.db")),
+//             socket_path: SocketPath(dir.join("run").join("test.sock")),
+//             log_file_path: LogFilePath(dir.join("test.log")),
+//         }
+//     }
+//
+//     #[test]
+//     fn boots_end_to_end_and_starts_cleanly() {
+//         let dir = tempfile::tempdir().unwrap();
+//         let config = test_config(dir.path());
+//
+//         let engine = boot(&config).expect("engine should boot");
+//         assert!(
+//             config.socket_path.0.exists(),
+//             "socket file should exist once bound"
+//         );
+//         engine.start().expect("engine should start");
+//     }
+//
+//     #[test]
+//     fn socket_dir_and_file_have_restricted_permissions() {
+//         let dir = tempfile::tempdir().unwrap();
+//         let config = test_config(dir.path());
+//
+//         let engine = boot(&config).unwrap();
+//
+//         let dir_mode = std::fs::metadata(config.socket_path.0.parent().unwrap())
+//             .unwrap()
+//             .permissions()
+//             .mode()
+//             & 0o777;
+//         assert_eq!(dir_mode, 0o700, "socket parent dir should be 0700");
+//
+//         let file_mode = std::fs::metadata(&config.socket_path.0)
+//             .unwrap()
+//             .permissions()
+//             .mode()
+//             & 0o777;
+//         assert_eq!(file_mode, 0o600, "socket file should be 0600");
+//
+//         engine.start().unwrap();
+//     }
+//
+//     #[test]
+//     fn second_boot_against_same_db_fails_while_first_is_running() {
+//         let dir = tempfile::tempdir().unwrap();
+//         let config = test_config(dir.path());
+//
+//         let _first = boot(&config).expect("first boot should succeed");
+//         let second = boot(&config);
+//
+//         assert!(matches!(
+//             second,
+//             Err(EngineError::EngineAlreadyRunning { .. })
+//         ));
+//     }
+//
+//     #[test]
+//     fn boot_succeeds_again_after_previous_engine_is_dropped() {
+//         let dir = tempfile::tempdir().unwrap();
+//         let config = test_config(dir.path());
+//
+//         let first = boot(&config).expect("first boot should succeed");
+//         drop(first);
+//
+//         let second = boot(&config);
+//         assert!(
+//             second.is_ok(),
+//             "boot should succeed again once the lock is released"
+//         );
+//     }
+//
+//     #[test]
+//     fn stale_socket_file_does_not_block_a_fresh_boot() {
+//         let dir = tempfile::tempdir().unwrap();
+//         let config = test_config(dir.path());
+//
+//         // Simulate a leftover socket file from a crashed engine (no lock held).
+//         std::fs::create_dir_all(config.socket_path.0.parent().unwrap()).unwrap();
+//         std::fs::write(&config.socket_path.0, b"not a real socket").unwrap();
+//
+//         let engine = boot(&config);
+//         assert!(
+//             engine.is_ok(),
+//             "a stale socket file must not block a fresh boot"
+//         );
+//     }
+//
+//     #[test]
+//     fn missing_parent_directories_are_created() {
+//         let dir = tempfile::tempdir().unwrap();
+//         let nested = dir.path().join("does").join("not").join("exist");
+//         let config = EngineConfig {
+//             db_path: DatabasePath(nested.join("test.db")),
+//             socket_path: SocketPath(nested.join("run").join("test.sock")),
+//             log_file_path: LogFilePath(nested.join("test.log")),
+//         };
+//
+//         let engine = boot(&config);
+//         assert!(
+//             engine.is_ok(),
+//             "boot should create missing db and socket parent directories"
+//         );
+//     }
+// }

@@ -77,6 +77,7 @@ pub use crate::mapping::issuer::{
 };
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod test_resolve_socket_path {
     use super::*;
 
@@ -104,6 +105,7 @@ mod test_resolve_socket_path {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests_resolve_problem_details {
     use super::*;
 

@@ -218,6 +218,12 @@ pub fn write_outcome_to_proto(outcome: WriteOutcome) -> v1::WriteOutcomeProto {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
 mod tests {
     use super::*;
 

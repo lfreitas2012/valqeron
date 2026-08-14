@@ -47,15 +47,18 @@ Dependency rules: `infrastructure` is reachable only from `engine`; `tokio`/`ton
 
 ```
 main.rs ── clap dispatch: run | install | uninstall | status
-├── config.rs     EngineConfig (db path, socket path, intervals, durability)
+├── config.rs     EngineConfig (db path, socket path, intervals, durability) + lane sizing
 ├── paths.rs      db/log resolution (flag > env > platform dir)
 ├── lockfile.rs   EngineLock: exclusive advisory flock on <db>.lock
-├── storage.rs    AsyncStorage: the async→sync bridge
+├── bootstrap.rs  typed boot phases: lock → socket prep → open → bind → runtime; teardown
+├── storage.rs    AsyncStorage: the async→sync bridge (read/write lanes)
+├── jobs.rs       PeriodicJob/JobSet: background work (maintenance, heartbeat)
+├── notify.rs     sd_notify READY=1/STOPPING=1 (no-op without $NOTIFY_SOCKET)
 ├── grpc/
 │   ├── issuer.rs IssuerService: register/get/list/patch/delete (unary)
 │   ├── admin.rs  AdminService: health (handshake), status
 │   └── problem.rs error → (tonic::Code, RFC-7807 ProblemDetail)
-├── runtime.rs    lifecycle: lock → open → serve → drain → checkpoint
+├── runtime.rs    run_loop: serve → signal → ordered drain
 ├── logging.rs    stderr (info default) + JSON file; valqeron::audit stays on stderr
 └── service/      launchd plist / systemd user unit (embedded templates)
 ```
@@ -72,8 +75,8 @@ sequenceDiagram
     CLI ->> CL: register_issuer(&Issuer, dry_run)
     CL ->> SVC: gRPC over UDS (block_on)
     SVC ->> SVC: proto → domain (fallible parse, builders)
-    SVC ->> AS: call("issuer.register", closure)
-    AS ->> AS: acquire semaphore permit (≤5s, else ResourceExhausted)
+    SVC ->> AS: write("issuer.register", dry_run, closure)
+    AS ->> AS: acquire lane permit (≤5s, else ResourceExhausted)
     AS ->> SQL: spawn_blocking: whole domain op in one closure
     SQL -->> AS: result (writer mutex / reader pool as designed)
     AS -->> SVC: Result<T, HandlerError>
@@ -86,11 +89,15 @@ sequenceDiagram
 The ports are blocking; tonic handlers are async. Calling the reader pool from a runtime worker risks parking every
 worker on the pool's `Condvar` with none left to release a reader. The bridge removes the class of bug:
 
-- `AsyncStorage` = `Arc<SqliteStorageEngine>` + `Semaphore(MAX_IN_FLIGHT_STORAGE)`.
+- `AsyncStorage` = `Arc<SqliteStorageEngine>` + two admission lanes that mirror the real resources: a **read lane**
+  (permits = `SqliteStorageEngine::reader_pool_size()`, 4 in production) and a **write lane** (1 permit, the single WAL
+  writer). An admitted closure never waits on the pool `Condvar` or writer mutex in-process; queued callers wait as
+  suspended futures at the semaphore, not as blocked threads.
 - Every storage call is one closure on **tokio's blocking pool** (`spawn_blocking`); runtime workers never touch SQLite.
-- `MAX_IN_FLIGHT_STORAGE = READER_POOL_SIZE + 1` (readers + the single writer). More would only queue on the pool's own
-  `Condvar`; fewer would idle readers.
-- Permit acquisition times out (5s) → typed `Overloaded` → gRPC `ResourceExhausted`. Closed semaphore → `ShuttingDown` →
+- Closures receive `&Repositories`, never the engine: `write(op, dry_run, f)` is the only place that routes through
+  `StorageEngine::dry_run`, so the self-deadlocking nested dry run is unrepresentable in handlers. `maintenance()`
+  (`pub(crate)`, write lane) is the sole engine-level entry point, for background jobs.
+- Permit acquisition times out (5s) → typed `Overloaded` → gRPC `ResourceExhausted`. Closed lanes → `ShuttingDown` →
   `Unavailable`. Backpressure is explicit, never an unbounded pile of blocked threads.
 - One closure carries the **whole** domain operation (e.g. `register_issuer`'s check-then-insert), so multi-step
   services never interleave across executions.
@@ -98,32 +105,40 @@ worker on the pool's `Condvar` with none left to release a reader. The bridge re
   when it finishes.
 - The loom-verified pool in `infrastructure` is used exactly as designed — untouched.
 
+See [runtime.md](runtime.md) for the full backpressure chain and the rationale for keeping the storage layer
+synchronous.
+
 ### Dry run
 
-Every mutating RPC carries `dry_run: bool`. The handler wraps the same closure body in
-`StorageEngine::dry_run` — a savepoint that always rolls back. One RPC = one dry-run scope; there are no multi-RPC
-dry-run sessions. The CLI's `--dry-run` simply sets the flag.
+Every mutating RPC carries `dry_run: bool`. The handler passes the flag to `AsyncStorage::write`, which wraps the same
+closure body in `StorageEngine::dry_run` — a savepoint that always rolls back. One RPC = one dry-run scope; there are
+no multi-RPC dry-run sessions. The CLI's `--dry-run` simply sets the flag.
 
 ### Lifecycle (`runtime.rs`)
 
-Startup (strictly ordered): acquire exclusive flock on `<db>.lock` → ensure socket dir exists with `0700` → unlink any
-stale socket (safe: we hold the lock, so no live engine serves on it)
-→ open database (migrations run here; the engine is the sole migration runner) → build
-`multi_thread` runtime → bind `UnixListener`, chmod socket `0600` → serve
-`RpcIssuerService` + `RpcAdminService`.
+Startup is a typed phase chain (`bootstrap.rs`; mis-ordering does not compile): acquire exclusive flock on `<db>.lock`
+→ ensure socket dir exists with `0700` + unlink any stale socket (safe: we hold the lock, so no live engine serves on
+it) → open database (migrations run here; the engine is the sole migration runner) → bind `UnixListener` (nonblocking),
+chmod socket `0600` → build `multi_thread` runtime (named threads, blocking pool capped to the storage lanes) → serve
+`RpcIssuerService` + `RpcAdminService`. Once serving, the engine emits the `engine_ready` audit event and sd_notify
+`READY=1` — the socket file's existence still proves the database is open and migrated, because the bind follows the
+open.
 
-Steady state: one `select!` loop over SIGTERM/SIGINT, unexpected server exit, a jittered (±10%) maintenance interval
-(`PRAGMA optimize` + passive WAL checkpoint, routed through
-`AsyncStorage`, skip-if-busy), and a heartbeat log line.
+Steady state: a `select!` over SIGTERM/SIGINT/unexpected server exit, plus two `PeriodicJob`s on their own tasks
+(`jobs.rs`): `db_maintenance` on a jittered (±10%) interval (`PRAGMA optimize` + passive WAL checkpoint, routed
+through `AsyncStorage::maintenance` on the write lane; bodies await inline, so runs never overlap and missed ticks are
+skipped) and a heartbeat log line.
 
 Shutdown (order matters — the final checkpoint must not race in-flight writes):
 
-1. Signal → stop accepting, drain in-flight RPCs (tonic graceful shutdown, ≤10s; second signal forces exit 1).
-2. `storage.close()` → new calls rejected; wait idle (≤10s).
-3. Runtime `shutdown_timeout` (≤20s) — service-manager SIGKILL is the final backstop.
-4. Unlink socket, reclaim the engine via `Arc::try_unwrap` → drop = `PRAGMA optimize` +
-   `wal_checkpoint(TRUNCATE)`. The semaphore drain makes this deterministic.
-5. Release the lock last, after the checkpoint proves the DB is quiesced.
+1. Signal → sd_notify `STOPPING=1` → stop accepting, drain in-flight RPCs (tonic graceful shutdown, ≤10s; second
+   signal forces exit 1).
+2. Drain periodic jobs — tickers stop, in-flight bodies finish (≤10s).
+3. `storage.close()` → new calls rejected; wait idle (≤10s).
+4. Runtime `shutdown_timeout` (≤20s) — service-manager SIGKILL is the final backstop.
+5. Unlink socket, reclaim the engine via `Arc::try_unwrap` → drop = `PRAGMA optimize` +
+   `wal_checkpoint(TRUNCATE)`. The lane drain makes this deterministic.
+6. Release the lock last, after the checkpoint proves the DB is quiesced.
 
 Exit codes: `0` clean, `1` runtime/forced, `2` config, `3` already running (lock held),
 `4` service-manager failure. launchd/systemd restart policies key off these.
@@ -175,9 +190,11 @@ classify into `NotRunning`/`Unreachable`/`Rpc`.
 | Knob                      | Value                            | Rationale                                                                                                |
 |---------------------------|----------------------------------|----------------------------------------------------------------------------------------------------------|
 | Reader pool               | 4                                | serves the gRPC read fan-out; writes serialize on the writer mutex regardless                            |
-| Storage in-flight         | 5                                | readers + writer; semaphore-bounded                                                                      |
+| Storage read lane         | 4                                | one permit per reader connection; admitted reads never wait on the pool `Condvar`                        |
+| Storage write lane        | 1                                | the single WAL writer; queued writes wait as futures, not blocked threads                                |
+| Blocking pool cap         | lanes + 2                        | admission is lane-bounded; this bounds the pool itself (tokio default: 512)                              |
 | Storage queue timeout     | 5s                               | fail fast at the queueing stage                                                                          |
-| RPC drain / storage drain | 10s                              | graceful shutdown budget                                                                                 |
+| RPC / job / storage drain | 10s each                         | graceful shutdown budget                                                                                 |
 | Runtime shutdown          | 20s                              | stuck-job backstop before SIGKILL                                                                        |
 | Engine runtime            | `multi_thread` (default workers) | parallel h2/protocol work in front of the pool; `current_thread` would be correct but serializes framing |
 
@@ -195,14 +212,30 @@ classify into `NotRunning`/`Unreachable`/`Rpc`.
 ## Service management
 
 `install`/`uninstall` render embedded templates (launchd LaunchAgent on macOS, systemd user unit on Linux) with
-`{{PLACEHOLDER}}` substitution; explicit `--db-path`/`--socket` overrides are propagated into the unit environment, and
-the systemd sandbox is punched through for the db, socket, and log directories. `status` probes the lock PID + service
-registration and exits non-zero when stopped (liveness probe).
+`{{PLACEHOLDER}}` substitution; explicit `--db-path`/`--socket` overrides are propagated into the unit environment
+(`%`-escaped against systemd specifier expansion), and the systemd sandbox is punched through for the db, socket, and
+log directories. The systemd unit is `Type=notify`: startup completes only when the engine reports `READY=1`
+(serving), and `STOPPING=1` announces shutdown.
+
+Registration deliberately lives in the binary, not in shell scripts: the unit's sandbox paths and environment must
+match the engine's own resolution exactly, and the template must ship in lockstep with the behavior it declares
+(`Type=notify` ⇔ sd_notify) — see the decision note in [internals.md](internals.md). The transparency a script would
+offer comes from `install --print`, which renders the exact definition (all paths resolved) to stdout and changes
+nothing.
+
+Install semantics: re-running `install` with an unchanged configuration is an idempotent no-op that only ensures
+registration (it never restarts a running engine); a divergent existing definition demands `--force`.
+`install --no-start` writes and registers without starting — a running instance keeps its previous definition until
+restarted.
+
+`status` probes the lock PID + service registration (reporting db, lock, socket, and unit-file paths) and exits
+non-zero when stopped (liveness probe); `status --json` emits one machine-readable object with the same exit-code
+contract.
 
 ## Extending
 
 - **New RPC on an existing entity:** extend the `.proto`, add mapping (+ round-trip/negative tests), implement the
-  handler as one `AsyncStorage::call` closure, map errors in
+  handler as one `AsyncStorage::read`/`write` closure, map errors in
   `grpc/problem.rs`, expose a typed client method. Additive fields keep `PROTOCOL_VERSION`.
 - **New entity (venue/listing):** SQLite adapter in `infrastructure` (`mapping/model/queries/
   repository` layout), wire into `Repositories`, then the steps above.
