@@ -42,24 +42,17 @@ impl Harness {
         let db = dir.path().join("e2e.db");
         let socket = dir.path().join("e2e.sock");
 
+        // The binary takes no arguments: configuration is injected through
+        // VALQERON_* env vars, with inherited ones scrubbed first.
         let mut child = Command::new(BIN)
             .env_remove("RUST_LOG")
-            .env_remove("VALQERON_DB")
-            .env_remove("VALQERON_SOCKET")
-            .env_remove("VALQERON_ENGINE_LOG_FILE")
             .env_remove("VALQERON_ENGINE_LOG_LEVEL")
-            .arg("--db-path")
-            .arg(&db)
-            .arg("--socket")
-            .arg(&socket)
-            .args([
-                "run",
-                "--no-log-file",
-                "--maintenance-interval",
-                "3600",
-                "--heartbeat-interval",
-                "3600",
-            ])
+            .env_remove("VALQERON_ENGINE_DURABLE")
+            .env("VALQERON_DB", &db)
+            .env("VALQERON_SOCKET", &socket)
+            .env("VALQERON_ENGINE_LOG_FILE", "off")
+            .env("VALQERON_ENGINE_MAINTENANCE_INTERVAL", "3600")
+            .env("VALQERON_ENGINE_HEARTBEAT_INTERVAL", "3600")
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
@@ -154,7 +147,10 @@ fn full_issuer_lifecycle_over_the_socket() {
     let client = harness.client();
 
     // Handshake happened inside connect; the info is exposed.
-    assert_eq!(client.engine_info().protocol_version, 1);
+    assert_eq!(
+        client.engine_info().protocol_version,
+        valqeron_proto::PROTOCOL_VERSION
+    );
     assert!(!client.engine_info().engine_version.is_empty());
 
     // Status RPC names the database and our own view of the socket.
@@ -192,17 +188,23 @@ fn full_issuer_lifecycle_over_the_socket() {
     let listed = client.list_issuers(None, 50).expect("list rpc");
     assert_eq!(listed.len(), 1);
 
-    // Duplicate CNPJ → RFC-7807 problem with the CLI-compatible slug.
+    // Duplicate CNPJ → typed Rpc error: gRPC code + the domain message.
     let duplicate = client
         .register_issuer(
             &sample_issuer("Clone S.A.", Some("33.592.510/0001-54")),
             false,
         )
         .expect_err("duplicate must fail");
-    let problem = duplicate.problem().expect("problem document attached");
-    assert_eq!(problem.problem_type, "issuer/duplicate-cnpj");
-    assert_eq!(problem.status, 9, "status doubles as the CLI exit code");
-    assert!(problem.extensions_json.contains("\"field\":\"cnpj\""));
+    match &duplicate {
+        valqeron_client::ClientError::Rpc { code, message } => {
+            assert_eq!(code, "AlreadyExists");
+            assert!(
+                message.contains("CNPJ"),
+                "message names the identifier: {message}"
+            );
+        }
+        other => panic!("expected Rpc(AlreadyExists), got {other:?}"),
+    }
 
     // Patch bumps the version through the optimistic-concurrency path.
     let patch = IssuerPatch::builder()

@@ -12,9 +12,8 @@ valqeron-core = { workspace = true }
 valqeron-infrastructure = { workspace = true }
 valqeron-proto = { workspace = true }
 valqeron-common = { workspace = true }
+chrono = { workspace = true }
 thiserror = { workspace = true }
-clap = { workspace = true }
-serde_json = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
