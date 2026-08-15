@@ -51,11 +51,11 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>VALQERON_DB</key>
-    <string>/Users/you/Library/Application Support/io.valqeron.valqeron/valqeron.db</string>
+    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/valqeron.db</string>
     <key>VALQERON_SOCKET</key>
-    <string>/Users/you/Library/Application Support/io.valqeron.valqeron/run/valqeron.sock</string>
+    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/run/valqeron.sock</string>
     <key>VALQERON_ENGINE_LOG_FILE</key>
-    <string>/Users/you/Library/Application Support/io.valqeron.valqeron/engine.log</string>
+    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/engine.log</string>
     <key>VALQERON_ENGINE_LOG_LEVEL</key>
     <string>info</string>
     <key>VALQERON_ENGINE_DURABLE</key>
