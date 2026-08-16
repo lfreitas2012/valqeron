@@ -37,12 +37,12 @@
        bounds so a graceful stop is never truncated mid-checkpoint. -->
   <key>ExitTimeOut</key>
   <integer>60</integer>
-  <!-- launchd does not create parent directories for these paths;
-       `just engine-install` creates the default directory below. -->
+  <!-- The engine's structured JSON log is the single persistent log.
+       Keep launchd's process streams out of separate log files. -->
   <key>StandardOutPath</key>
-  <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/launchd.stdout.log</string>
+  <string>/dev/null</string>
   <key>StandardErrorPath</key>
-  <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/launchd.stderr.log</string>
+  <string>/dev/null</string>
   <!-- Optional overrides, shown at the engine's own defaults
        (ProjectDirs "io", "valqeron", "valqeron"). Uncomment to customize.
        Intervals are whole seconds; VALQERON_ENGINE_LOG_FILE=off disables the

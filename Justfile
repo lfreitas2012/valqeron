@@ -74,8 +74,9 @@ engine-install:
         src="$install_dir/$label.plist"
         require_definition "$src"
         plutil -lint "$src" >/dev/null
-        # launchd does not create the StandardOut/ErrorPath parent directory;
-        # create the default one (mirrors ProjectDirs("io","valqeron","valqeron")).
+        # Create the default data directory (mirrors
+        # ProjectDirs("io","valqeron","valqeron")) for the database and
+        # the engine's structured JSON log.
         mkdir -p "$HOME/Library/LaunchAgents" \
             "$HOME/Library/Application Support/io.valqeron.valqeron"
         plist="$HOME/Library/LaunchAgents/$label.plist"
@@ -100,7 +101,7 @@ engine-install:
         echo "installed launchd agent: $plist"
         echo "the engine starts now and at every login"
         echo "inspect with:  launchctl print gui/$uid/$label"
-        echo "logs:          see StandardErrorPath in $plist"
+        echo "logs:          $HOME/Library/Application Support/io.valqeron.valqeron/engine.log"
         ;;
     Linux)
         unit="valqeron-engine.service"
