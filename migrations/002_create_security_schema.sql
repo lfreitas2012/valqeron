@@ -19,8 +19,6 @@ CREATE TABLE IF NOT EXISTS security
     CHECK (underlying_security_id IS NULL OR underlying_security_id <> id)
 ) STRICT, WITHOUT ROWID;
 
--- Serves foreign-key enforcement on issuer deletes, list_by_issuer, and the
--- batched eager joins used to hydrate issuers without N+1 queries.
 CREATE INDEX IF NOT EXISTS idx_security_issuer_id ON security (issuer_id);
 
 CREATE INDEX IF NOT EXISTS idx_security_underlying_security_id ON security (underlying_security_id)

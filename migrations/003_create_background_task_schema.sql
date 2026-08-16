@@ -1,9 +1,3 @@
--- Engine-internal background task queue and execution history.
---
--- Rows are both the schedule (PENDING, due at scheduled_at) and the record of
--- what happened (SUCCEEDED/FAILED with attempts, timings, and last_error).
--- The engine's single-instance lock means exactly one dispatcher consumes
--- this table; claims are still version-guarded like every other write.
 CREATE TABLE IF NOT EXISTS background_task
 (
     id               BLOB PRIMARY KEY,
@@ -22,9 +16,6 @@ CREATE TABLE IF NOT EXISTS background_task
     version          INTEGER NOT NULL DEFAULT 1
 ) STRICT, WITHOUT ROWID;
 
--- Serves the dispatcher's due-task claim (PENDING ordered by due time) and
--- the pruning scan over terminal statuses.
 CREATE INDEX IF NOT EXISTS idx_background_task_due ON background_task (status, scheduled_at);
 
--- Serves per-kind history queries (most recent executions of one kind).
 CREATE INDEX IF NOT EXISTS idx_background_task_kind ON background_task (kind, scheduled_at);
