@@ -28,19 +28,15 @@ use v1::{
     PatchIssuerRequestProto, StatusRequestProto,
 };
 
-/// Default bound on establishing the connection.
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-/// Default bound on any single RPC.
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_RPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Engine identity captured by the connect-time handshake.
 #[derive(Debug, Clone)]
 pub struct EngineInfo {
     pub engine_version: String,
     pub protocol_version: u32,
 }
 
-/// Engine diagnostics reported by `AdminService::Status`.
 #[derive(Debug, Clone)]
 pub struct EngineStatus {
     pub engine_version: String,
@@ -50,16 +46,10 @@ pub struct EngineStatus {
     pub pid: u32,
 }
 
-/// Connection options. `Default` resolves the socket via
-/// `VALQERON_SOCKET` / the platform convention and uses the bounded default
-/// timeouts.
 #[derive(Debug, Clone, Default)]
 pub struct ClientOptions {
-    /// Explicit socket path; `None` resolves the shared convention.
     pub socket: Option<PathBuf>,
-    /// Bound on establishing the connection (`None` = 2s default).
     pub connect_timeout: Option<Duration>,
-    /// Bound on each RPC (`None` = 30s default).
     pub request_timeout: Option<Duration>,
 }
 
@@ -71,15 +61,14 @@ pub struct Client {
     engine: EngineInfo,
 }
 
+const DEFAULT_ENGINE_ENDPOINT: &'static str = "http://valqeron.engine";
+
 impl Client {
-    /// Resolve the socket, connect with a bounded timeout, and run the
-    /// version handshake.
+    /// Resolve the socket, connect with a bounded timeout, and run the version handshake.
     pub fn connect(options: ClientOptions) -> Result<Self, ClientError> {
         let socket = resolve_socket_path(options.socket.clone())
             .map_err(|e| ClientError::Config(e.to_string()))?;
 
-        // A missing socket file is the cheapest, clearest "not running"
-        // signal — fail before building a runtime.
         if !socket.exists() {
             return Err(ClientError::NotRunning { socket });
         }
@@ -90,13 +79,13 @@ impl Client {
             .map_err(|e| ClientError::Runtime(e.to_string()))?;
 
         let connect_timeout = options.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
-        let request_timeout = options.request_timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let request_timeout = options
+            .request_timeout
+            .unwrap_or(DEFAULT_RPC_REQUEST_TIMEOUT);
 
         let channel = runtime
             .block_on(async {
-                // The URI is a placeholder required by the HTTP/2 layer; the
-                // connector below dials the Unix socket instead.
-                let endpoint = Endpoint::try_from("http://valqeron.engine")
+                let endpoint = Endpoint::try_from(DEFAULT_ENGINE_ENDPOINT)
                     .map_err(|e| ClientError::Config(e.to_string()))?
                     .connect_timeout(connect_timeout)
                     .timeout(request_timeout);
@@ -136,12 +125,10 @@ impl Client {
         Ok(client)
     }
 
-    /// The socket this client is connected to.
     pub fn socket(&self) -> &Path {
         &self.socket
     }
 
-    /// Engine identity captured at connect time.
     pub fn engine_info(&self) -> &EngineInfo {
         &self.engine
     }
@@ -159,7 +146,6 @@ impl Client {
         Ok(health)
     }
 
-    /// `AdminService::Health` — cheap liveness + version probe.
     pub fn health(&self) -> Result<EngineInfo, ClientError> {
         let mut admin = RpcAdminServiceClient::new(self.channel.clone());
         let response = self
@@ -173,7 +159,6 @@ impl Client {
         })
     }
 
-    /// `AdminService::Status` — engine diagnostics.
     pub fn engine_status(&self) -> Result<EngineStatus, ClientError> {
         let mut admin = RpcAdminServiceClient::new(self.channel.clone());
         let response = self
@@ -190,8 +175,6 @@ impl Client {
         })
     }
 
-    /// Register a locally validated issuer. Returns the engine's stored
-    /// representation (server-generated id and timestamp). Never retried.
     pub fn register_issuer(
         &self,
         issuer: &Issuer,
@@ -210,7 +193,6 @@ impl Client {
         issuer_from_proto(&wire).map_err(|e| ClientError::InvalidResponse(e.to_string()))
     }
 
-    /// Fetch one issuer; `None` when the id is unknown.
     pub fn get_issuer(&self, id: &IssuerId) -> Result<Option<Versioned<Issuer>>, ClientError> {
         let request = GetIssuerRequestProto { id: id.value() };
         let mut issuers = RpcIssuerServiceClient::new(self.channel.clone());
@@ -227,7 +209,6 @@ impl Client {
             .map_err(|e| ClientError::InvalidResponse(e.to_string()))
     }
 
-    /// Keyset-paged listing: issuers whose id sorts after `after`.
     pub fn list_issuers(
         &self,
         after: Option<&IssuerId>,
@@ -251,7 +232,6 @@ impl Client {
             .map_err(|e| ClientError::InvalidResponse(e.to_string()))
     }
 
-    /// Conditionally patch an issuer. Never retried.
     pub fn patch_issuer(
         &self,
         id: &IssuerId,
@@ -281,7 +261,6 @@ impl Client {
         write_outcome_from_proto(&outcome).map_err(|e| ClientError::InvalidResponse(e.to_string()))
     }
 
-    /// Conditionally delete an issuer. Never retried.
     pub fn delete_issuer(
         &self,
         id: &IssuerId,
@@ -305,9 +284,6 @@ impl Client {
         write_outcome_from_proto(&outcome).map_err(|e| ClientError::InvalidResponse(e.to_string()))
     }
 
-    /// gRPC status → typed error: transport-level unavailability keeps its
-    /// dedicated variant; everything else surfaces as the engine's own
-    /// code + message.
     fn map_status(&self, status: tonic::Status) -> ClientError {
         match status.code() {
             tonic::Code::Unavailable => ClientError::Unreachable {
@@ -322,8 +298,6 @@ impl Client {
     }
 }
 
-/// Classify a connect-time transport error: connection refused / missing
-/// socket means "not running"; anything else is "unreachable".
 fn classify_connect_error(socket: &Path, err: &tonic::transport::Error) -> ClientError {
     use std::error::Error as _;
     let mut source: Option<&(dyn std::error::Error + 'static)> = err.source();
