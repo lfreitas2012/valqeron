@@ -1,4 +1,3 @@
-use crate::error::AppResult;
 use crate::io_util::{InputSource, OutputDest};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -25,7 +24,7 @@ impl AppContext {
         }
     }
 
-    pub fn read_input(&self) -> AppResult<Option<Value>> {
+    pub fn read_input(&self) -> anyhow::Result<Option<Value>> {
         match &self.input {
             Some(source) => source.read_json().map(Some),
             None => Ok(None),
@@ -36,7 +35,7 @@ impl AppContext {
         self.dry_run
     }
 
-    pub fn write_success<T: Serialize>(&self, data: &T) -> AppResult<()> {
+    pub fn write_success<T: Serialize>(&self, data: &T) -> anyhow::Result<()> {
         let envelope = json!({
             "success": true,
             "dry_run": self.dry_run,

@@ -12,9 +12,6 @@ use crate::commands::Commands;
     author,
     version,
     about = "Valqeron CLI",
-    long_about = "Valqeron CLI — manage issuers and storage on top of valqeron-core.\n\n\
-                  Results are emitted as JSON on stdout (or --output FILE); logs and \
-                  errors go to stderr.",
     alias = "vq",
     propagate_version = true
 )]
@@ -58,7 +55,10 @@ pub struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Rehearse against the real database, then roll back."
+        help = "Rehearse against the real database, then roll back.",
+        long_help = "Rehearse against the real database, then roll back. The engine runs \
+                     the command inside a savepoint that is always rolled back — nothing \
+                     persists."
     )]
     pub dry_run: bool,
 
@@ -69,11 +69,13 @@ pub struct Cli {
         long,
         global = true,
         value_name = "PATH",
-        env = "VALQERON_DB",
-        help = "Database file path.",
-        long_help = "Path to the SQLite database file. Overrides VALQERON_DB and the default."
+        env = "VALQERON_SOCKET",
+        help = "Engine socket path.",
+        long_help = "Path of the engine's Unix domain socket. Overrides VALQERON_SOCKET \
+                     and the platform default. Must resolve to the same path the engine \
+                     binds."
     )]
-    pub db_path: Option<PathBuf>,
+    pub socket: Option<PathBuf>,
 
     #[arg(
         long,
@@ -94,24 +96,6 @@ pub struct Cli {
         long_help = "Disable logging to a file. Also settable via VALQERON_LOG_FILE=off."
     )]
     pub no_log_file: bool,
-
-    #[arg(
-        long,
-        global = true,
-        value_name = "N",
-        default_value_t = 4,
-        help = "Number of concurrent reader connections in the engine's reader pool."
-    )]
-    pub reader_pool_size: usize,
-
-    #[arg(
-        long,
-        global = true,
-        help = "Use strict durability for writes (slower).",
-        long_help = "Use strict durability for writes (slower). Writer use relaxed durability (default) \
-        durability, which is faster, but the database may be corrupted if the power/OS crashes."
-    )]
-    pub durable: bool,
 }
 
 impl Cli {
@@ -124,7 +108,7 @@ impl Cli {
         }
     }
 
-    pub fn log_file_arg(&self) -> Option<Option<PathBuf>> {
+    pub(crate) fn log_file_arg(&self) -> Option<Option<PathBuf>> {
         match &self.log_file {
             None => None,
             Some(p) if p.as_os_str().is_empty() => Some(None),

@@ -1,3 +1,4 @@
+use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::Row;
 use rusqlite::types::Type;
 
@@ -15,4 +16,32 @@ pub(crate) fn conversion_failure(
 
 pub(crate) fn column_index(row: &Row, name: &str) -> usize {
     row.as_ref().column_index(name).unwrap_or(0)
+}
+
+/// Canonical persisted timestamp form: RFC 3339, millisecond precision,
+/// Z-suffixed UTC.
+pub(crate) fn canonical_timestamp(dt: DateTime<Utc>) -> String {
+    dt.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+pub(crate) fn column_uuid(row: &Row, name: &str) -> rusqlite::Result<uuid::Uuid> {
+    let bytes: Vec<u8> = row.get(name)?;
+    let idx = column_index(row, name);
+    uuid::Uuid::from_slice(&bytes).map_err(|e| conversion_failure(idx, Type::Blob, e))
+}
+
+pub(crate) fn column_opt_uuid(row: &Row, name: &str) -> rusqlite::Result<Option<uuid::Uuid>> {
+    let bytes: Option<Vec<u8>> = row.get(name)?;
+    let idx = column_index(row, name);
+    bytes
+        .map(|b| uuid::Uuid::from_slice(&b))
+        .transpose()
+        .map_err(|e| conversion_failure(idx, Type::Blob, e))
+}
+
+pub(crate) fn column_datetime(row: &Row, name: &str) -> rusqlite::Result<DateTime<Utc>> {
+    let raw: String = row.get(name)?;
+    DateTime::parse_from_rfc3339(&raw)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
 }

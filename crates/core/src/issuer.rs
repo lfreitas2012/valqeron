@@ -1,4 +1,6 @@
+use crate::common::Loading;
 use crate::issuer::error::{IssuerBuilderError, IssuerNameError, IssuerStatusError};
+use crate::security::Security;
 use chrono::{DateTime, Utc};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -116,6 +118,20 @@ pub struct Issuer {
     cnpj: Option<Cnpj>,
     lei: Option<Lei>,
     country_code: Option<CountryCode>,
+
+    securities: Loading<Vec<Security>>,
+}
+
+#[derive(Debug)]
+pub struct IssuerSnapshot {
+    pub id: IssuerId,
+    pub status: IssuerStatus,
+    pub created_at: DateTime<Utc>,
+    pub name: Option<IssuerName>,
+    pub cnpj: Option<Cnpj>,
+    pub lei: Option<Lei>,
+    pub country_code: Option<CountryCode>,
+    pub securities: Loading<Vec<Security>>,
 }
 
 impl Issuer {
@@ -145,23 +161,20 @@ impl Issuer {
         self.country_code.as_ref()
     }
 
-    pub fn reconstitute(
-        id: IssuerId,
-        status: IssuerStatus,
-        created_at: DateTime<Utc>,
-        name: Option<IssuerName>,
-        cnpj: Option<Cnpj>,
-        lei: Option<Lei>,
-        country_code: Option<CountryCode>,
-    ) -> Self {
+    pub fn securities(&self) -> Option<&[Security]> {
+        self.securities.as_loaded().map(Vec::as_slice)
+    }
+
+    pub fn reconstitute(snapshot: IssuerSnapshot) -> Self {
         Self {
-            id,
-            status,
-            created_at,
-            name,
-            cnpj,
-            lei,
-            country_code,
+            id: snapshot.id,
+            status: snapshot.status,
+            created_at: snapshot.created_at,
+            name: snapshot.name,
+            cnpj: snapshot.cnpj,
+            lei: snapshot.lei,
+            country_code: snapshot.country_code,
+            securities: snapshot.securities,
         }
     }
 }
@@ -247,6 +260,8 @@ impl IssuerBuilder {
             cnpj: self.cnpj,
             lei: self.lei,
             country_code,
+            // A freshly registered issuer factually has no securities yet.
+            securities: Loading::Loaded(Vec::new()),
         })
     }
 }
@@ -352,6 +367,30 @@ mod tests {
         assert!(issuer.lei.is_none());
         assert!(issuer.country_code.is_none());
         assert!(issuer.created_at <= Utc::now());
+        assert!(
+            matches!(issuer.securities(), Some(securities) if securities.is_empty()),
+            "A newly built issuer is known to have no securities"
+        );
+    }
+
+    #[test]
+    fn test_reconstitute_from_snapshot_defaults_to_not_loaded() {
+        let snapshot = IssuerSnapshot {
+            id: IssuerId::new(),
+            status: IssuerStatus::Active,
+            created_at: Utc::now(),
+            name: None,
+            cnpj: None,
+            lei: None,
+            country_code: None,
+            securities: Loading::NotLoaded,
+        };
+        let issuer = Issuer::reconstitute(snapshot);
+
+        assert!(
+            issuer.securities().is_none(),
+            "Lazy reconstitution must not pretend the relation is empty"
+        );
     }
 
     #[test]
