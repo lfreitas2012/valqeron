@@ -3,9 +3,7 @@ mod mapping;
 use directories::ProjectDirs;
 use std::path::{Path, PathBuf};
 
-// v2: removed the RFC-7807 `ProblemDetailProto` status-details payload —
-// errors are a plain `tonic::Status` (code + message).
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 1;
 
 #[allow(
     clippy::as_conversions,
