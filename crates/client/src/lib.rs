@@ -61,7 +61,7 @@ pub struct Client {
     engine: EngineInfo,
 }
 
-const DEFAULT_ENGINE_ENDPOINT: &'static str = "http://valqeron.engine";
+const DEFAULT_ENGINE_ENDPOINT: &str = "http://valqeron.engine";
 
 impl Client {
     /// Resolve the socket, connect with a bounded timeout, and run the version handshake.

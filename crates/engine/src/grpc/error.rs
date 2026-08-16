@@ -1,18 +1,9 @@
-//! Maps every failure a gRPC handler can produce to a plain `tonic::Status`:
-//! one `tonic::Code` plus the error's own human-readable message.
-//!
-//! This is deliberately the whole error contract. The former RFC-7807
-//! problem envelope (slugs, sysexits statuses, JSON extensions, cause
-//! chains) was removed: nothing consumed it — the CLI prints the message
-//! and exits 1 — and `thiserror` messages already carry the information.
-
 use tonic::{Code, Status};
 use valqeron_core::{RegisterIssuerError, StorageError, StorageFault};
 use valqeron_proto::IssuerMappingError;
 
 use crate::storage::StorageCallError;
 
-/// Everything an engine gRPC handler can fail with.
 #[derive(Debug, thiserror::Error)]
 pub enum HandlerError {
     #[error(transparent)]
@@ -32,7 +23,6 @@ pub enum HandlerError {
 }
 
 impl HandlerError {
-    /// Convert into the `tonic::Status` sent over the wire.
     pub fn into_status(self) -> Status {
         Status::new(self.code(), self.to_string())
     }

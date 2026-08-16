@@ -1,19 +1,62 @@
-use tonic::{Request, Response, Status};
-use v1::{
-    DeleteIssuerRequestProto, DeleteIssuerResponseProto, IssuerProto, ListIssuersResponseProto,
-    PatchIssuerResponseProto,
-};
-use valqeron_core::{IssuerRepository, LoadMode, Repositories, Versioned, register_issuer};
-use valqeron_infrastructure::SqliteStorageEngine;
-use valqeron_proto::v1::rpc_issuer_service_server::RpcIssuerService;
-use valqeron_proto::{
-    issuer_to_proto, parse_issuer_id, patch_request_to_domain, register_request_to_issuer, v1,
-    write_outcome_to_proto,
-};
+use std::time::Instant;
 
 use crate::grpc::error::HandlerError;
 use crate::storage::AsyncStorage;
+use tonic::{Request, Response, Status};
+use v1::{HealthRequestProto, HealthResponseProto, StatusRequestProto, StatusResponseProto};
+use valqeron_core::{IssuerRepository, LoadMode, Repositories, Versioned, register_issuer};
+use valqeron_infrastructure::SqliteStorageEngine;
+use valqeron_proto::v1;
+use valqeron_proto::v1::rpc_admin_service_server::RpcAdminService;
+use valqeron_proto::v1::rpc_issuer_service_server::RpcIssuerService;
+use valqeron_proto::v1::{
+    DeleteIssuerRequestProto, DeleteIssuerResponseProto, IssuerProto, ListIssuersResponseProto,
+    PatchIssuerResponseProto,
+};
+use valqeron_proto::{
+    PROTOCOL_VERSION, issuer_to_proto, parse_issuer_id, patch_request_to_domain,
+    register_request_to_issuer, write_outcome_to_proto,
+};
 
+// -------------------- Admin Service --------------------
+pub struct AdminGrpc {
+    db_path: String,
+    started: Instant,
+}
+
+impl AdminGrpc {
+    pub fn new(db_path: String, started: Instant) -> Self {
+        Self { db_path, started }
+    }
+}
+
+#[tonic::async_trait]
+impl RpcAdminService for AdminGrpc {
+    async fn health(
+        &self,
+        _request: Request<HealthRequestProto>,
+    ) -> Result<Response<HealthResponseProto>, Status> {
+        Ok(Response::new(HealthResponseProto {
+            engine_version: env!("CARGO_PKG_VERSION").to_string(),
+            protocol_version: PROTOCOL_VERSION,
+        }))
+    }
+
+    async fn status(
+        &self,
+        _request: Request<StatusRequestProto>,
+    ) -> Result<Response<StatusResponseProto>, Status> {
+        Ok(Response::new(StatusResponseProto {
+            engine_version: env!("CARGO_PKG_VERSION").to_string(),
+            protocol_version: PROTOCOL_VERSION,
+            db_path: self.db_path.clone(),
+            uptime_secs: self.started.elapsed().as_secs(),
+            pid: std::process::id(),
+        }))
+    }
+}
+
+// -------------------- Issuer Service --------------------
 const DEFAULT_LIST_LIMIT: u32 = 50;
 const MAX_LIST_LIMIT: u32 = 1_000;
 

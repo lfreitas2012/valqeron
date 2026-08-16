@@ -1,6 +1,4 @@
-pub mod admin;
 pub mod error;
-pub mod issuer;
+pub mod services;
 
-pub use admin::AdminGrpc;
-pub use issuer::IssuerGrpc;
+pub use services::{AdminGrpc, IssuerGrpc};
