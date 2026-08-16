@@ -8,27 +8,6 @@
     )
 )]
 
-//! `valqeron-engine` — the daemon that owns the Valqeron database.
-//!
-//! The engine holds the SQLite file exclusively behind a single-instance
-//! lock, runs migrations at startup, serves the gRPC API over a Unix domain
-//! socket (`IssuerService` + `AdminService`), performs periodic maintenance
-//! (`PRAGMA optimize` + passive WAL checkpoints), and shuts down gracefully.
-//! Clients (`valqeron` CLI, future desktop app) reach the database only
-//! through `valqeron-client` — no other process opens the file.
-//!
-//! The binary takes **no arguments**: it is a service-manager payload,
-//! configured entirely through `VALQERON_*` environment variables set in the
-//! service definition (see `scripts/install/*.example`). Starting is the
-//! service manager's (or the operator's) job; stopping is signal-driven.
-//! Installing the engine as a login service is a *separate lifecycle* handled
-//! outside this binary (`just engine-install` / `just engine-uninstall`).
-//!
-//! Async containment: the gRPC edge runs on a `multi_thread` tokio runtime,
-//! but every storage call crosses to tokio's blocking pool through the
-//! bounded [`storage::AsyncStorage`] facade. `valqeron-core` and
-//! `valqeron-infrastructure` stay fully synchronous and async-free.
-
 mod engine;
 mod grpc;
 mod lifecycle;
@@ -48,11 +27,6 @@ use tracing_subscriber::{EnvFilter, Layer, fmt};
 use crate::engine::{ENGINE_LOG_LEVEL_ENV, EngineConfig, EngineResult, ValqeronEngine, exit_code};
 
 fn main() -> ExitCode {
-    // Configuration comes exclusively from VALQERON_* environment variables
-    // (set in the service definition); argv carries nothing. Rejecting every
-    // argument makes a stale service definition (e.g. one still passing the
-    // old `run` subcommand) fail fast and visibly in the manager's log
-    // instead of silently diverging from the expected contract.
     if std::env::args_os().len() > 1 {
         eprintln!(
             "error: valqeron-engine takes no arguments; configure it via VALQERON_* \
@@ -76,12 +50,6 @@ fn run() -> EngineResult<()> {
     ValqeronEngine::run(&config)
 }
 
-/// Dual-layer tracing, mirroring the CLI's setup: compact human output on
-/// stderr (the service manager's log stream) plus an optional JSON file layer.
-///
-/// Unlike the CLI, the `valqeron::audit` target stays **enabled** on stderr:
-/// for a daemon, stderr *is* the operator surface (journald / launchd log
-/// files), and audit events belong there.
 fn init_logging(
     level: Level,
     log_file: Option<&Path>,
@@ -126,7 +94,6 @@ fn init_logging(
     }
 }
 
-/// Level for the JSON file layer: `VALQERON_ENGINE_LOG_LEVEL`, default `info`.
 fn file_log_level() -> String {
     std::env::var(ENGINE_LOG_LEVEL_ENV).unwrap_or_else(|_| "info".to_string())
 }

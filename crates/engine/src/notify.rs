@@ -1,41 +1,17 @@
-//! Hand-rolled `sd_notify` signaling (no dependency).
-//!
-//! When systemd starts the engine as a `Type=notify` unit it exports
-//! `NOTIFY_SOCKET`; the engine reports `READY=1` once it is serving,
-//! `STOPPING=1` when shutdown begins, and — when the unit configures
-//! `WatchdogSec=` (exported as `WATCHDOG_USEC`/`WATCHDOG_PID`) — periodic
-//! `WATCHDOG=1` pings so systemd can detect a *hung* engine, not just a dead
-//! one. Everywhere else (foreground runs, launchd, tests) the variables are
-//! absent and every call is a silent no-op.
-//!
-//! Sends are **non-blocking** fire-and-forget: they run on runtime worker
-//! threads (lifecycle transitions, the watchdog ticker) which must never
-//! block, and notification is advisory — the engine itself is the source of
-//! truth. Failures are logged at debug and never affect the engine.
-
 use std::ffi::OsStr;
 use std::os::unix::net::UnixDatagram;
 use std::time::Duration;
 
-/// Report "started and serving" (`READY=1`).
 pub(crate) fn notify_ready() {
     notify("READY=1");
 }
-
-/// Report "shutdown began" (`STOPPING=1`).
 pub(crate) fn notify_stopping() {
     notify("STOPPING=1");
 }
-
-/// Ping the service-manager watchdog (`WATCHDOG=1`).
 pub(crate) fn notify_watchdog() {
     notify("WATCHDOG=1");
 }
 
-/// The interval within which systemd expects watchdog pings, when a watchdog
-/// is armed **for this process**: requires `NOTIFY_SOCKET` + a positive
-/// `WATCHDOG_USEC`, and `WATCHDOG_PID` (when set) must name us. Callers
-/// should ping at half this interval.
 pub(crate) fn watchdog_interval() -> Option<Duration> {
     std::env::var_os("NOTIFY_SOCKET")?;
     watchdog_interval_from(
@@ -45,8 +21,6 @@ pub(crate) fn watchdog_interval() -> Option<Duration> {
     )
 }
 
-/// Pure core of [`watchdog_interval`]: env values are injected so tests
-/// never touch process-global environment state.
 fn watchdog_interval_from(
     usec: Option<&OsStr>,
     pid: Option<&OsStr>,
@@ -54,8 +28,6 @@ fn watchdog_interval_from(
 ) -> Option<Duration> {
     let usec = usec?;
     if let Some(pid) = pid {
-        // systemd names the process expected to ping; a mismatch means the
-        // variable was inherited (e.g. by a child) and must be ignored.
         if pid.to_str().and_then(|s| s.trim().parse::<u32>().ok()) != Some(my_pid) {
             return None;
         }
@@ -79,10 +51,6 @@ fn notify(state: &str) {
     }
 }
 
-/// Send one datagram to the notification socket, without ever blocking the
-/// calling thread (a full receiver queue drops the advisory message instead).
-/// A leading `@` means a Linux abstract-namespace address (systemd uses
-/// these in containers).
 fn send_state(socket: &OsStr, state: &str) -> std::io::Result<()> {
     let sender = UnixDatagram::unbound()?;
     sender.set_nonblocking(true)?;

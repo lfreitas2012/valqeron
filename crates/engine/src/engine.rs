@@ -1,32 +1,3 @@
-//! The engine lifecycle, consolidated: configuration resolution, the
-//! single-instance lock, the phased (typestate) boot sequence, the serve
-//! loop, and the ordered teardown.
-//!
-//! Startup is a linear chain in which every phase consumes the previous one,
-//! so the strict resource order — lock → socket dir → stale-socket removal →
-//! database (migrations) → bind → runtime — cannot be rearranged without
-//! failing to compile:
-//!
-//! ```text
-//! Bootstrap::new(config)
-//!     .acquire_lock()?      exclusive flock on <db>.lock
-//!     .prepare_socket()?    0700 socket dir; unlink stale socket (safe: lock held)
-//!     .open_database()?     open SQLite, run migrations, wrap in AsyncStorage
-//!     .bind_socket()?       bind the std listener, 0600 — socket exists ⇒ DB migrated
-//!     .build_runtime()?     multi_thread tokio, named threads, capped blocking pool
-//! ```
-//!
-//! Binding happens synchronously *before* the runtime starts: readiness is a
-//! deterministic point in the boot sequence, and a client connecting in the
-//! window before serving queues in the listener backlog instead of racing the
-//! socket file into existence. Because the bind follows `open_database`, the
-//! invariant "socket exists ⇒ database is open and migrated" holds.
-//!
-//! Teardown runs in [`ValqeronEngine::serve`] in the exact reverse-dependency
-//! order the final checkpoint requires: drain the runtime → unlink the socket
-//! → reclaim and drop the engine (`PRAGMA optimize` + `wal_checkpoint(TRUNCATE)`)
-//! → release the lock last, after the checkpoint proves the database is quiesced.
-
 use crate::grpc::{AdminGrpc, IssuerGrpc};
 use crate::lifecycle::{Lifecycle, LifecycleState};
 use crate::storage::AsyncStorage;
@@ -55,11 +26,6 @@ use valqeron_proto::v1::rpc_issuer_service_server::RpcIssuerServiceServer;
 pub type EngineResult<T> = Result<T, EngineError>;
 
 // ================ ERRORS & EXIT CODES ================
-/// Exit codes for the engine binary.
-///
-/// Distinct codes let service managers and scripts distinguish "another
-/// instance already runs" (a benign race that must only be throttled, not
-/// treated as a crash-loop bug) from real failures.
 pub mod exit_code {
     /// Generic runtime failure (including a forced shutdown).
     pub const RUNTIME: i32 = 1;
@@ -109,24 +75,12 @@ impl EngineError {
 }
 
 // ================ ENVIRONMENT VARIABLES ================
-// The engine binary takes no arguments: these variables — set in the service
-// definition (`scripts/install/*.example`) — are its entire configuration
-// surface. Every one of them falls back to a platform default when unset.
 
-/// Database path environment variable (engine-only; clients never see the file).
-/// The socket path (`VALQERON_SOCKET`) is resolved by `valqeron-proto`, shared
-/// knowledge with clients.
 pub const DB_PATH_ENV: &str = "VALQERON_DB";
-/// Engine log file path environment variable (`off` disables file logging).
 pub const ENGINE_LOG_FILE_ENV: &str = "VALQERON_ENGINE_LOG_FILE";
-/// Engine log file level environment variable (default `info`).
 pub const ENGINE_LOG_LEVEL_ENV: &str = "VALQERON_ENGINE_LOG_LEVEL";
-/// Strict-durability toggle: any value that is not off-like (`off`/`false`/
-/// `0`/`none`/empty) enables `PRAGMA synchronous=FULL`.
 pub const ENGINE_DURABLE_ENV: &str = "VALQERON_ENGINE_DURABLE";
-/// Seconds between database maintenance runs (whole seconds).
 pub const ENGINE_MAINTENANCE_INTERVAL_ENV: &str = "VALQERON_ENGINE_MAINTENANCE_INTERVAL";
-/// Seconds between heartbeat log lines (whole seconds).
 pub const ENGINE_HEARTBEAT_INTERVAL_ENV: &str = "VALQERON_ENGINE_HEARTBEAT_INTERVAL";
 
 // ================ DEFAULT VALUES ================
@@ -139,18 +93,6 @@ pub const DEFAULT_MAINTENANCE_INTERVAL_SECS: u64 = 3600;
 pub const DEFAULT_HEARTBEAT_INTERVAL_SECS: u64 = 300;
 
 // ================ SIZING & TIMEOUTS ================
-/// Reader-pool size: serves the gRPC read fan-out; writes serialize on the
-/// writer mutex regardless. The storage read lane takes exactly this many
-/// permits (see `storage.rs`).
-const READER_POOL_SIZE: usize = 4;
-
-/// Blocking-pool cap: every storage lane slot may hold a blocking thread
-/// (readers + the single writer), plus a small margin for tokio's own
-/// internal blocking work. The lanes bound admission; this bounds the pool
-/// itself (tokio's default is 512).
-const MAX_BLOCKING_THREADS: usize = READER_POOL_SIZE
-    .saturating_add(1) // the single writer
-    .saturating_add(2); // margin
 
 /// How long the graceful shutdown waits for in-flight RPCs / jobs / storage.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -434,7 +376,6 @@ impl<'c> Bootstrap<'c> {
             maintenance_interval_secs = config.maintenance_interval().as_secs(),
             heartbeat_interval_secs = config.heartbeat_interval().as_secs(),
             durability = config.durability_label(),
-            reader_pool_size = READER_POOL_SIZE,
             "valqeron-engine starting"
         );
         Self { config }
@@ -534,7 +475,6 @@ impl<'c> SocketReady<'c> {
     /// construction.
     fn open_database(self) -> EngineResult<DatabaseOpen<'c>> {
         let db_config = DatabaseConfig {
-            reader_pool_size: READER_POOL_SIZE,
             synchronous: self.config.synchronous(),
             ..DatabaseConfig::default()
         };
@@ -543,6 +483,7 @@ impl<'c> SocketReady<'c> {
 
         tracing::info!(
             db_path = %self.config.db_path().display(),
+            reader_pool_size = storage.reader_pool_size(),
             "database open; migrations applied"
         );
 
@@ -611,12 +552,11 @@ struct Bound<'c> {
 
 impl<'c> Bound<'c> {
     /// Build the multi-thread tokio runtime: named threads and a bounded
-    /// blocking pool sized to the storage lanes.
+    /// blocking pool sized to the opened storage lanes.
     fn build_runtime(self) -> EngineResult<ValqeronEngine<'c>> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_name("valqeron-worker")
-            .max_blocking_threads(MAX_BLOCKING_THREADS)
             .build()
             .map_err(|e| EngineError::Io(format!("building tokio runtime: {e}")))?;
 
