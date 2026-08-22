@@ -179,7 +179,10 @@ async fn acquire_slot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use valqeron_core::{IssuerRepository, LoadMode, StorageFault};
+    use valqeron_core::StorageFault;
+    use valqeron_core::common::LoadMode;
+    use valqeron_core::domain::issuer::{Issuer, IssuerRepository, register_issuer};
+    use valqeron_core::identifiers::Cnpj;
     use valqeron_infrastructure::DatabaseConfig;
 
     fn storage(reader_pool_size: usize) -> (tempfile::TempDir, AsyncStorage) {
@@ -303,14 +306,11 @@ mod tests {
     async fn dry_run_routes_through_the_savepoint_and_persists_nothing() {
         let (_dir, storage) = storage(2);
 
-        let cnpj = valqeron_core::Cnpj::new("12.345.678/0001-95").expect("valid cnpj");
-        let issuer = valqeron_core::Issuer::builder()
-            .cnpj(cnpj)
-            .build()
-            .expect("valid issuer");
+        let cnpj = Cnpj::new("12.345.678/0001-95").expect("valid cnpj");
+        let issuer = Issuer::builder().cnpj(cnpj).build().expect("valid issuer");
         storage
             .write("test.dry-run", true, move |repos| {
-                valqeron_core::register_issuer(&repos.issuers, &issuer)
+                register_issuer(&repos.issuers, &issuer)
                     .map_err(|e| StorageError::Fault(StorageFault::new(e.to_string())))
             })
             .await

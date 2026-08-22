@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::str::FromStr;
 use uuid::Uuid;
-use valqeron_client::Client;
-use valqeron_core::{
-    Cnpj, CountryCode, Issuer, IssuerBuilder, IssuerId, IssuerName, IssuerStatus, Lei, Versioned,
-};
+use valqeron_core::common::Versioned;
+use valqeron_core::domain::issuer::{Issuer, IssuerBuilder, IssuerId, IssuerName, IssuerStatus};
+use valqeron_core::identifiers::{Cnpj, CountryCode, Lei};
+use valqeron_engine_client::{Client, RegisterIssuerRequest};
 
 #[derive(Subcommand, Debug)]
 pub enum IssuerCommand {
@@ -33,7 +33,6 @@ impl IssuerCommand {
     }
 }
 
-// -------- Command Info --------
 #[derive(Args, Debug)]
 pub struct InfoArgs {
     /// Issuer id (UUID).
@@ -47,7 +46,7 @@ impl Command for InfoArgs {
             Uuid::from_str(&self.id).with_context(|| format!("invalid issuer id: {}", self.id))?;
         let id = IssuerId::from_uuid(uuid);
 
-        let found = client.get_issuer(&id)?;
+        let found = client.issuers().get(&id)?;
         let items: Vec<IssuerView> = found.iter().map(IssuerView::from).collect();
 
         tracing::info!(
@@ -64,8 +63,6 @@ impl Command for InfoArgs {
         }))
     }
 }
-
-// -------- Command List --------
 
 /// Default page size when `--limit` is not supplied.
 const DEFAULT_LIMIT: u32 = 50;
@@ -101,7 +98,7 @@ impl Command for ListArgs {
             None => None,
         };
 
-        let found = client.list_issuers(after.as_ref(), self.limit)?;
+        let found = client.issuers().list(after.as_ref(), self.limit)?;
         let items: Vec<IssuerView> = found.iter().map(IssuerView::from).collect();
 
         // Cursor for the next page: the last id in this page, if any.
@@ -123,7 +120,6 @@ impl Command for ListArgs {
     }
 }
 
-// -------- Command Register --------
 #[derive(Args, Debug)]
 pub struct RegisterArgs {
     #[arg(long, short = 'n', help = "Human-readable issuer name (required)")]
@@ -166,7 +162,8 @@ impl Command for RegisterArgs {
         // authoritatively (its errors carry the same domain messages).
         let issuer = input.into_issuer()?;
 
-        let registered = client.register_issuer(&issuer, ctx.dry_run())?;
+        let request = RegisterIssuerRequest::new(issuer).dry_run_if(ctx.dry_run());
+        let registered = client.issuers().register(request)?;
 
         tracing::info!(
             target: "valqeron::audit",
@@ -182,7 +179,6 @@ impl Command for RegisterArgs {
     }
 }
 
-// -------- DTO --------
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IssuerInput {

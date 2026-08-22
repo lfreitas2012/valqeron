@@ -1,0 +1,24 @@
+[package]
+name = "valqeron-engine-client"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+version.workspace = true
+
+[dependencies]
+valqeron-engine-proto = { workspace = true }
+valqeron-core = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+uuid = { workspace = true, features = ["serde", "v7"] }
+tempfile = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }
+tower = { workspace = true, features = ["util"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "macros"] }
+directories = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,70 @@
+[package]
+name = "valqeron-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+valqeron-core = { workspace = true }
+libfuzzer-sys = "0.4"
+serde_json = { workspace = true }
+arbitrary = { workspace = true }
+
+[[bin]]
+name = "fuzz_cnpj_equivalence"
+path = "fuzz_targets/fuzz_cnpj_equivalence.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cnpj_ops"
+path = "fuzz_targets/fuzz_cnpj_ops.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cnpj_normalization"
+path = "fuzz_targets/fuzz_cnpj_normalization.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "country_code"
+path = "fuzz_targets/country_code.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "isin"
+path = "fuzz_targets/isin.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lei"
+path = "fuzz_targets/lei.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cfi"
+path = "fuzz_targets/cfi.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mic"
+path = "fuzz_targets/mic.rs"
+test = false
+doc = false
+bench = false

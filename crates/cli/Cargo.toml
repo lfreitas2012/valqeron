@@ -9,8 +9,7 @@ publish = false
 
 [dependencies]
 valqeron-core = { workspace = true }
-valqeron-client = { workspace = true }
-valqeron-common = { workspace = true }
+valqeron-engine-client = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

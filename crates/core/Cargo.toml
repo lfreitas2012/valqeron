@@ -8,16 +8,45 @@ version.workspace = true
 publish = false
 
 [dependencies]
+valqeron-macros = { workspace = true }
+serde = { workspace = true }
+proptest = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-valqeron-identifiers = { workspace = true }
+arbitrary = { workspace = true }
+schemars = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+serde_json = { workspace = true }
 mockall = { workspace = true }
+
 
 [lib]
 name = "valqeron_core"
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "cnpj_benches"
+harness = false
+
+[[bench]]
+name = "country_benches"
+harness = false
+
+[[bench]]
+name = "isin_benches"
+harness = false
+
+[[bench]]
+name = "mic_benches"
+harness = false
+
+[[bench]]
+name = "lei_benches"
+harness = false
