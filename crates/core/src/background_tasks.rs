@@ -3,9 +3,9 @@ use uuid::Uuid;
 
 // ================ TASK ID ================
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-pub struct TaskId(Uuid);
+pub struct BackgroundTaskId(Uuid);
 
-impl TaskId {
+impl BackgroundTaskId {
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
@@ -27,20 +27,20 @@ impl TaskId {
     }
 }
 
-impl Default for TaskId {
+impl Default for BackgroundTaskId {
     fn default() -> Self {
         Self::new()
     }
 }
 
 // ================ TASK NAME ================
-const TASK_NAME_MAX_CHARACTERS: usize = 100;
+const BACKGROUND_TASK_NAME_MAX_CHARACTERS: usize = 100;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct TaskName(String);
+pub struct BackgroundTaskName(String);
 
 #[derive(Error, Debug)]
-pub enum TaskNameError {
+pub enum BackgroundTaskNameError {
     #[error("task name cannot be empty")]
     Empty,
 
@@ -48,17 +48,17 @@ pub enum TaskNameError {
     TooLong { max: usize },
 }
 
-impl TaskName {
-    pub fn new(value: impl Into<String>) -> Result<Self, TaskNameError> {
+impl BackgroundTaskName {
+    pub fn new(value: impl Into<String>) -> Result<Self, BackgroundTaskNameError> {
         let value = value.into();
         let trimmed = value.trim();
 
         if trimmed.is_empty() {
-            return Err(TaskNameError::Empty);
+            return Err(BackgroundTaskNameError::Empty);
         }
-        if trimmed.chars().count() > TASK_NAME_MAX_CHARACTERS {
-            return Err(TaskNameError::TooLong {
-                max: TASK_NAME_MAX_CHARACTERS,
+        if trimmed.chars().count() > BACKGROUND_TASK_NAME_MAX_CHARACTERS {
+            return Err(BackgroundTaskNameError::TooLong {
+                max: BACKGROUND_TASK_NAME_MAX_CHARACTERS,
             });
         }
 
@@ -69,3 +69,5 @@ impl TaskName {
         &self.0
     }
 }
+
+// ================ TASK STATUS ================
