@@ -5,7 +5,7 @@ use crate::commands::issuer::IssuerCommand;
 use crate::context::AppContext;
 use clap::Subcommand;
 use serde_json::Value;
-use valqeron_client::Client;
+use valqeron_engine_client::Client;
 
 /// A CLI command executed against a connected engine client.
 pub trait Command {

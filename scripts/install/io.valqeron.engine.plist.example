@@ -1,70 +1,111 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+
 <!--
   Development LaunchAgent for the Valqeron engine.
 
   One-time setup:
-    cp scripts/install/io.valqeron.engine.plist.example scripts/install/io.valqeron.engine.plist
-  then edit every CHANGE-ME below. launchd expands nothing: absolute paths only.
+    cp scripts/install/io.valqeron.engine.plist.example \
+       scripts/install/io.valqeron.engine.plist
 
-  `just engine-install` copies the edited file to ~/Library/LaunchAgents/ and
-  (re)registers it. The copy under scripts/install/ is gitignored because its
-  contents (binary path, log paths, environment) are machine-specific.
+  Then edit every CHANGE-ME below.
+
+  launchd does not expand shell variables such as $HOME or ~.
+  All paths must therefore be absolute.
+
+  `just engine-install` copies this machine-local definition to
+  ~/Library/LaunchAgents/ and registers it with launchd.
+
+  The machine-local copy under scripts/install/ is gitignored.
 -->
 <plist version="1.0">
 <dict>
+
+  <!-- Service identity -->
   <key>Label</key>
   <string>io.valqeron.engine</string>
-  <!-- The binary takes no arguments: configuration comes entirely from the
-       VALQERON_* environment variables below. -->
+
+  <!--
+    The engine intentionally takes no command-line arguments.
+    Runtime configuration is supplied exclusively through VALQERON_*.
+  -->
   <key>ProgramArguments</key>
   <array>
     <string>/CHANGE-ME/valqeron/target/release/valqeron-engine</string>
   </array>
+
+  <!--
+    launchd does not inherit the interactive shell environment.
+    Required VALQERON_* configuration must therefore be declared here.
+  -->
+  <key>EnvironmentVariables</key>
+  <dict>
+
+    <!-- Persistent SQLite database -->
+    <key>VALQERON_DB</key>
+    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/valqeron.db</string>
+
+    <!-- Unix domain socket used by clients -->
+    <key>VALQERON_SOCKET</key>
+    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/run/valqeron.sock</string>
+
+    <!-- Structured JSON engine log -->
+    <key>VALQERON_ENGINE_LOG_FILE</key>
+    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/engine.log</string>
+
+    <!-- File logging verbosity -->
+    <key>VALQERON_ENGINE_LOG_LEVEL</key>
+    <string>info</string>
+
+    <!--
+      0 = normal durability
+      1 = strict durability (PRAGMA synchronous=FULL)
+    -->
+    <key>VALQERON_ENGINE_DURABLE</key>
+    <string>0</string>
+
+  </dict>
+
+  <!-- Start immediately when the LaunchAgent is loaded -->
   <key>RunAtLoad</key>
   <true/>
-  <!-- Restart on failure only; a clean exit (graceful SIGTERM drain) stays down. -->
+
+  <!--
+    Restart only after an unsuccessful exit.
+    A graceful exit remains stopped.
+  -->
   <key>KeepAlive</key>
   <dict>
     <key>SuccessfulExit</key>
     <false/>
   </dict>
+
+  <!-- Avoid rapid restart loops -->
   <key>ThrottleInterval</key>
   <integer>30</integer>
+
+  <!-- Background service -->
   <key>ProcessType</key>
   <string>Background</string>
-  <!-- Must exceed the engine's internal drain (10s) + runtime shutdown (20s)
-       bounds so a graceful stop is never truncated mid-checkpoint. -->
+
+  <!--
+    Must exceed the engine's internal drain (10s) plus runtime
+    shutdown (20s), preventing launchd from truncating graceful
+    shutdown/checkpoint processing.
+  -->
   <key>ExitTimeOut</key>
   <integer>60</integer>
-  <!-- The engine's structured JSON log is the single persistent log.
-       Keep launchd's process streams out of separate log files. -->
+
+  <!--
+    Persistent application logging is handled by tracing_appender.
+    launchd stdout/stderr are intentionally discarded.
+  -->
   <key>StandardOutPath</key>
   <string>/dev/null</string>
+
   <key>StandardErrorPath</key>
   <string>/dev/null</string>
-  <!-- Optional overrides, shown at the engine's own defaults
-       (ProjectDirs "io", "valqeron", "valqeron"). Uncomment to customize.
-       Intervals are whole seconds; VALQERON_ENGINE_LOG_FILE=off disables the
-       JSON file log; a truthy VALQERON_ENGINE_DURABLE (e.g. 1) switches
-       writes to strict durability (PRAGMA synchronous=FULL, slower).
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>VALQERON_DB</key>
-    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/valqeron.db</string>
-    <key>VALQERON_SOCKET</key>
-    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/run/valqeron.sock</string>
-    <key>VALQERON_ENGINE_LOG_FILE</key>
-    <string>/Users/CHANGE-ME/Library/Application Support/io.valqeron.valqeron/engine.log</string>
-    <key>VALQERON_ENGINE_LOG_LEVEL</key>
-    <string>info</string>
-    <key>VALQERON_ENGINE_DURABLE</key>
-    <string>0</string>
-    <key>VALQERON_ENGINE_MAINTENANCE_INTERVAL</key>
-    <string>3600</string>
-    <key>VALQERON_ENGINE_HEARTBEAT_INTERVAL</key>
-    <string>300</string>
-  </dict>
-  -->
+
 </dict>
 </plist>

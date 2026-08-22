@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package valqeron.v1;
+
+message PaginatedCursor {
+  optional string after = 1;
+  uint32 limit = 2;
+}

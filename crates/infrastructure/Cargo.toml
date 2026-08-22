@@ -8,7 +8,6 @@ version.workspace = true
 
 [dependencies]
 valqeron-core = { workspace = true }
-valqeron-identifiers = { workspace = true }
 rusqlite = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

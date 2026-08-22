@@ -1,10 +1,8 @@
-use crate::grpc::{AdminGrpc, IssuerGrpc};
+use crate::grpc::ValqeronEngineGrpc;
 use crate::lifecycle::{Lifecycle, LifecycleState};
 use crate::storage::AsyncStorage;
-use crate::tasks::{
-    BackgroundTasksBuilder, BackgroundTasksManager, PeriodicSpec, TaskFailure, Tracking,
-};
 use directories::ProjectDirs;
+use std::env;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
 use std::fs::{File, OpenOptions, TryLockError};
@@ -14,13 +12,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::watch;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::Server;
-use valqeron_core::{BackgroundTaskRepository, StorageError};
-use valqeron_infrastructure::{DatabaseConfig, SqliteStorageEngine, Synchronous};
-use valqeron_proto::v1::rpc_admin_service_server::RpcAdminServiceServer;
-use valqeron_proto::v1::rpc_issuer_service_server::RpcIssuerServiceServer;
+use valqeron_core::common::os_str_is_off;
+use valqeron_engine_proto::v1::rpc_admin_service_server::RpcAdminServiceServer;
+use valqeron_engine_proto::v1::rpc_issuer_service_server::RpcIssuerServiceServer;
+use valqeron_infrastructure::{DatabaseConfig, Synchronous};
 
 // ================ TYPES ================
 pub type EngineResult<T> = Result<T, EngineError>;
@@ -75,13 +72,11 @@ impl EngineError {
 }
 
 // ================ ENVIRONMENT VARIABLES ================
-
 pub const DB_PATH_ENV: &str = "VALQERON_DB";
 pub const ENGINE_LOG_FILE_ENV: &str = "VALQERON_ENGINE_LOG_FILE";
 pub const ENGINE_LOG_LEVEL_ENV: &str = "VALQERON_ENGINE_LOG_LEVEL";
 pub const ENGINE_DURABLE_ENV: &str = "VALQERON_ENGINE_DURABLE";
-pub const ENGINE_MAINTENANCE_INTERVAL_ENV: &str = "VALQERON_ENGINE_MAINTENANCE_INTERVAL";
-pub const ENGINE_HEARTBEAT_INTERVAL_ENV: &str = "VALQERON_ENGINE_HEARTBEAT_INTERVAL";
+pub const SOCKET_ENV: &str = "VALQERON_SOCKET";
 
 // ================ DEFAULT VALUES ================
 pub const DEFAULT_VALQERON_QUALIFIER: &str = "io";
@@ -89,16 +84,14 @@ pub const DEFAULT_VALQERON_ORGANIZATION: &str = "valqeron";
 pub const DEFAULT_VALQERON_APP: &str = "valqeron";
 pub const DEFAULT_ENGINE_DB_NAME: &str = "valqeron.db";
 pub const DEFAULT_ENGINE_LOG_FILE_NAME: &str = "engine.log";
-pub const DEFAULT_MAINTENANCE_INTERVAL_SECS: u64 = 3600;
-pub const DEFAULT_HEARTBEAT_INTERVAL_SECS: u64 = 300;
+pub const DEFAULT_RPC_SOCKET_FILE_NAME: &str = "valqeron.sock";
 
 // ================ SIZING & TIMEOUTS ================
-
-/// How long the graceful shutdown waits for in-flight RPCs / jobs / storage.
+/// How long the graceful shutdown waits for in-flight RPCs / tasks / storage.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Bound on draining the blocking pool when the runtime shuts down. A stuck
-/// job must not hold the process open forever — the service manager's SIGKILL
+/// task must not hold the process open forever — the service manager's SIGKILL
 /// (after `TimeoutStopSec` / launchd's exit timeout) is the final backstop.
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -107,16 +100,13 @@ const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 pub struct DatabasePath(PathBuf);
 
 impl DatabasePath {
-    /// `VALQERON_DB` > `<platform data dir>/valqeron.db`.
     pub fn resolve() -> EngineResult<Self> {
         let project_data_dir =
             resolve_default_project_dir().map(|dirs| dirs.data_dir().to_path_buf());
 
-        Self::resolve_with(std::env::var_os(DB_PATH_ENV), project_data_dir)
+        Self::resolve_with(env::var_os(DB_PATH_ENV), project_data_dir)
     }
 
-    /// Pure resolution core: env value and platform dir are injected so tests
-    /// never touch process-global environment state.
     fn resolve_with(
         env_value: Option<OsString>,
         project_data_dir: Option<PathBuf>,
@@ -135,25 +125,49 @@ impl DatabasePath {
 }
 
 // ================ SOCKET PATH ================
-/// The socket path is shared knowledge: engine and clients must resolve the
-/// same file, so resolution delegates to `valqeron-proto` (flag >
-/// `VALQERON_SOCKET` > platform runtime dir + `valqeron.sock`).
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SocketPath(PathBuf);
 
 impl SocketPath {
-    /// `VALQERON_SOCKET` > platform runtime dir + `valqeron.sock` (resolved
-    /// by `valqeron-proto`, which reads the env var itself).
     pub fn resolve() -> EngineResult<Self> {
-        valqeron_proto::resolve_socket_path(None)
-            .map(Self)
-            .map_err(|e| EngineError::Config(e.to_string()))
+        let project_data_dir =
+            resolve_default_project_dir().map(|dirs| dirs.data_local_dir().to_path_buf());
+
+        Self::resolve_with(env::var_os(SOCKET_ENV), project_data_dir)
+    }
+
+    pub fn exists() -> EngineResult<bool> {
+        let path = Self::resolve()?;
+        Ok(path.0.exists())
+    }
+
+    fn resolve_with(
+        env_value: Option<OsString>,
+        project_data_dir: Option<PathBuf>,
+    ) -> EngineResult<Self> {
+        if let Some(value) = env_value {
+            if !value.is_empty() {
+                return Ok(Self(PathBuf::from(value)));
+            }
+        }
+
+        project_data_dir
+            .map(|dir| Self(dir.join(DEFAULT_RPC_SOCKET_FILE_NAME)))
+            .ok_or(EngineError::Config(format!(
+                "could not determine socket path; set {SOCKET_ENV}"
+            )))
     }
 }
 
 impl Display for SocketPath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.display())
+    }
+}
+
+impl AsRef<Path> for SocketPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
     }
 }
 
@@ -178,7 +192,7 @@ impl LogFilePath {
         project_data_dir: Option<PathBuf>,
     ) -> EngineResult<Option<Self>> {
         if let Some(value) = env_value {
-            if valqeron_common::os_str_is_off(&value) {
+            if os_str_is_off(&value) {
                 return Ok(None);
             }
             if !value.is_empty() {
@@ -204,8 +218,6 @@ pub struct EngineConfig {
     /// `None` = file logging disabled.
     log_file: Option<LogFilePath>,
     durable: bool,
-    maintenance_interval: Duration,
-    heartbeat_interval: Duration,
 }
 
 impl EngineConfig {
@@ -217,16 +229,6 @@ impl EngineConfig {
             socket_path: SocketPath::resolve()?,
             log_file: LogFilePath::resolve()?,
             durable: durable_from(std::env::var_os(ENGINE_DURABLE_ENV)),
-            maintenance_interval: Duration::from_secs(interval_secs_from(
-                ENGINE_MAINTENANCE_INTERVAL_ENV,
-                std::env::var_os(ENGINE_MAINTENANCE_INTERVAL_ENV),
-                DEFAULT_MAINTENANCE_INTERVAL_SECS,
-            )?),
-            heartbeat_interval: Duration::from_secs(interval_secs_from(
-                ENGINE_HEARTBEAT_INTERVAL_ENV,
-                std::env::var_os(ENGINE_HEARTBEAT_INTERVAL_ENV),
-                DEFAULT_HEARTBEAT_INTERVAL_SECS,
-            )?),
         })
     }
 
@@ -260,14 +262,6 @@ impl EngineConfig {
 
     pub fn durability_label(&self) -> &'static str {
         if self.durable { "full" } else { "normal" }
-    }
-
-    pub fn maintenance_interval(&self) -> Duration {
-        self.maintenance_interval
-    }
-
-    pub fn heartbeat_interval(&self) -> Duration {
-        self.heartbeat_interval
     }
 }
 
@@ -373,8 +367,6 @@ impl<'c> Bootstrap<'c> {
             db_path = %config.db_path().display(),
             socket_path = %config.socket_path().display(),
             lock_path = %config.lock_path().display(),
-            maintenance_interval_secs = config.maintenance_interval().as_secs(),
-            heartbeat_interval_secs = config.heartbeat_interval().as_secs(),
             durability = config.durability_label(),
             "valqeron-engine starting"
         );
@@ -588,10 +580,12 @@ impl ValqeronEngine<'_> {
     /// runtime lifecycle FSM (`lifecycle.rs`) tracks the coarse state:
     /// `Starting` here, `Ready`/`Stopping` inside [`run_loop`], and the
     /// terminal `Stopped`/`Failed` at the end of [`ValqeronEngine::serve`].
+
+    /// Initialize engine initialization sequence.
     pub fn run(config: &EngineConfig) -> EngineResult<()> {
-        let (lifecycle, state) = Lifecycle::new();
+        let (lifecycle, _) = Lifecycle::new();
         match Self::boot(config) {
-            Ok(engine) => engine.serve(&lifecycle, state),
+            Ok(engine) => engine.serve(&lifecycle),
             Err(e) => {
                 let _ = lifecycle.transition(LifecycleState::Failed);
                 Err(e)
@@ -613,11 +607,7 @@ impl ValqeronEngine<'_> {
     /// Serve until shutdown, then tear down in reverse-dependency order:
     /// drain the runtime → unlink the socket → reclaim and drop the engine
     /// (final `wal_checkpoint(TRUNCATE)`) → release the lock last.
-    fn serve(
-        self,
-        lifecycle: &Lifecycle,
-        state: watch::Receiver<LifecycleState>,
-    ) -> EngineResult<()> {
+    fn serve(self, lifecycle: &Lifecycle) -> EngineResult<()> {
         let Self {
             config,
             lock,
@@ -626,13 +616,7 @@ impl ValqeronEngine<'_> {
             runtime,
         } = self;
 
-        let loop_result = runtime.block_on(run_loop(
-            storage.clone(),
-            listener,
-            config,
-            lifecycle,
-            state,
-        ));
+        let loop_result = runtime.block_on(run_loop(storage.clone(), listener, config, lifecycle));
 
         // Wait (bounded) for any still-running blocking task before the final
         // checkpoint; queued-but-unstarted tasks are dropped.
@@ -724,7 +708,6 @@ impl GrpcServer {
         listener: StdUnixListener,
         storage: &AsyncStorage,
         config: &EngineConfig,
-        started: Instant,
     ) -> EngineResult<Self> {
         let listener = UnixListener::from_std(listener).map_err(|e| {
             EngineError::Io(format!(
@@ -734,11 +717,10 @@ impl GrpcServer {
         })?;
 
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-        let issuer_service = RpcIssuerServiceServer::new(IssuerGrpc::new(storage.clone()));
-        let admin_service = RpcAdminServiceServer::new(AdminGrpc::new(
-            config.db_path().display().to_string(),
-            started,
-        ));
+        let grpc = ValqeronEngineGrpc::new(storage.clone());
+
+        let issuer_service = RpcIssuerServiceServer::new(grpc.clone());
+        let admin_service = RpcAdminServiceServer::new(grpc);
 
         let join = tokio::spawn(
             Server::builder()
@@ -770,149 +752,17 @@ impl GrpcServer {
     }
 }
 
-// ================ BACKGROUND TASK REGISTRATIONS ================
-/// Task kinds the engine registers — also the `kind` values persisted in the
-/// `background_task` table (the ephemeral kinds never persist).
-const DB_MAINTENANCE_TASK: &str = "db_maintenance";
-const HEARTBEAT_TASK: &str = "heartbeat";
-const TASK_PRUNE_TASK: &str = "task_prune";
-const SD_WATCHDOG_TASK: &str = "sd_watchdog";
-
-/// How long terminal task rows are kept before `task_prune` deletes them.
-const TASK_RETENTION_DAYS: i64 = 7;
-
-/// How often `task_prune` runs.
-const TASK_PRUNE_PERIOD: Duration = Duration::from_secs(24 * 60 * 60);
-
-/// The engine's built-in background work, as one registry + schedule set:
-/// `db_maintenance` and `task_prune` leave durable history rows in
-/// `background_task`; the heartbeat (a liveness log line reporting the
-/// observed lifecycle state) and the systemd watchdog ping are ephemeral.
-fn background_tasks(
-    config: &EngineConfig,
-    started: Instant,
-    state: watch::Receiver<LifecycleState>,
-) -> BackgroundTasksBuilder {
-    let builder = BackgroundTasksManager::builder()
-        .handler(DB_MAINTENANCE_TASK, |ctx| async move {
-            match ctx
-                .storage
-                .maintenance(DB_MAINTENANCE_TASK, run_maintenance_job)
-                .await
-            {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(e)) => Err(TaskFailure::new(e)),
-                Err(e) => Err(TaskFailure::new(e.to_string())),
-            }
-        })
-        .handler(HEARTBEAT_TASK, move |_ctx| {
-            let state = state.clone();
-            async move {
-                let current = *state.borrow();
-                tracing::debug!(
-                    job = "heartbeat",
-                    state = current.as_str(),
-                    uptime_secs = started.elapsed().as_secs(),
-                    "engine alive"
-                );
-                Ok(())
-            }
-        })
-        .handler(TASK_PRUNE_TASK, |ctx| async move {
-            let Some(cutoff) =
-                chrono::Utc::now().checked_sub_signed(chrono::Duration::days(TASK_RETENTION_DAYS))
-            else {
-                // Unrepresentable retention window; nothing sane to prune.
-                return Ok(());
-            };
-            let pruned = ctx
-                .storage
-                .write(TASK_PRUNE_TASK, false, move |repos| {
-                    repos
-                        .tasks
-                        .prune_finished(cutoff)
-                        .map_err(StorageError::from)
-                })
-                .await;
-            match pruned {
-                Ok(Ok(removed)) => {
-                    tracing::info!(
-                        target: "valqeron::audit",
-                        operation = "task_prune",
-                        removed,
-                        retention_days = TASK_RETENTION_DAYS,
-                        "pruned terminal background task rows"
-                    );
-                    Ok(())
-                }
-                Ok(Err(e)) => Err(TaskFailure::new(e.to_string())),
-                Err(e) => Err(TaskFailure::new(e.to_string())),
-            }
-        })
-        .periodic(PeriodicSpec {
-            kind: DB_MAINTENANCE_TASK,
-            period: config.maintenance_interval(),
-            jitter: true,
-            tracking: Tracking::Durable,
-        })
-        .periodic(PeriodicSpec {
-            kind: HEARTBEAT_TASK,
-            period: config.heartbeat_interval(),
-            jitter: false,
-            tracking: Tracking::Ephemeral,
-        })
-        .periodic(PeriodicSpec {
-            kind: TASK_PRUNE_TASK,
-            period: TASK_PRUNE_PERIOD,
-            jitter: true,
-            tracking: Tracking::Durable,
-        });
-
-    // Under a systemd watchdog (WatchdogSec= in the unit), ping WATCHDOG=1
-    // at half the configured interval so a hung engine — not just a dead
-    // one — gets detected and restarted. No-op everywhere else.
-    let Some(interval) = crate::notify::watchdog_interval() else {
-        return builder;
-    };
-    let period = interval.checked_div(2).unwrap_or(interval);
-    tracing::info!(
-        interval_ms = u64::try_from(interval.as_millis()).unwrap_or(u64::MAX),
-        ping_every_ms = u64::try_from(period.as_millis()).unwrap_or(u64::MAX),
-        "systemd watchdog armed; pinging at half the interval"
-    );
-    builder
-        .handler(SD_WATCHDOG_TASK, |_ctx| async {
-            crate::notify::notify_watchdog();
-            Ok(())
-        })
-        .periodic(PeriodicSpec {
-            kind: SD_WATCHDOG_TASK,
-            period,
-            jitter: false,
-            tracking: Tracking::Ephemeral,
-        })
-}
-
 // ================ SERVE LOOP ================
-/// Serve until a shutdown signal arrives or the server dies on its own, then
-/// hand off to the ordered drain. The mechanics live in [`Signals`],
-/// [`GrpcServer`], [`background_tasks`], and [`graceful_shutdown`]; this
-/// function is only the orchestration order.
 async fn run_loop(
     storage: AsyncStorage,
     listener: StdUnixListener,
     config: &EngineConfig,
     lifecycle: &Lifecycle,
-    state: watch::Receiver<LifecycleState>,
 ) -> EngineResult<()> {
     let mut signals = Signals::install()?;
     let started = Instant::now();
-    let mut server = GrpcServer::spawn(listener, &storage, config, started)?;
+    let mut server = GrpcServer::spawn(listener, &storage, config)?;
 
-    // The deterministic readiness point: lock held, migrations applied,
-    // socket bound, server task serving. The Starting → Ready transition
-    // fires sd_notify READY=1 — under a systemd Type=notify unit this
-    // completes startup; everywhere else it is a no-op.
     tracing::info!(
         target: "valqeron::audit",
         operation = "engine_ready",
@@ -921,19 +771,11 @@ async fn run_loop(
     );
     let _ = lifecycle.transition(LifecycleState::Ready);
 
-    // Background work (crash recovery, periodic schedules, the dispatcher)
-    // runs on its own tasks; the select below stays a pure watcher.
-    let tasks = background_tasks(config, started, state)
-        .start(storage.clone())
-        .await;
-
     let outcome: EngineResult<&'static str> = tokio::select! {
         reason = signals.recv() => Ok(reason),
         joined = &mut server.join => Err(server_exit_error(joined)),
     };
 
-    // Every continuation from here is a shutdown, clean or not; the
-    // Ready → Stopping transition fires sd_notify STOPPING=1.
     let _ = lifecycle.transition(LifecycleState::Stopping);
 
     match outcome {
@@ -942,26 +784,18 @@ async fn run_loop(
                 signal = reason,
                 "shutdown requested; draining in-flight RPCs and background work"
             );
-            graceful_shutdown(signals, server, tasks, &storage).await
+            graceful_shutdown(signals, server, &storage).await
         }
         Err(e) => {
-            // The server died on its own; stop background work and bail.
-            let _ = tasks.drain(Duration::from_secs(1)).await;
             storage.close();
             Err(e)
         }
     }
 }
 
-/// The ordered drain: stop accepting RPCs and drain in-flight ones (a second
-/// signal forces an immediate non-zero exit), stop the background tasks
-/// (waiting for bodies still in flight), then reject new storage work and
-/// wait for the remaining closures — the exact reverse-dependency order the
-/// final WAL checkpoint in [`ValqeronEngine::serve`] requires.
 async fn graceful_shutdown(
     mut signals: Signals,
     mut server: GrpcServer,
-    tasks: BackgroundTasksManager,
     storage: &AsyncStorage,
 ) -> EngineResult<()> {
     server.begin_shutdown();
@@ -984,12 +818,6 @@ async fn graceful_shutdown(
         }
     }
 
-    if !tasks.drain(DRAIN_TIMEOUT).await {
-        tracing::warn!(
-            drain_timeout_secs = DRAIN_TIMEOUT.as_secs(),
-            "background tasks did not finish within the drain deadline"
-        );
-    }
     storage.close();
     if !storage.wait_idle(DRAIN_TIMEOUT).await {
         tracing::warn!(
@@ -1013,31 +841,8 @@ fn resolve_default_project_dir() -> Option<ProjectDirs> {
 /// an off-value (`off`/`false`/`0`/`none`) keeps the relaxed default.
 fn durable_from(env_value: Option<OsString>) -> bool {
     env_value
-        .map(|value| !value.is_empty() && !valqeron_common::os_str_is_off(&value))
+        .map(|value| !value.is_empty() && !os_str_is_off(&value))
         .unwrap_or(false)
-}
-
-/// Whole-second interval from an environment variable. Unset or empty means
-/// the default; anything else must parse as `u64`, otherwise the engine
-/// refuses to start (misconfiguration must not silently become a default).
-fn interval_secs_from(
-    var: &'static str,
-    env_value: Option<OsString>,
-    default_secs: u64,
-) -> EngineResult<u64> {
-    let Some(value) = env_value else {
-        return Ok(default_secs);
-    };
-    let text = value.to_str().ok_or_else(|| {
-        EngineError::Config(format!("{var} must be whole seconds (not valid UTF-8)"))
-    })?;
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return Ok(default_secs);
-    }
-    trimmed.parse::<u64>().map_err(|e| {
-        EngineError::Config(format!("{var} must be whole seconds, got {trimmed:?}: {e}"))
-    })
 }
 
 fn server_exit_error(
@@ -1047,37 +852,6 @@ fn server_exit_error(
         Ok(Ok(())) => EngineError::Io("gRPC server exited unexpectedly".to_string()),
         Ok(Err(e)) => EngineError::Io(format!("gRPC server failed: {e}")),
         Err(e) => EngineError::Io(format!("gRPC server task failed: {e}")),
-    }
-}
-
-/// One maintenance run, executed through the storage facade — never on a
-/// runtime thread. Outcomes are logged here; the returned result feeds the
-/// durable task record. Failures are retried at the next periodic tick and
-/// must not take the daemon down.
-fn run_maintenance_job(engine: &SqliteStorageEngine) -> Result<(), String> {
-    let started = Instant::now();
-    match engine.run_maintenance() {
-        Ok(stats) => {
-            tracing::info!(
-                target: "valqeron::audit",
-                operation = "db_maintenance",
-                busy = stats.busy,
-                wal_frames = stats.log_frames,
-                checkpointed_frames = stats.checkpointed_frames,
-                duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                "maintenance completed"
-            );
-            Ok(())
-        }
-        Err(e) => {
-            tracing::warn!(
-                target: "valqeron::audit",
-                operation = "db_maintenance",
-                error = %e,
-                "maintenance failed; retrying at the next interval"
-            );
-            Err(e.to_string())
-        }
     }
 }
 
@@ -1104,8 +878,6 @@ mod config_tests {
             socket_path: SocketPath(PathBuf::from("/tmp/x.sock")),
             log_file: None,
             durable,
-            maintenance_interval: Duration::from_secs(10),
-            heartbeat_interval: Duration::from_secs(20),
         }
     }
 
@@ -1119,8 +891,6 @@ mod config_tests {
         assert_eq!(config.log_file(), None);
         assert_eq!(config.synchronous(), Synchronous::Full);
         assert_eq!(config.durability_label(), "full");
-        assert_eq!(config.maintenance_interval(), Duration::from_secs(10));
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(20));
     }
 
     #[test]
@@ -1165,6 +935,33 @@ mod config_tests {
             result.0,
             PathBuf::from("/data").join(DEFAULT_ENGINE_DB_NAME)
         );
+    }
+
+    #[test]
+    fn socket_path_prefers_the_env_value() {
+        let result = SocketPath::resolve_with(
+            Some(OsString::from("/tmp/test.sock")),
+            Some(PathBuf::from("/data")),
+        )
+        .unwrap();
+        assert_eq!(result.0, PathBuf::from("/tmp/test.sock"));
+    }
+
+    #[test]
+    fn socket_path_falls_back_to_the_project_dir() {
+        let result = SocketPath::resolve_with(None, Some(PathBuf::from("/data"))).unwrap();
+        assert_eq!(
+            result.0,
+            PathBuf::from("/data").join(DEFAULT_RPC_SOCKET_FILE_NAME)
+        );
+    }
+
+    #[test]
+    fn socket_path_errors_when_no_env_or_project_dir() {
+        for env_value in [None, Some(OsString::new())] {
+            let result = SocketPath::resolve_with(env_value, None);
+            assert!(matches!(result, Err(EngineError::Config(_))));
+        }
     }
 
     #[test]
@@ -1229,42 +1026,6 @@ mod config_tests {
     }
 
     #[test]
-    fn intervals_default_when_unset_or_empty_and_parse_when_set() {
-        for env_value in [None, Some(OsString::new()), Some(OsString::from("  "))] {
-            assert_eq!(
-                interval_secs_from(ENGINE_MAINTENANCE_INTERVAL_ENV, env_value, 3600).unwrap(),
-                3600
-            );
-        }
-        assert_eq!(
-            interval_secs_from(
-                ENGINE_MAINTENANCE_INTERVAL_ENV,
-                Some(OsString::from(" 42 ")),
-                3600
-            )
-            .unwrap(),
-            42
-        );
-    }
-
-    #[test]
-    fn invalid_intervals_are_config_errors_naming_the_variable() {
-        for bad in ["abc", "-1", "1.5", "10s"] {
-            let err = interval_secs_from(
-                ENGINE_HEARTBEAT_INTERVAL_ENV,
-                Some(OsString::from(bad)),
-                300,
-            )
-            .unwrap_err();
-            assert_eq!(err.exit_code(), exit_code::CONFIG, "{bad:?} must be CONFIG");
-            assert!(
-                err.to_string().contains(ENGINE_HEARTBEAT_INTERVAL_ENV),
-                "error must name the variable: {err}"
-            );
-        }
-    }
-
-    #[test]
     fn exit_codes_map_per_error_class() {
         assert_eq!(
             EngineError::Config("bad".into()).exit_code(),
@@ -1300,7 +1061,8 @@ mod config_tests {
 
 #[cfg(test)]
 mod lock_tests {
-    use super::*;
+    use crate::engine::{EngineError, EngineLock};
+    use std::path::PathBuf;
 
     fn temp_paths() -> (tempfile::TempDir, PathBuf, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
@@ -1372,8 +1134,6 @@ mod boot_tests {
             socket_path: SocketPath(dir.join("run").join("test.sock")),
             log_file: None,
             durable: false,
-            maintenance_interval: Duration::from_secs(3600),
-            heartbeat_interval: Duration::from_secs(3600),
         }
     }
 
@@ -1483,8 +1243,6 @@ mod boot_tests {
             socket_path: SocketPath(nested.join("run").join("test.sock")),
             log_file: None,
             durable: false,
-            maintenance_interval: Duration::from_secs(3600),
-            heartbeat_interval: Duration::from_secs(3600),
         };
 
         let engine = ValqeronEngine::boot(&config);
