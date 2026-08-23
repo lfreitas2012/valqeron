@@ -1,3 +1,4 @@
+use std::fmt;
 use thiserror::Error;
 use valqeron_common::UniqueIdentifier;
 
@@ -262,6 +263,61 @@ impl BackgroundTaskBuilder {
                 current_attempt: 0,
             },
             state: Pending,
+        })
+    }
+}
+
+/// Unifies the three terminal typestates into one value a spawned future can return.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskOutcome {
+    Success(BackgroundTask<Success>),
+    Failed(BackgroundTask<Failed>),
+    Cancelled(BackgroundTask<Cancelled>),
+}
+
+impl TaskOutcome {
+    pub fn id(&self) -> &UniqueIdentifier {
+        match self {
+            Self::Success(t) => t.id(),
+            Self::Failed(t) => t.id(),
+            Self::Cancelled(t) => t.id(),
+        }
+    }
+
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success(_))
+    }
+
+    pub fn is_failed(&self) -> bool {
+        matches!(self, Self::Failed(_))
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, Self::Cancelled(_))
+    }
+}
+
+/// Data-less mirror of the lifecycle states, for broadcasting live status to observers that don't
+/// own the typestate value itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskStatus {
+    Pending,
+    Running,
+    Retrying,
+    Success,
+    Failed,
+    Cancelled,
+}
+
+impl fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Retrying => "retrying",
+            Self::Success => "success",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
         })
     }
 }
