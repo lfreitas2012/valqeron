@@ -41,20 +41,26 @@ deps-check:
 fuzz-all:
     just --justfile crates/identifiers/Justfile fuzz-all
 
-# Installation is a separate lifecycle from the engine binary itself; this
-# recipe is the development stand-in for future packaging. The service
-# definition is a static, machine-local file under scripts/install/ — copy the
-# .example next to it once and edit the CHANGE-ME paths. The recipe builds the
-# release binary, copies the definition into place, and re-registers it
-# without ever leaving two engines running at once (the old instance is fully
-# torn down before the new one starts).
-#
+# Build the engineering docs (mdBook) into docs/book
+docs-build:
+    cargo install mdbook mdbook-mermaid --locked
+    mdbook build docs
+
+# Serve the engineering docs with live reload on http://localhost:3000
+docs-serve:
+    mdbook serve docs --open
+
+# Verify the docs build cleanly and no code fence is an accidental doctest
+docs-check:
+    mdbook build docs
+    mdbook test docs
+
 # Install the engine as a login service (launchd/systemd user) and start it
 engine-install:
     #!/usr/bin/env bash
     set -euo pipefail
     cargo build --release -p valqeron-engine
-    install_dir="{{justfile_directory()}}/scripts/install"
+    install_dir="{{ justfile_directory() }}/scripts/install"
     require_definition() {
         if [ ! -f "$1" ]; then
             echo "missing service definition: $1" >&2
@@ -68,26 +74,28 @@ engine-install:
             exit 1
         fi
     }
+
+    require_engine_binary() {
+        if [ -z "$1" ] || [ ! -x "$1" ]; then
+            echo "engine binary not found or not executable: ${1:-<unset>}" >&2
+            echo "fix the binary path in $2" >&2
+            echo "expected: {{ justfile_directory() }}/target/release/valqeron-engine" >&2
+            exit 1
+        fi
+    }
     case "$(uname -s)" in
     Darwin)
         label="io.valqeron.engine"
         src="$install_dir/$label.plist"
         require_definition "$src"
         plutil -lint "$src" >/dev/null
-        # Create the default data directory (mirrors
-        # ProjectDirs("io","valqeron","valqeron")) for the database and
-        # the engine's structured JSON log.
+        prog="$(plutil -extract ProgramArguments.0 raw -o - "$src")"
+        require_engine_binary "$prog" "$src"
         mkdir -p "$HOME/Library/LaunchAgents" \
             "$HOME/Library/Application Support/io.valqeron.valqeron"
         plist="$HOME/Library/LaunchAgents/$label.plist"
         cp "$src" "$plist"
         uid="$(id -u)"
-        # bootout is asynchronous: it initiates SIGTERM + teardown and returns.
-        # Wait until launchd has reaped the old process and dropped the
-        # registration before bootstrapping again — otherwise the old and new
-        # engines overlap (the loser of the db lock exits with code 3 and
-        # KeepAlive respawns it every ThrottleInterval, i.e. process churn).
-        # The 90s cap outlives launchd's own SIGKILL backstop (ExitTimeOut 60s).
         launchctl bootout "gui/$uid/$label" 2>/dev/null || true
         deadline=$((SECONDS + 90))
         while launchctl print "gui/$uid/$label" >/dev/null 2>&1; do
@@ -107,16 +115,13 @@ engine-install:
         unit="valqeron-engine.service"
         src="$install_dir/$unit"
         require_definition "$src"
+        prog="$(sed -n 's/^ExecStart=//p' "$src" | tr -d '"' | awk '{print $1}')"
+        require_engine_binary "$prog" "$src"
         unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-        # The unit sandbox (ReadWritePaths) expects the default data dir; the
-        # socket dir is handled by RuntimeDirectory=.
         mkdir -p "$unit_dir" "${XDG_DATA_HOME:-$HOME/.local/share}/valqeron"
         cp "$src" "$unit_dir/$unit"
         systemctl --user daemon-reload
         systemctl --user enable "$unit"
-        # restart, not `enable --now`: an already-running engine must be
-        # replaced so the new build takes effect. systemd serializes the stop
-        # (bounded by TimeoutStopSec) before the start — never two engines.
         systemctl --user restart "$unit"
         echo "installed systemd user unit: $unit_dir/$unit"
         echo "the engine starts now and at every login"
@@ -128,8 +133,6 @@ engine-install:
         ;;
     esac
 
-# The machine-local definition under scripts/install/ stays.
-#
 # Stop the engine login service and remove its installed definition
 engine-uninstall:
     #!/usr/bin/env bash
@@ -158,7 +161,7 @@ engine-uninstall:
         fi
         echo "engine service uninstalled"
         ;;
-    Linux)
+    Linux)c
         unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/valqeron-engine.service"
         systemctl --user disable --now valqeron-engine.service 2>/dev/null || true
         if [ -e "$unit" ]; then
