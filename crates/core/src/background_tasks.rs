@@ -38,14 +38,164 @@ impl BackgroundTaskName {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BackgroundTask {
-    id: UniqueIdentifier,
-    name: BackgroundTaskName,
+pub struct Pending;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Running;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Success {
+    pub output: String,
 }
 
-impl BackgroundTask {
-    pub fn new(id: UniqueIdentifier, name: BackgroundTaskName) -> Self {
-        Self { id, name }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failed {
+    pub error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Retrying {
+    pub last_error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cancelled;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskAttemptTracker {
+    max_attempts: u32,
+    current_attempt: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackgroundTask<State> {
+    id: UniqueIdentifier,
+    name: BackgroundTaskName,
+    attempts: TaskAttemptTracker,
+    state: State,
+}
+
+impl<S> BackgroundTask<S> {
+    pub fn id(&self) -> &UniqueIdentifier {
+        &self.id
+    }
+
+    pub fn name(&self) -> &BackgroundTaskName {
+        &self.name
+    }
+
+    pub fn max_attempts(&self) -> u32 {
+        self.attempts.max_attempts
+    }
+
+    pub fn current_attempt(&self) -> u32 {
+        self.attempts.current_attempt
+    }
+}
+
+impl BackgroundTask<Pending> {
+    pub fn start(self) -> BackgroundTask<Running> {
+        BackgroundTask {
+            id: self.id,
+            name: self.name,
+            attempts: TaskAttemptTracker {
+                current_attempt: self.attempts.current_attempt + 1,
+                ..self.attempts
+            },
+            state: Running,
+        }
+    }
+
+    pub fn cancel(self) -> BackgroundTask<Cancelled> {
+        BackgroundTask {
+            id: self.id,
+            name: self.name,
+            attempts: self.attempts,
+            state: Cancelled,
+        }
+    }
+}
+
+impl BackgroundTask<Running> {
+    pub fn complete(self, output: impl Into<String>) -> BackgroundTask<Success> {
+        BackgroundTask {
+            id: self.id,
+            name: self.name,
+            attempts: self.attempts,
+            state: Success {
+                output: output.into(),
+            },
+        }
+    }
+
+    pub fn fail(
+        self,
+        error: impl Into<String>,
+    ) -> Result<BackgroundTask<Retrying>, BackgroundTask<Failed>> {
+        let error = error.into();
+        if self.attempts.current_attempt < self.attempts.max_attempts {
+            Ok(BackgroundTask {
+                id: self.id,
+                name: self.name,
+                attempts: self.attempts,
+                state: Retrying { last_error: error },
+            })
+        } else {
+            Err(BackgroundTask {
+                id: self.id,
+                name: self.name,
+                attempts: self.attempts,
+                state: Failed { error },
+            })
+        }
+    }
+
+    pub fn cancel(self) -> BackgroundTask<Cancelled> {
+        BackgroundTask {
+            id: self.id,
+            name: self.name,
+            attempts: self.attempts,
+            state: Cancelled,
+        }
+    }
+}
+
+impl BackgroundTask<Retrying> {
+    pub fn last_error(&self) -> &str {
+        &self.state.last_error
+    }
+
+    pub fn start(self) -> BackgroundTask<Running> {
+        BackgroundTask {
+            id: self.id,
+            name: self.name,
+            attempts: TaskAttemptTracker {
+                current_attempt: self.attempts.current_attempt + 1,
+                ..self.attempts
+            },
+            state: Running,
+        }
+    }
+
+    pub fn cancel(self) -> BackgroundTask<Cancelled> {
+        BackgroundTask {
+            id: self.id,
+            name: self.name,
+            attempts: self.attempts,
+            state: Cancelled,
+        }
+    }
+}
+
+impl BackgroundTask<Success> {
+    pub fn output(&self) -> &str {
+        &self.state.output
+    }
+}
+
+impl BackgroundTask<Failed> {
+    pub fn error(&self) -> &str {
+        &self.state.error
     }
 }
 
@@ -61,10 +211,20 @@ pub enum TaskBuilderError {
     MissingName,
 }
 
-#[derive(Default)]
 pub struct BackgroundTaskBuilder {
     id: Option<UniqueIdentifier>,
     name: Option<BackgroundTaskName>,
+    max_attempts: u32,
+}
+
+impl Default for BackgroundTaskBuilder {
+    fn default() -> Self {
+        Self {
+            id: None,
+            name: None,
+            max_attempts: 1,
+        }
+    }
 }
 
 impl BackgroundTaskBuilder {
@@ -82,11 +242,27 @@ impl BackgroundTaskBuilder {
         self
     }
 
-    pub fn build(self) -> Result<BackgroundTask, TaskBuilderError> {
+    pub fn max_attempts(mut self, max_attempts: u32) -> Self {
+        self.max_attempts = max_attempts;
+        self
+    }
+
+    pub fn build(self) -> Result<BackgroundTask<Pending>, TaskBuilderError> {
+        if self.max_attempts == 0 {
+            return Err(TaskBuilderError::ZeroMaxAttempts);
+        }
         let id = self.id.ok_or(TaskBuilderError::MissingId)?;
         let name = self.name.ok_or(TaskBuilderError::MissingName)?;
 
-        Ok(BackgroundTask::new(id, name))
+        Ok(BackgroundTask {
+            id,
+            name,
+            attempts: TaskAttemptTracker {
+                max_attempts: self.max_attempts,
+                current_attempt: 0,
+            },
+            state: Pending,
+        })
     }
 }
 
@@ -150,5 +326,70 @@ mod tests {
 
         assert_eq!(task_1.name.as_str(), TEST_TASK_NAME);
         assert_eq!(task_1.id, id);
+    }
+
+    #[test]
+    fn test_task_builder_zero_attempts_fails() {
+        let id = UniqueIdentifier::new();
+        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+
+        let res = BackgroundTaskBuilder::new()
+            .id(id)
+            .name(name)
+            .max_attempts(0)
+            .build();
+
+        assert_matches!(res.unwrap_err(), TaskBuilderError::ZeroMaxAttempts);
+    }
+
+    #[test]
+    fn test_task_successful_lifecycle() {
+        let id = UniqueIdentifier::new();
+        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+
+        let task: BackgroundTask<Pending> = BackgroundTaskBuilder::new()
+            .id(id)
+            .name(name)
+            .max_attempts(3)
+            .build()
+            .unwrap();
+
+        assert_eq!(task.current_attempt(), 0);
+
+        let task: BackgroundTask<Running> = task.start();
+        assert_eq!(task.current_attempt(), 1);
+
+        let task: BackgroundTask<Success> = task.complete("done");
+        assert_eq!(task.output(), "done");
+    }
+
+    #[test]
+    fn test_task_retry_and_fail_lifecycle() {
+        let id = UniqueIdentifier::new();
+        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+
+        // 2 maximum execution attempts total
+        let task = BackgroundTaskBuilder::new()
+            .id(id)
+            .name(name)
+            .max_attempts(2)
+            .build()
+            .unwrap();
+
+        // First attempt
+        let task = task.start();
+        assert_eq!(task.current_attempt(), 1);
+
+        // Fails but yields a Retrying state because max_attempts is 2
+        let task = task.fail("first failure").unwrap();
+        assert_eq!(task.last_error(), "first failure");
+
+        // Second attempt
+        let task = task.start();
+        assert_eq!(task.current_attempt(), 2);
+
+        // Fails completely because we reached max_attempts
+        let final_err = task.fail("second failure").unwrap_err();
+        assert_eq!(final_err.error(), "second failure");
     }
 }
