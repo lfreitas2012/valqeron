@@ -8,11 +8,11 @@
     )
 )]
 
+mod admin;
 mod error;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-
 use tonic::transport::{Channel, Endpoint, Uri};
 use valqeron_core::{Issuer, IssuerId, IssuerPatch, Versioned, WriteOutcome};
 use valqeron_proto::v1::rpc_admin_service_client::RpcAdminServiceClient;
@@ -27,6 +27,8 @@ use v1::{
     DeleteIssuerRequestProto, GetIssuerRequestProto, HealthRequestProto, ListIssuersRequestProto,
     PatchIssuerRequestProto, StatusRequestProto,
 };
+
+pub use admin::{BackgroundTaskDetail, list_background_tasks_command};
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_RPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
