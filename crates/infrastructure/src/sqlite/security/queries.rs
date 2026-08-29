@@ -1,5 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
-use valqeron_core::{IssuerId, Security, SecurityId, SecurityName, SecurityPatch};
+use valqeron_core::domain::issuer::IssuerId;
+use valqeron_core::domain::security::{Security, SecurityId, SecurityName, SecurityPatch};
 use valqeron_identifiers::Isin;
 
 use crate::sqlite::row::{FromRow, canonical_timestamp};

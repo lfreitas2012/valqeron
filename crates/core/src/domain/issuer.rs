@@ -1,21 +1,31 @@
-use crate::common::Loading;
-use crate::issuer::error::{IssuerBuilderError, IssuerNameError, IssuerStatusError};
-use crate::security::Security;
+use crate::{
+    StorageFault,
+    common::{Empty, LoadMode, Loading, NonEmpty, RepositoryResult, Versioned, WriteOutcome},
+    domain::security::Security,
+};
 use chrono::{DateTime, Utc};
+use std::marker::PhantomData;
+use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
 use uuid::Uuid;
-use valqeron_identifiers::{Cnpj, CountryCode, Lei};
-
-pub mod error;
-pub mod patch;
-pub mod repository;
-pub mod service;
+use valqeron_identifiers::{Cnpj, CountryCode, CountryCodeError, Lei};
 
 const ISSUER_NAME_MAX_LEN: usize = 200;
 const BRAZIL_COUNTRY_CODE: &str = "BR";
 
+// ================ ISSUER DOMAIN ================
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct IssuerName(String);
+
+#[derive(thiserror::Error, Debug)]
+pub enum IssuerNameError {
+    #[error("issuer name cannot be empty")]
+    Empty,
+
+    #[error("issuer name exceeds maximum length of {max} characters")]
+    TooLong { max: usize },
+}
 
 impl IssuerName {
     pub fn new(value: impl Into<String>) -> Result<Self, IssuerNameError> {
@@ -75,6 +85,12 @@ pub enum IssuerStatus {
     #[default]
     Active,
     Retired,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum IssuerStatusError {
+    #[error("Invalid status. Must be one of: {statuses:?}", statuses = vec!["ACTIVE", "RETIRED"])]
+    InvalidStatus,
 }
 
 impl IssuerStatus {
@@ -179,6 +195,18 @@ impl Issuer {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum IssuerBuilderError {
+    #[error("If a CNPJ is provided, the country code must be BR (Brazil). Found: {0}")]
+    InvalidCountryForCnpj(String),
+
+    #[error("Issuer name validation failed: {0}")]
+    NameError(#[from] IssuerNameError),
+
+    #[error("country code validation failed: {0}")]
+    CountryCodeError(#[from] CountryCodeError),
+}
+
 #[derive(Default)]
 pub struct IssuerBuilder {
     id: Option<IssuerId>,
@@ -264,6 +292,269 @@ impl IssuerBuilder {
             securities: Loading::Loaded(Vec::new()),
         })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct IssuerPatch {
+    pub(crate) name: Option<IssuerName>,
+    pub(crate) status: Option<IssuerStatus>,
+    pub(crate) cnpj: Option<Cnpj>,
+    pub(crate) lei: Option<Lei>,
+    pub(crate) country_code: Option<CountryCode>,
+}
+
+impl IssuerPatch {
+    #[must_use]
+    pub const fn builder() -> IssuerPatchBuilder<Empty> {
+        IssuerPatchBuilder::new()
+    }
+
+    const fn empty() -> Self {
+        Self {
+            name: None,
+            status: None,
+            cnpj: None,
+            lei: None,
+            country_code: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn name(&self) -> Option<&IssuerName> {
+        self.name.as_ref()
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> Option<IssuerStatus> {
+        self.status
+    }
+
+    #[must_use]
+    pub const fn cnpj(&self) -> Option<&Cnpj> {
+        self.cnpj.as_ref()
+    }
+
+    #[must_use]
+    pub const fn lei(&self) -> Option<&Lei> {
+        self.lei.as_ref()
+    }
+
+    #[must_use]
+    pub const fn country_code(&self) -> Option<&CountryCode> {
+        self.country_code.as_ref()
+    }
+}
+
+pub struct IssuerPatchBuilder<State> {
+    inner: IssuerPatch,
+    _state: PhantomData<State>,
+}
+
+impl IssuerPatchBuilder<Empty> {
+    const fn new() -> Self {
+        Self {
+            inner: IssuerPatch::empty(),
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<State> IssuerPatchBuilder<State> {
+    #[must_use]
+    pub fn name(self, name: IssuerName) -> IssuerPatchBuilder<NonEmpty> {
+        IssuerPatchBuilder {
+            inner: IssuerPatch {
+                name: Some(name),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn status(self, status: IssuerStatus) -> IssuerPatchBuilder<NonEmpty> {
+        IssuerPatchBuilder {
+            inner: IssuerPatch {
+                status: Some(status),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn cnpj(self, cnpj: Cnpj) -> IssuerPatchBuilder<NonEmpty> {
+        IssuerPatchBuilder {
+            inner: IssuerPatch {
+                cnpj: Some(cnpj),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn lei(self, lei: Lei) -> IssuerPatchBuilder<NonEmpty> {
+        IssuerPatchBuilder {
+            inner: IssuerPatch {
+                lei: Some(lei),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn country_code(self, country_code: CountryCode) -> IssuerPatchBuilder<NonEmpty> {
+        IssuerPatchBuilder {
+            inner: IssuerPatch {
+                country_code: Some(country_code),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+}
+
+impl IssuerPatchBuilder<NonEmpty> {
+    #[must_use]
+    pub fn build(self) -> IssuerPatch {
+        self.inner
+    }
+}
+
+// ================ ISSUER REPOSITORY ================
+macro_rules! delegate_issuer_repository {
+    ($ty:ty) => {
+        impl<R: IssuerRepository + ?Sized> IssuerRepository for $ty {
+            fn find_by_id(
+                &self,
+                id: &IssuerId,
+                mode: LoadMode,
+            ) -> RepositoryResult<Option<Versioned<Issuer>>> {
+                (**self).find_by_id(id, mode)
+            }
+            fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+                (**self).list_all(mode)
+            }
+            fn list_paged(
+                &self,
+                after: Option<IssuerId>,
+                limit: u32,
+                mode: LoadMode,
+            ) -> RepositoryResult<Vec<Versioned<Issuer>>> {
+                (**self).list_paged(after, limit, mode)
+            }
+            fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
+                (**self).exists(id)
+            }
+            fn exists_by_cnpj(&self, cnpj: &Cnpj) -> RepositoryResult<bool> {
+                (**self).exists_by_cnpj(cnpj)
+            }
+            fn exists_by_lei(&self, lei: &Lei) -> RepositoryResult<bool> {
+                (**self).exists_by_lei(lei)
+            }
+            fn insert(&self, issuer: &Issuer) -> RepositoryResult<()> {
+                (**self).insert(issuer)
+            }
+            fn apply_patch(
+                &self,
+                id: &IssuerId,
+                expected_version: u32,
+                patch: IssuerPatch,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).apply_patch(id, expected_version, patch)
+            }
+            fn update(
+                &self,
+                issuer: &Issuer,
+                expected_version: u32,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).update(issuer, expected_version)
+            }
+            fn delete(
+                &self,
+                id: &IssuerId,
+                expected_version: u32,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).delete(id, expected_version)
+            }
+        }
+    };
+}
+
+delegate_issuer_repository!(Box<R>);
+delegate_issuer_repository!(Rc<R>);
+delegate_issuer_repository!(Arc<R>);
+
+#[cfg_attr(test, mockall::automock)]
+pub trait IssuerRepository {
+    fn find_by_id(
+        &self,
+        id: &IssuerId,
+        mode: LoadMode,
+    ) -> RepositoryResult<Option<Versioned<Issuer>>>;
+
+    fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>>;
+
+    fn list_paged(
+        &self,
+        after: Option<IssuerId>,
+        limit: u32,
+        mode: LoadMode,
+    ) -> RepositoryResult<Vec<Versioned<Issuer>>>;
+
+    fn exists(&self, id: &IssuerId) -> RepositoryResult<bool>;
+
+    fn exists_by_cnpj(&self, cnpj: &Cnpj) -> RepositoryResult<bool>;
+
+    fn exists_by_lei(&self, lei: &Lei) -> RepositoryResult<bool>;
+
+    fn insert(&self, issuer: &Issuer) -> RepositoryResult<()>;
+
+    fn apply_patch(
+        &self,
+        id: &IssuerId,
+        expected_version: u32,
+        patch: IssuerPatch,
+    ) -> RepositoryResult<WriteOutcome>;
+
+    fn update(&self, issuer: &Issuer, expected_version: u32) -> RepositoryResult<WriteOutcome>;
+
+    fn delete(&self, id: &IssuerId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
+}
+
+// ================ ISSUER SERVICE ================
+#[derive(Debug, thiserror::Error)]
+pub enum RegisterIssuerError {
+    #[error("an issuer with this CNPJ already exists")]
+    DuplicateCnpj,
+
+    #[error("an issuer with this LEI already exists")]
+    DuplicateLei,
+
+    #[error(transparent)]
+    Storage(#[from] StorageFault),
+}
+
+pub fn register_issuer<R: IssuerRepository + ?Sized>(
+    repo: &R,
+    issuer: &Issuer,
+) -> Result<(), RegisterIssuerError> {
+    if let Some(cnpj) = issuer.cnpj()
+        && repo.exists_by_cnpj(cnpj)?
+    {
+        return Err(RegisterIssuerError::DuplicateCnpj);
+    }
+
+    if let Some(lei) = issuer.lei()
+        && repo.exists_by_lei(lei)?
+    {
+        return Err(RegisterIssuerError::DuplicateLei);
+    }
+
+    repo.insert(issuer)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -511,5 +802,62 @@ mod tests {
             matches!(result, Err(IssuerBuilderError::InvalidCountryForCnpj(code)) if code == "US"),
             "Should reject non-BR country codes when a CNPJ is present"
         );
+    }
+
+    #[test]
+    fn single_field_patch_only_sets_that_field() {
+        let name_result = IssuerName::new("Renamed Corp");
+        assert!(name_result.is_ok());
+        let Some(name) = name_result.ok() else {
+            return;
+        };
+        let patch = IssuerPatch::builder().name(name.clone()).build();
+
+        assert_eq!(patch.name, Some(name));
+        assert!(patch.status.is_none());
+        assert!(patch.cnpj.is_none());
+        assert!(patch.lei.is_none());
+        assert!(patch.country_code.is_none());
+    }
+}
+
+#[cfg(test)]
+mod tests_service {
+    use super::*;
+    use valqeron_identifiers::Cnpj;
+
+    fn issuer_with_cnpj() -> Option<Issuer> {
+        let cnpj_result = Cnpj::new("12.345.678/0001-95");
+        let cnpj = cnpj_result.ok()?;
+        Issuer::builder().cnpj(cnpj).build().ok()
+    }
+
+    #[test]
+    fn register_inserts_when_identifiers_are_free() {
+        let mut repo = MockIssuerRepository::new();
+        repo.expect_exists_by_cnpj().returning(|_| Ok(false));
+        repo.expect_exists_by_lei().returning(|_| Ok(false));
+        repo.expect_insert().returning(|_| Ok(()));
+
+        let Some(issuer) = issuer_with_cnpj() else {
+            return;
+        };
+        assert!(register_issuer(&repo, &issuer).is_ok());
+    }
+
+    #[test]
+    fn register_rejects_duplicate_cnpj_before_insert() {
+        let mut repo = MockIssuerRepository::new();
+        repo.expect_exists_by_cnpj().returning(|_| Ok(true));
+        // insert must never be called on a duplicate.
+        repo.expect_insert().never();
+
+        let Some(issuer) = issuer_with_cnpj() else {
+            return;
+        };
+        assert!(matches!(
+            register_issuer(&repo, &issuer),
+            Err(RegisterIssuerError::DuplicateCnpj)
+        ));
     }
 }

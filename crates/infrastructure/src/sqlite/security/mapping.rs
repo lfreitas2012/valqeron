@@ -2,8 +2,9 @@ use std::str::FromStr;
 
 use rusqlite::Row;
 use rusqlite::types::Type;
-use valqeron_core::{
-    DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityName, SecurityStatus,
+use valqeron_core::domain::issuer::IssuerId;
+use valqeron_core::domain::security::{
+    DepositaryReceiptRatio, SecurityId, SecurityKind, SecurityName, SecurityStatus,
 };
 use valqeron_identifiers::{Cfi, Isin};
 

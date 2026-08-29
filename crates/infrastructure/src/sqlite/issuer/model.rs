@@ -1,11 +1,11 @@
-use rusqlite::Row;
-use valqeron_core::{IssuerSnapshot, Loading, Versioned};
-
 use crate::sqlite::issuer::mapping::{
     column_issuer_id, column_opt_cnpj, column_opt_country_code, column_opt_lei, column_opt_name,
     column_status,
 };
 use crate::sqlite::row::{FromRow, column_datetime};
+use rusqlite::Row;
+use valqeron_core::common::{Loading, Versioned};
+use valqeron_core::domain::issuer::IssuerSnapshot;
 
 /// One `issuer` row, mapped to a snapshot rather than the entity so the
 /// repository can decide how to satisfy the requested
@@ -47,7 +47,7 @@ mod tests {
     use super::*;
     use crate::sqlite::database::{Database, Db};
     use std::str::FromStr;
-    use valqeron_core::{IssuerId, IssuerStatus};
+    use valqeron_core::domain::issuer::{IssuerId, IssuerStatus};
     use valqeron_identifiers::{Cnpj, CountryCode};
 
     #[test]

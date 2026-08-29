@@ -1,22 +1,29 @@
-use crate::issuer::IssuerId;
-use crate::security::error::{
-    DrRatioError, SecurityBuilderError, SecurityKindError, SecurityNameError, SecurityStatusError,
+use crate::{
+    StorageFault,
+    common::{Empty, NonEmpty, RepositoryResult, Versioned, WriteOutcome},
+    domain::{issuer::IssuerId, issuer::IssuerRepository},
 };
+
 use chrono::{DateTime, Utc};
-use std::num::NonZeroU32;
-use std::str::FromStr;
+use std::{marker::PhantomData, num::NonZeroU32, rc::Rc, str::FromStr, sync::Arc};
 use uuid::Uuid;
 use valqeron_identifiers::{Cfi, Isin};
 
-pub mod error;
-pub mod patch;
-pub mod repository;
-pub mod service;
-
 const SECURITY_NAME_MAX_LEN: usize = 200;
+
+// ================ SECURITY DOMAIN ================
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SecurityName(String);
+
+#[derive(thiserror::Error, Debug)]
+pub enum SecurityNameError {
+    #[error("security name cannot be empty")]
+    Empty,
+
+    #[error("security name exceeds maximum length of {max} characters")]
+    TooLong { max: usize },
+}
 
 impl SecurityName {
     pub fn new(value: impl Into<String>) -> Result<Self, SecurityNameError> {
@@ -79,6 +86,15 @@ pub enum SecurityKind {
     DepositaryReceipt,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum SecurityKindError {
+    #[error(
+        "Invalid kind. Must be one of: {kinds:?}",
+        kinds = vec!["COMMON_SHARE", "PREFERRED_SHARE", "UNIT", "DEPOSITARY_RECEIPT"]
+    )]
+    InvalidKind,
+}
+
 impl SecurityKind {
     pub fn is_depositary_receipt(&self) -> bool {
         matches!(self, SecurityKind::DepositaryReceipt)
@@ -117,6 +133,12 @@ pub enum SecurityStatus {
     Retired,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum SecurityStatusError {
+    #[error("Invalid status. Must be one of: {statuses:?}", statuses = vec!["ACTIVE", "RETIRED"])]
+    InvalidStatus,
+}
+
 impl SecurityStatus {
     pub fn is_active(&self) -> bool {
         matches!(self, SecurityStatus::Active)
@@ -152,6 +174,15 @@ impl From<SecurityStatus> for String {
 pub struct DepositaryReceiptRatio {
     receipts: NonZeroU32,
     underlying: NonZeroU32,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DrRatioError {
+    #[error("depositary receipt ratio requires a non-zero receipts side")]
+    ZeroReceipts,
+
+    #[error("depositary receipt ratio requires a non-zero underlying side")]
+    ZeroUnderlying,
 }
 
 impl DepositaryReceiptRatio {
@@ -269,6 +300,20 @@ pub struct SecurityBuilder {
     dr_ratio: Option<DepositaryReceiptRatio>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SecurityBuilderError {
+    #[error("An underlying security may only be set on a DEPOSITARY_RECEIPT security. Found: {0}")]
+    UnderlyingRequiresDepositaryReceipt(String),
+
+    #[error(
+        "A depositary receipt ratio may only be set on a DEPOSITARY_RECEIPT security. Found: {0}"
+    )]
+    DrRatioRequiresDepositaryReceipt(String),
+
+    #[error("a security cannot reference itself as its underlying")]
+    SelfUnderlying,
+}
+
 impl SecurityBuilder {
     pub fn new(issuer_id: IssuerId, kind: SecurityKind) -> Self {
         Self {
@@ -365,6 +410,279 @@ impl SecurityBuilder {
             dr_ratio: self.dr_ratio,
         })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SecurityPatch {
+    pub(crate) name: Option<SecurityName>,
+    pub(crate) status: Option<SecurityStatus>,
+    pub(crate) isin: Option<Isin>,
+    pub(crate) cfi: Option<Cfi>,
+    pub(crate) dr_ratio: Option<DepositaryReceiptRatio>,
+}
+
+impl SecurityPatch {
+    #[must_use]
+    pub const fn builder() -> SecurityPatchBuilder<Empty> {
+        SecurityPatchBuilder::new()
+    }
+
+    const fn empty() -> Self {
+        Self {
+            name: None,
+            status: None,
+            isin: None,
+            cfi: None,
+            dr_ratio: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn name(&self) -> Option<&SecurityName> {
+        self.name.as_ref()
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> Option<SecurityStatus> {
+        self.status
+    }
+
+    #[must_use]
+    pub const fn isin(&self) -> Option<&Isin> {
+        self.isin.as_ref()
+    }
+
+    #[must_use]
+    pub const fn cfi(&self) -> Option<&Cfi> {
+        self.cfi.as_ref()
+    }
+
+    #[must_use]
+    pub const fn dr_ratio(&self) -> Option<DepositaryReceiptRatio> {
+        self.dr_ratio
+    }
+}
+
+pub struct SecurityPatchBuilder<State> {
+    inner: SecurityPatch,
+    _state: PhantomData<State>,
+}
+
+impl SecurityPatchBuilder<Empty> {
+    const fn new() -> Self {
+        Self {
+            inner: SecurityPatch::empty(),
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<State> SecurityPatchBuilder<State> {
+    #[must_use]
+    pub fn name(self, name: SecurityName) -> SecurityPatchBuilder<NonEmpty> {
+        SecurityPatchBuilder {
+            inner: SecurityPatch {
+                name: Some(name),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn status(self, status: SecurityStatus) -> SecurityPatchBuilder<NonEmpty> {
+        SecurityPatchBuilder {
+            inner: SecurityPatch {
+                status: Some(status),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn isin(self, isin: Isin) -> SecurityPatchBuilder<NonEmpty> {
+        SecurityPatchBuilder {
+            inner: SecurityPatch {
+                isin: Some(isin),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn cfi(self, cfi: Cfi) -> SecurityPatchBuilder<NonEmpty> {
+        SecurityPatchBuilder {
+            inner: SecurityPatch {
+                cfi: Some(cfi),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn dr_ratio(self, dr_ratio: DepositaryReceiptRatio) -> SecurityPatchBuilder<NonEmpty> {
+        SecurityPatchBuilder {
+            inner: SecurityPatch {
+                dr_ratio: Some(dr_ratio),
+                ..self.inner
+            },
+            _state: PhantomData,
+        }
+    }
+}
+
+impl SecurityPatchBuilder<NonEmpty> {
+    #[must_use]
+    pub fn build(self) -> SecurityPatch {
+        self.inner
+    }
+}
+
+// ================ SECURITY REPOSITORY ================
+#[cfg_attr(test, mockall::automock)]
+pub trait SecurityRepository {
+    fn find_by_id(&self, id: &SecurityId) -> RepositoryResult<Option<Versioned<Security>>>;
+
+    fn find_by_isin(&self, isin: &Isin) -> RepositoryResult<Option<Versioned<Security>>>;
+
+    fn list_all(&self) -> RepositoryResult<Vec<Versioned<Security>>>;
+
+    fn list_by_issuer(&self, issuer_id: &IssuerId) -> RepositoryResult<Vec<Versioned<Security>>>;
+
+    fn list_paged(
+        &self,
+        after: Option<SecurityId>,
+        limit: u32,
+    ) -> RepositoryResult<Vec<Versioned<Security>>>;
+
+    fn exists(&self, id: &SecurityId) -> RepositoryResult<bool>;
+
+    fn exists_by_isin(&self, isin: &Isin) -> RepositoryResult<bool>;
+
+    fn insert(&self, security: &Security) -> RepositoryResult<()>;
+
+    fn apply_patch(
+        &self,
+        id: &SecurityId,
+        expected_version: u32,
+        patch: SecurityPatch,
+    ) -> RepositoryResult<WriteOutcome>;
+
+    fn update(&self, security: &Security, expected_version: u32) -> RepositoryResult<WriteOutcome>;
+
+    fn delete(&self, id: &SecurityId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
+}
+
+macro_rules! delegate_security_repository {
+    ($ty:ty) => {
+        impl<R: SecurityRepository + ?Sized> SecurityRepository for $ty {
+            fn find_by_id(&self, id: &SecurityId) -> RepositoryResult<Option<Versioned<Security>>> {
+                (**self).find_by_id(id)
+            }
+            fn find_by_isin(&self, isin: &Isin) -> RepositoryResult<Option<Versioned<Security>>> {
+                (**self).find_by_isin(isin)
+            }
+            fn list_all(&self) -> RepositoryResult<Vec<Versioned<Security>>> {
+                (**self).list_all()
+            }
+            fn list_by_issuer(
+                &self,
+                issuer_id: &IssuerId,
+            ) -> RepositoryResult<Vec<Versioned<Security>>> {
+                (**self).list_by_issuer(issuer_id)
+            }
+            fn list_paged(
+                &self,
+                after: Option<SecurityId>,
+                limit: u32,
+            ) -> RepositoryResult<Vec<Versioned<Security>>> {
+                (**self).list_paged(after, limit)
+            }
+            fn exists(&self, id: &SecurityId) -> RepositoryResult<bool> {
+                (**self).exists(id)
+            }
+            fn exists_by_isin(&self, isin: &Isin) -> RepositoryResult<bool> {
+                (**self).exists_by_isin(isin)
+            }
+            fn insert(&self, security: &Security) -> RepositoryResult<()> {
+                (**self).insert(security)
+            }
+            fn apply_patch(
+                &self,
+                id: &SecurityId,
+                expected_version: u32,
+                patch: SecurityPatch,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).apply_patch(id, expected_version, patch)
+            }
+            fn update(
+                &self,
+                security: &Security,
+                expected_version: u32,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).update(security, expected_version)
+            }
+            fn delete(
+                &self,
+                id: &SecurityId,
+                expected_version: u32,
+            ) -> RepositoryResult<WriteOutcome> {
+                (**self).delete(id, expected_version)
+            }
+        }
+    };
+}
+
+delegate_security_repository!(Box<R>);
+delegate_security_repository!(Rc<R>);
+delegate_security_repository!(Arc<R>);
+
+// ================ SECURITY SERVICE ================
+#[derive(Debug, thiserror::Error)]
+pub enum RegisterSecurityError {
+    #[error("the referenced issuer does not exist")]
+    UnknownIssuer,
+
+    #[error("a security with this ISIN already exists")]
+    DuplicateIsin,
+
+    #[error("the referenced underlying security does not exist")]
+    UnknownUnderlyingSecurity,
+
+    #[error(transparent)]
+    Storage(#[from] StorageFault),
+}
+
+pub fn register_security<S, I>(
+    securities: &S,
+    issuers: &I,
+    security: &Security,
+) -> Result<(), RegisterSecurityError>
+where
+    S: SecurityRepository + ?Sized,
+    I: IssuerRepository + ?Sized,
+{
+    if !issuers.exists(security.issuer_id())? {
+        return Err(RegisterSecurityError::UnknownIssuer);
+    }
+
+    if let Some(isin) = security.isin()
+        && securities.exists_by_isin(isin)?
+    {
+        return Err(RegisterSecurityError::DuplicateIsin);
+    }
+
+    if let Some(underlying) = security.underlying_security_id()
+        && !securities.exists(underlying)?
+    {
+        return Err(RegisterSecurityError::UnknownUnderlyingSecurity);
+    }
+
+    securities.insert(security)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -591,5 +909,132 @@ mod tests {
             .build();
 
         assert!(matches!(result, Err(SecurityBuilderError::SelfUnderlying)));
+    }
+
+    #[test]
+    fn single_field_patch_only_sets_that_field() {
+        let name_result = SecurityName::new("Vale ADR");
+        assert!(name_result.is_ok());
+        let Some(name) = name_result.ok() else {
+            return;
+        };
+        let patch = SecurityPatch::builder().name(name.clone()).build();
+
+        assert_eq!(patch.name, Some(name));
+        assert!(patch.status.is_none());
+        assert!(patch.isin.is_none());
+        assert!(patch.cfi.is_none());
+        assert!(patch.dr_ratio.is_none());
+    }
+}
+
+#[cfg(test)]
+mod tests_service {
+    use super::*;
+    use crate::domain::issuer::{IssuerId, MockIssuerRepository};
+    use crate::domain::security::{SecurityId, SecurityKind};
+    use valqeron_identifiers::Isin;
+
+    const VALE_ON_ISIN: &str = "BRVALEACNOR0";
+
+    fn common_share_with_isin() -> Option<Security> {
+        let isin = Isin::new(VALE_ON_ISIN).ok()?;
+        Security::builder(IssuerId::new(), SecurityKind::CommonShare)
+            .isin(isin)
+            .build()
+            .ok()
+    }
+
+    fn adr_with_underlying(underlying: SecurityId) -> Option<Security> {
+        Security::builder(IssuerId::new(), SecurityKind::DepositaryReceipt)
+            .underlying_security_id(underlying)
+            .build()
+            .ok()
+    }
+
+    #[test]
+    fn register_inserts_when_references_and_isin_are_valid() {
+        let mut issuers = MockIssuerRepository::new();
+        issuers.expect_exists().returning(|_| Ok(true));
+
+        let mut securities = MockSecurityRepository::new();
+        securities.expect_exists_by_isin().returning(|_| Ok(false));
+        securities.expect_insert().returning(|_| Ok(()));
+
+        let Some(security) = common_share_with_isin() else {
+            return;
+        };
+        assert!(register_security(&securities, &issuers, &security).is_ok());
+    }
+
+    #[test]
+    fn register_rejects_unknown_issuer_before_insert() {
+        let mut issuers = MockIssuerRepository::new();
+        issuers.expect_exists().returning(|_| Ok(false));
+
+        let mut securities = MockSecurityRepository::new();
+        // insert must never be called for an unknown issuer.
+        securities.expect_insert().never();
+
+        let Some(security) = common_share_with_isin() else {
+            return;
+        };
+        assert!(matches!(
+            register_security(&securities, &issuers, &security),
+            Err(RegisterSecurityError::UnknownIssuer)
+        ));
+    }
+
+    #[test]
+    fn register_rejects_duplicate_isin_before_insert() {
+        let mut issuers = MockIssuerRepository::new();
+        issuers.expect_exists().returning(|_| Ok(true));
+
+        let mut securities = MockSecurityRepository::new();
+        securities.expect_exists_by_isin().returning(|_| Ok(true));
+        // insert must never be called on a duplicate ISIN.
+        securities.expect_insert().never();
+
+        let Some(security) = common_share_with_isin() else {
+            return;
+        };
+        assert!(matches!(
+            register_security(&securities, &issuers, &security),
+            Err(RegisterSecurityError::DuplicateIsin)
+        ));
+    }
+
+    #[test]
+    fn register_rejects_unknown_underlying_before_insert() {
+        let mut issuers = MockIssuerRepository::new();
+        issuers.expect_exists().returning(|_| Ok(true));
+
+        let mut securities = MockSecurityRepository::new();
+        securities.expect_exists().returning(|_| Ok(false));
+        // insert must never be called when the underlying is missing.
+        securities.expect_insert().never();
+
+        let Some(adr) = adr_with_underlying(SecurityId::new()) else {
+            return;
+        };
+        assert!(matches!(
+            register_security(&securities, &issuers, &adr),
+            Err(RegisterSecurityError::UnknownUnderlyingSecurity)
+        ));
+    }
+
+    #[test]
+    fn register_inserts_depositary_receipt_when_underlying_exists() {
+        let mut issuers = MockIssuerRepository::new();
+        issuers.expect_exists().returning(|_| Ok(true));
+
+        let mut securities = MockSecurityRepository::new();
+        securities.expect_exists().returning(|_| Ok(true));
+        securities.expect_insert().returning(|_| Ok(()));
+
+        let Some(adr) = adr_with_underlying(SecurityId::new()) else {
+            return;
+        };
+        assert!(register_security(&securities, &issuers, &adr).is_ok());
     }
 }

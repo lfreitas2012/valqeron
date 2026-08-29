@@ -7,10 +7,11 @@ use crate::sqlite::security::model::SecurityRow;
 use crate::sqlite::security::queries as security_queries;
 use crate::sqlite::support::{backend, with_busy_retry, write_outcome};
 use uuid::Uuid;
-use valqeron_core::{
-    Issuer, IssuerId, IssuerPatch, IssuerRepository, IssuerSnapshot, LoadMode, Loading,
-    RepositoryResult, Security, Versioned, WriteOutcome,
+use valqeron_core::common::{LoadMode, Loading, RepositoryResult, Versioned, WriteOutcome};
+use valqeron_core::domain::issuer::{
+    Issuer, IssuerId, IssuerPatch, IssuerRepository, IssuerSnapshot,
 };
+use valqeron_core::domain::security::Security;
 use valqeron_identifiers::{Cnpj, Lei};
 
 const ISSUER_VERSION_SQL: &str = "SELECT version FROM issuer WHERE id = ?1";
@@ -197,8 +198,9 @@ mod tests {
     use crate::sqlite::security::SqliteSecurityRepository;
     use chrono::Utc;
     use std::str::FromStr;
-    use valqeron_core::{
-        IssuerName, IssuerStatus, SecurityId, SecurityKind, SecurityRepository, SecurityStatus,
+    use valqeron_core::domain::issuer::{IssuerName, IssuerStatus};
+    use valqeron_core::domain::security::{
+        SecurityId, SecurityKind, SecurityName, SecurityRepository, SecurityStatus,
     };
     use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
@@ -829,7 +831,7 @@ mod tests {
 
         let securities = SqliteSecurityRepository::new(db.handle());
         let security = Security::builder(*issuer.id(), SecurityKind::PreferredShare)
-            .name(valqeron_core::SecurityName::new("Acme PN").unwrap())
+            .name(SecurityName::new("Acme PN").unwrap())
             .isin(valqeron_identifiers::Isin::new("BRVALEACNOR0").unwrap())
             .status(SecurityStatus::Active)
             .build()

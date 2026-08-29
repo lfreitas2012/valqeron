@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use std::fmt;
 use thiserror::Error;
 use valqeron_common::UniqueIdentifier;
@@ -69,14 +70,22 @@ pub struct TaskAttemptTracker {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BackgroundTask<State> {
+pub struct ScheduledBackgroundTask<State> {
     id: UniqueIdentifier,
     name: BackgroundTaskName,
     attempts: TaskAttemptTracker,
     state: State,
 }
 
-impl<S> BackgroundTask<S> {
+#[derive(Debug)]
+pub struct BackgroundTaskSnapshot {
+    id: UniqueIdentifier,
+    name: BackgroundTaskName,
+    created_at: DateTime<Utc>,
+    last_updated_at: DateTime<Utc>,
+}
+
+impl<S> ScheduledBackgroundTask<S> {
     pub fn id(&self) -> &UniqueIdentifier {
         &self.id
     }
@@ -94,9 +103,9 @@ impl<S> BackgroundTask<S> {
     }
 }
 
-impl BackgroundTask<Pending> {
-    pub fn start(self) -> BackgroundTask<Running> {
-        BackgroundTask {
+impl ScheduledBackgroundTask<Pending> {
+    pub fn start(self) -> ScheduledBackgroundTask<Running> {
+        ScheduledBackgroundTask {
             id: self.id,
             name: self.name,
             attempts: TaskAttemptTracker {
@@ -107,8 +116,8 @@ impl BackgroundTask<Pending> {
         }
     }
 
-    pub fn cancel(self) -> BackgroundTask<Cancelled> {
-        BackgroundTask {
+    pub fn cancel(self) -> ScheduledBackgroundTask<Cancelled> {
+        ScheduledBackgroundTask {
             id: self.id,
             name: self.name,
             attempts: self.attempts,
@@ -117,9 +126,9 @@ impl BackgroundTask<Pending> {
     }
 }
 
-impl BackgroundTask<Running> {
-    pub fn complete(self, output: impl Into<String>) -> BackgroundTask<Success> {
-        BackgroundTask {
+impl ScheduledBackgroundTask<Running> {
+    pub fn complete(self, output: impl Into<String>) -> ScheduledBackgroundTask<Success> {
+        ScheduledBackgroundTask {
             id: self.id,
             name: self.name,
             attempts: self.attempts,
@@ -132,17 +141,17 @@ impl BackgroundTask<Running> {
     pub fn fail(
         self,
         error: impl Into<String>,
-    ) -> Result<BackgroundTask<Retrying>, BackgroundTask<Failed>> {
+    ) -> Result<ScheduledBackgroundTask<Retrying>, ScheduledBackgroundTask<Failed>> {
         let error = error.into();
         if self.attempts.current_attempt < self.attempts.max_attempts {
-            Ok(BackgroundTask {
+            Ok(ScheduledBackgroundTask {
                 id: self.id,
                 name: self.name,
                 attempts: self.attempts,
                 state: Retrying { last_error: error },
             })
         } else {
-            Err(BackgroundTask {
+            Err(ScheduledBackgroundTask {
                 id: self.id,
                 name: self.name,
                 attempts: self.attempts,
@@ -151,8 +160,8 @@ impl BackgroundTask<Running> {
         }
     }
 
-    pub fn cancel(self) -> BackgroundTask<Cancelled> {
-        BackgroundTask {
+    pub fn cancel(self) -> ScheduledBackgroundTask<Cancelled> {
+        ScheduledBackgroundTask {
             id: self.id,
             name: self.name,
             attempts: self.attempts,
@@ -161,13 +170,13 @@ impl BackgroundTask<Running> {
     }
 }
 
-impl BackgroundTask<Retrying> {
+impl ScheduledBackgroundTask<Retrying> {
     pub fn last_error(&self) -> &str {
         &self.state.last_error
     }
 
-    pub fn start(self) -> BackgroundTask<Running> {
-        BackgroundTask {
+    pub fn start(self) -> ScheduledBackgroundTask<Running> {
+        ScheduledBackgroundTask {
             id: self.id,
             name: self.name,
             attempts: TaskAttemptTracker {
@@ -178,8 +187,8 @@ impl BackgroundTask<Retrying> {
         }
     }
 
-    pub fn cancel(self) -> BackgroundTask<Cancelled> {
-        BackgroundTask {
+    pub fn cancel(self) -> ScheduledBackgroundTask<Cancelled> {
+        ScheduledBackgroundTask {
             id: self.id,
             name: self.name,
             attempts: self.attempts,
@@ -188,13 +197,13 @@ impl BackgroundTask<Retrying> {
     }
 }
 
-impl BackgroundTask<Success> {
+impl ScheduledBackgroundTask<Success> {
     pub fn output(&self) -> &str {
         &self.state.output
     }
 }
 
-impl BackgroundTask<Failed> {
+impl ScheduledBackgroundTask<Failed> {
     pub fn error(&self) -> &str {
         &self.state.error
     }
@@ -248,14 +257,14 @@ impl BackgroundTaskBuilder {
         self
     }
 
-    pub fn build(self) -> Result<BackgroundTask<Pending>, TaskBuilderError> {
+    pub fn build(self) -> Result<ScheduledBackgroundTask<Pending>, TaskBuilderError> {
         if self.max_attempts == 0 {
             return Err(TaskBuilderError::ZeroMaxAttempts);
         }
         let id = self.id.ok_or(TaskBuilderError::MissingId)?;
         let name = self.name.ok_or(TaskBuilderError::MissingName)?;
 
-        Ok(BackgroundTask {
+        Ok(ScheduledBackgroundTask {
             id,
             name,
             attempts: TaskAttemptTracker {
@@ -270,9 +279,9 @@ impl BackgroundTaskBuilder {
 /// Unifies the three terminal typestates into one value a spawned future can return.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskOutcome {
-    Success(BackgroundTask<Success>),
-    Failed(BackgroundTask<Failed>),
-    Cancelled(BackgroundTask<Cancelled>),
+    Success(ScheduledBackgroundTask<Success>),
+    Failed(ScheduledBackgroundTask<Failed>),
+    Cancelled(ScheduledBackgroundTask<Cancelled>),
 }
 
 impl TaskOutcome {
@@ -319,6 +328,17 @@ impl fmt::Display for TaskStatus {
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
         })
+    }
+}
+
+#[derive(Debug)]
+struct BackgroundTaskManager {
+    tasks: Vec<ScheduledBackgroundTask<Pending>>,
+}
+
+impl BackgroundTaskManager {
+    pub fn new() -> Self {
+        Self { tasks: Vec::new() }
     }
 }
 
@@ -403,7 +423,7 @@ mod tests {
         let id = UniqueIdentifier::new();
         let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
 
-        let task: BackgroundTask<Pending> = BackgroundTaskBuilder::new()
+        let task: ScheduledBackgroundTask<Pending> = BackgroundTaskBuilder::new()
             .id(id)
             .name(name)
             .max_attempts(3)
@@ -412,10 +432,10 @@ mod tests {
 
         assert_eq!(task.current_attempt(), 0);
 
-        let task: BackgroundTask<Running> = task.start();
+        let task: ScheduledBackgroundTask<Running> = task.start();
         assert_eq!(task.current_attempt(), 1);
 
-        let task: BackgroundTask<Success> = task.complete("done");
+        let task: ScheduledBackgroundTask<Success> = task.complete("done");
         assert_eq!(task.output(), "done");
     }
 

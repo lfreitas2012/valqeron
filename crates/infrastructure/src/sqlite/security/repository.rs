@@ -1,10 +1,9 @@
 use crate::sqlite::database::{Db, DbHandle};
 use crate::sqlite::security::queries;
 use crate::sqlite::support::{backend, with_busy_retry, write_outcome};
-use valqeron_core::{
-    IssuerId, RepositoryResult, Security, SecurityId, SecurityPatch, SecurityRepository, Versioned,
-    WriteOutcome,
-};
+use valqeron_core::common::{RepositoryResult, Versioned, WriteOutcome};
+use valqeron_core::domain::issuer::IssuerId;
+use valqeron_core::domain::security::{Security, SecurityId, SecurityPatch, SecurityRepository};
 use valqeron_identifiers::Isin;
 
 const SECURITY_VERSION_SQL: &str = "SELECT version FROM security WHERE id = ?1";
@@ -125,9 +124,9 @@ mod tests {
     use super::*;
     use crate::sqlite::database::{Database, TempDatabase};
     use crate::sqlite::issuer::SqliteIssuerRepository;
-    use valqeron_core::{
-        DepositaryReceiptRatio, Issuer, IssuerRepository, SecurityKind, SecurityName,
-        SecuritySnapshot, SecurityStatus,
+    use valqeron_core::domain::issuer::{Issuer, IssuerRepository};
+    use valqeron_core::domain::security::{
+        DepositaryReceiptRatio, SecurityKind, SecurityName, SecuritySnapshot, SecurityStatus,
     };
     use valqeron_identifiers::Cfi;
 

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use rusqlite::Row;
 use rusqlite::types::Type;
-use valqeron_core::{IssuerId, IssuerName, IssuerStatus};
+use valqeron_core::domain::issuer::{IssuerId, IssuerName, IssuerStatus};
 use valqeron_identifiers::{Cnpj, CountryCode, Lei};
 
 use crate::sqlite::row::{column_index, column_uuid, conversion_failure};

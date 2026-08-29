@@ -1,11 +1,11 @@
-use rusqlite::Row;
-use valqeron_core::{Security, SecuritySnapshot, Versioned};
-
 use crate::sqlite::row::{FromRow, column_datetime};
 use crate::sqlite::security::mapping::{
     column_issuer_id, column_kind, column_opt_cfi, column_opt_dr_ratio, column_opt_isin,
     column_opt_name, column_opt_security_id, column_security_id, column_status,
 };
+use rusqlite::Row;
+use valqeron_core::common::Versioned;
+use valqeron_core::domain::security::{Security, SecuritySnapshot};
 
 #[derive(Debug)]
 pub(crate) struct SecurityRow(pub Versioned<Security>);
@@ -43,8 +43,9 @@ impl FromRow for SecurityRow {
 mod tests {
     use super::*;
     use crate::sqlite::database::{Database, Db, DbHandle};
-    use valqeron_core::{
-        DepositaryReceiptRatio, IssuerId, SecurityId, SecurityKind, SecurityStatus,
+    use valqeron_core::domain::issuer::IssuerId;
+    use valqeron_core::domain::security::{
+        DepositaryReceiptRatio, SecurityId, SecurityKind, SecurityStatus,
     };
     use valqeron_identifiers::{Cfi, Isin};
 

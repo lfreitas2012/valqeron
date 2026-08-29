@@ -1,5 +1,5 @@
 use rusqlite::{Connection, OptionalExtension, params};
-use valqeron_core::{Issuer, IssuerId, IssuerName, IssuerPatch};
+use valqeron_core::domain::issuer::{Issuer, IssuerId, IssuerName, IssuerPatch};
 use valqeron_identifiers::{Cnpj, Lei};
 
 use crate::sqlite::issuer::mapping::status_as_str;

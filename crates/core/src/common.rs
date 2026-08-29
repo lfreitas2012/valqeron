@@ -1,4 +1,4 @@
-use crate::storage::StorageFault;
+use crate::StorageFault;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Versioned<T> {
