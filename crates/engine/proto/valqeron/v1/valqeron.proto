@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package valqeron.v1;
 
 // An issuer of financial instruments, as stored by the engine.
@@ -113,9 +115,22 @@ message StatusRequestProto {}
 message StatusResponseProto {
   string engine_version = 1;
   uint32 protocol_version = 2;
-  string db_path = 3;
-  uint64 uptime_secs = 4;
   uint32 pid = 5;
+}
+
+message BackgroundTaskDetail {
+  bytes id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message ListBackgroundTasksRequestProto {
+}
+
+message ListBackgroundTasksResponseProto {
+  string engine_version = 1;
+  uint32 protocol_version = 2;
+  repeated BackgroundTaskDetail tasks = 3;
 }
 
 service RpcIssuerService {
@@ -129,4 +144,5 @@ service RpcIssuerService {
 service RpcAdminService {
   rpc Health(HealthRequestProto) returns (HealthResponseProto);
   rpc Status(StatusRequestProto) returns (StatusResponseProto);
+  rpc ListBackgroundTasks(ListBackgroundTasksRequestProto) returns (ListBackgroundTasksResponseProto);
 }
