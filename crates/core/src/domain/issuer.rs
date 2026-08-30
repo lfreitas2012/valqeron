@@ -1,3 +1,4 @@
+use crate::identifiers::Cnpj;
 use crate::{
     StorageFault,
     common::{Empty, LoadMode, Loading, NonEmpty, RepositoryResult, Versioned, WriteOutcome},
@@ -9,7 +10,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
-use valqeron_identifiers::{Cnpj, CountryCode, CountryCodeError, Lei};
+use valqeron_identifiers::{CountryCode, CountryCodeError, Lei};
 
 const ISSUER_NAME_MAX_LEN: usize = 200;
 const BRAZIL_COUNTRY_CODE: &str = "BR";
@@ -824,7 +825,6 @@ mod tests {
 #[cfg(test)]
 mod tests_service {
     use super::*;
-    use valqeron_identifiers::Cnpj;
 
     fn issuer_with_cnpj() -> Option<Issuer> {
         let cnpj_result = Cnpj::new("12.345.678/0001-95");

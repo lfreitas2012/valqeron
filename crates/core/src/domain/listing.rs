@@ -5,7 +5,7 @@ use crate::{
         security::{SecurityId, SecurityRepository},
         venue::{VenueId, VenueRepository},
     },
-    identifiers::CurrencyCode,
+    identifierss::CurrencyCode,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use std::{marker::PhantomData, rc::Rc, str::FromStr, sync::Arc};
