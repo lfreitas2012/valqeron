@@ -1,9 +1,8 @@
-use clap::{Args, Subcommand};
-use serde_json::{Value, json};
-use valqeron_client::Client;
-
 use crate::commands::Command;
 use crate::context::AppContext;
+use clap::{Args, Subcommand};
+use serde_json::{Value, json};
+use valqeron_engine_client::Client;
 
 #[derive(Subcommand, Debug)]
 pub enum EngineCommand {
@@ -12,6 +11,9 @@ pub enum EngineCommand {
 
     /// Run engine diagnostics and return its status.
     Status(StatusArgs),
+
+    /// Manages background tasks
+    ListBackgroundTasks(ListBackgroundTasksArgs),
 }
 
 impl EngineCommand {
@@ -19,6 +21,7 @@ impl EngineCommand {
         match self {
             EngineCommand::Ping(args) => args,
             EngineCommand::Status(args) => args,
+            EngineCommand::ListBackgroundTasks(args) => args,
         }
     }
 }
@@ -28,7 +31,7 @@ pub struct PingArgs {}
 
 impl Command for PingArgs {
     fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
-        let info = client.health()?;
+        let info = client.admin().health()?;
 
         tracing::info!(
             target: "valqeron::audit",
@@ -50,23 +53,39 @@ pub struct StatusArgs {}
 
 impl Command for StatusArgs {
     fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
-        let status = client.engine_status()?;
+        let status = client.admin().status()?;
 
         tracing::info!(
             target: "valqeron::audit",
             operation = "engine.status",
             engine_version = %status.engine_version,
-            uptime_secs = status.uptime_secs,
             "engine status"
         );
 
         Ok(json!({
             "engine_version": status.engine_version,
             "protocol_version": status.protocol_version,
-            "db_path": status.db_path,
-            "uptime_secs": status.uptime_secs,
             "pid": status.pid,
             "socket": client.socket().display().to_string(),
+        }))
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct ListBackgroundTasksArgs {}
+
+impl Command for ListBackgroundTasksArgs {
+    fn execute(&self, client: &Client, _ctx: &AppContext) -> anyhow::Result<Value> {
+        let tasks = client.admin().list_background_tasks()?;
+
+        tracing::info!(
+            target: "valqeron::audit",
+            operation = "engine.list_background_tasks",
+            "list background tasks"
+        );
+
+        Ok(json!({
+            "background_tasks": tasks
         }))
     }
 }

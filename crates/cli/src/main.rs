@@ -14,20 +14,18 @@ mod config;
 mod context;
 mod io_util;
 
-use std::io::IsTerminal;
-
-use clap::Parser;
-use non_blocking::WorkerGuard;
-use tracing_appender::non_blocking;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer, fmt};
-use valqeron_client::{Client, ClientOptions};
-
 use crate::cli::Cli;
 use crate::config::ValqeronConfig;
 use crate::context::AppContext;
 use crate::io_util::{InputSource, OutputDest};
+use clap::Parser;
+use non_blocking::WorkerGuard;
+use std::io::IsTerminal;
+use tracing_appender::non_blocking;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer, fmt};
+use valqeron_engine_client::{Client, ClientOptions};
 
 fn main() {
     let cli = Cli::parse();
@@ -65,10 +63,12 @@ fn dispatch(cli: &Cli) -> anyhow::Result<()> {
     let input = cli.input.as_deref().map(InputSource::from_arg);
     let ctx = AppContext::new(output, input, cli.dry_run, pretty);
 
-    let client = Client::connect(ClientOptions {
-        socket: cli.socket.clone(),
-        ..ClientOptions::default()
-    })?;
+    let mut options = ClientOptions::default();
+    if let Some(socket) = cli.socket.as_deref() {
+        options = options.with_socket(socket);
+    }
+
+    let client = Client::connect(options)?;
 
     tracing::debug!(
         socket = %client.socket().display(),
