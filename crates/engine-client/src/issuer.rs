@@ -18,7 +18,6 @@ use valqeron_engine_proto::v1::{
     PatchIssuerRequestProto, RegisterIssuerRequestProto, WriteOutcomeProto,
 };
 
-/// Issuer domain operations. Reach it via `client.issuers()`.
 #[derive(Clone)]
 pub struct IssuerService {
     channel: Channel,
@@ -136,8 +135,6 @@ impl IssuerService {
     }
 }
 
-/// Register a new issuer. Build with [`RegisterIssuerRequest::new`], then
-/// optionally mark [`dry_run`](Self::dry_run).
 #[derive(Debug, Clone)]
 pub struct RegisterIssuerRequest {
     issuer: Issuer,
@@ -152,23 +149,17 @@ impl RegisterIssuerRequest {
         }
     }
 
-    /// Validate against the engine without persisting anything.
     pub fn dry_run(mut self) -> Self {
         self.dry_run = true;
         self
     }
 
-    /// Set dry-run from a flag rather than a hardcoded `true` — handy where
-    /// the caller already has a `bool` (e.g. a CLI's `--dry-run` flag).
     pub fn dry_run_if(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
     }
 }
 
-/// Patch an existing issuer under optimistic concurrency control. Build
-/// with [`PatchIssuerRequest::new`], then optionally mark
-/// [`dry_run`](Self::dry_run).
 #[derive(Debug, Clone)]
 pub struct PatchIssuerRequest {
     expected_version: u32,
@@ -191,9 +182,6 @@ impl PatchIssuerRequest {
     }
 }
 
-/// Delete an existing issuer under optimistic concurrency control. Build
-/// with [`DeleteIssuerRequest::new`], then optionally mark
-/// [`dry_run`](Self::dry_run).
 #[derive(Debug, Clone, Copy)]
 pub struct DeleteIssuerRequest {
     expected_version: u32,
@@ -284,7 +272,7 @@ fn issuer_from_proto(msg: &IssuerProto) -> Result<Versioned<Issuer>, IssuerMappi
     })
 }
 
-pub fn parse_issuer_id(raw: &str) -> Result<IssuerId, IssuerMappingError> {
+fn parse_issuer_id(raw: &str) -> Result<IssuerId, IssuerMappingError> {
     Uuid::from_str(raw)
         .map(IssuerId::from_uuid)
         .map_err(|e| IssuerMappingError::InvalidId(e.to_string()))

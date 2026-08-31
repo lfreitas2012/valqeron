@@ -1,66 +1,54 @@
-//! Client for the Valqeron engine's gRPC API.
-//!
-//! Every gRPC service the engine exposes gets its own thin service type —
-//! [`AdminService`], [`IssuerService`], and more as the engine grows —
-//! reached through an accessor on the client:
-//!
-//! ```ignore
-//! // Desktop app, already on an async runtime:
-//! let client = AsyncClient::connect(ClientOptions::default()).await?;
-//! let issuer = client.issuers().get(&id).await?;
-//! client.admin().health().await?;
-//!
-//! // CLI, plain synchronous main:
-//! let client = Client::connect(ClientOptions::default())?;
-//! let issuer = client.issuers().get(&id)?;
-//! client.admin().health()?;
-//! ```
-//!
-//! [`AsyncClient`] and [`Client`] are two facades over the same async core
-//! (`inner::Inner`): `AsyncClient` for consumers that already run their own
-//! async runtime (the desktop app), `Client` for consumers with none (the
-//! CLI) — it owns a runtime internally and blocks.
-
 mod admin;
 mod blocking;
 mod inner;
 mod issuer;
 
+pub use crate::inner::SocketPath;
 pub use admin::AdminService;
 pub use blocking::{BlockingAdmin, BlockingIssuers};
 pub use issuer::{DeleteIssuerRequest, IssuerService, PatchIssuerRequest, RegisterIssuerRequest};
 
-use crate::inner::Inner;
+use crate::inner::{DEFAULT_CONNECT_TIMEOUT, DEFAULT_RPC_REQUEST_TIMEOUT, Inner};
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ClientOptions {
-    pub socket: Option<PathBuf>,
-    pub connect_timeout: Option<Duration>,
-    pub request_timeout: Option<Duration>,
+    pub socket: Option<SocketPath>,
+    pub connect_timeout: Duration,
+    pub request_timeout: Duration,
 }
 
 impl ClientOptions {
-    /// Connect to a specific socket instead of the resolved default.
-    /// Useful for pointing at a non-default engine instance, and for tests
-    /// that need an isolated socket.
     pub fn with_socket(mut self, socket: impl Into<PathBuf>) -> Self {
-        self.socket = Some(socket.into());
+        self.socket = Some(SocketPath(socket.into()));
         self
     }
 
     pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
-        self.connect_timeout = Some(timeout);
+        self.connect_timeout = timeout;
         self
     }
 
     pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
-        self.request_timeout = Some(timeout);
+        self.request_timeout = timeout;
         self
+    }
+}
+
+impl Default for ClientOptions {
+    fn default() -> Self {
+        let socket = SocketPath::resolve().ok();
+
+        Self {
+            socket,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            request_timeout: DEFAULT_RPC_REQUEST_TIMEOUT,
+        }
     }
 }
 
@@ -106,8 +94,6 @@ pub enum ClientError {
         engine_version: String,
     },
 
-    /// The engine rejected the call: a gRPC code plus the engine error's own
-    /// human-readable message (the whole error contract since protocol v2).
     #[error("rpc failed ({code}): {message}")]
     Rpc { code: String, message: String },
 
@@ -127,8 +113,6 @@ impl ClientError {
     }
 }
 
-/// Shared by every service module so each RPC's `tonic::Status` maps to the
-/// same `ClientError` shape without every service reimplementing it.
 pub(crate) fn map_status(socket: &Path, status: tonic::Status) -> ClientError {
     match status.code() {
         tonic::Code::Unavailable => ClientError::Unreachable {
@@ -142,9 +126,6 @@ pub(crate) fn map_status(socket: &Path, status: tonic::Status) -> ClientError {
     }
 }
 
-/// Async facade over a running engine. Use this from a consumer that already
-/// drives its own async runtime (e.g. the desktop app). Cheap to share:
-/// wrap in `Arc` for concurrent use across tasks.
 pub struct AsyncClient(Inner);
 
 impl AsyncClient {
@@ -171,18 +152,12 @@ impl AsyncClient {
     // pub fn securities(&self) -> SecurityService { self.0.securities() }
 }
 
-/// Blocking facade over a running engine. Owns a single-threaded `tokio`
-/// runtime internally, so consumers with no async context of their own —
-/// namely the CLI — get plain synchronous methods with no `.await`
-/// anywhere. Don't call this from inside another async runtime's worker
-/// thread; use [`AsyncClient`] there instead.
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     inner: Inner,
 }
 
 impl Client {
-    /// Resolve the socket, connect with a bounded timeout, and run the version handshake.
     pub fn connect(options: ClientOptions) -> Result<Self, ClientError> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -222,7 +197,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("absent.sock");
         let result = Client::connect(ClientOptions {
-            socket: Some(socket.clone()),
+            socket: Some(SocketPath(socket.clone())),
             ..ClientOptions::default()
         });
         let Err(err) = result else {
@@ -240,12 +215,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("stale.sock");
         drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
-        // The listener is closed but the file remains.
+        // The listener is closed, but the file remains.
         assert!(socket.exists());
 
         let result = Client::connect(ClientOptions {
-            socket: Some(socket),
-            connect_timeout: Some(Duration::from_millis(500)),
+            socket: Some(SocketPath(socket.clone())),
+            connect_timeout: Duration::from_millis(500),
             ..ClientOptions::default()
         });
         match result {
@@ -270,9 +245,9 @@ mod tests {
         });
 
         let result = Client::connect(ClientOptions {
-            socket: Some(socket),
-            connect_timeout: Some(Duration::from_millis(500)),
-            request_timeout: Some(Duration::from_millis(500)),
+            socket: Some(SocketPath(socket.clone())),
+            connect_timeout: Duration::from_millis(500),
+            request_timeout: Duration::from_millis(500),
         });
         assert!(result.is_err(), "an imposter socket must not handshake");
         let _ = accept_thread.join();

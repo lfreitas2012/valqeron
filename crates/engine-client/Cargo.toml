@@ -10,14 +10,15 @@ version.workspace = true
 valqeron-engine-proto = { workspace = true }
 valqeron-core = { workspace = true }
 thiserror = { workspace = true }
-tonic = "0.14.6"
-tower = "0.5.3"
-tokio = "1.53.1"
-hyper-util = "0.1.20"
 chrono = { workspace = true, features = ["serde"] }
-serde = { version = "1.0.229", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true, features = ["serde", "v7"] }
-tempfile = "3.27.0"
+tempfile = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }
+tower = { workspace = true, features = ["util"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "macros"] }
+directories = { workspace = true }
 
 [lints]
 workspace = true

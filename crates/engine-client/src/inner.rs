@@ -1,6 +1,8 @@
 use crate::admin::AdminService;
 use crate::issuer::IssuerService;
 use crate::{ClientError, ClientOptions, EngineInfo};
+use directories::ProjectDirs;
+use hyper_util::rt::TokioIo;
 use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -8,17 +10,20 @@ use std::time::Duration;
 use tonic::transport::{Channel, Endpoint, Uri};
 use valqeron_engine_proto::PROTOCOL_VERSION;
 
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-const DEFAULT_RPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_ENGINE_ENDPOINT: &str = "http://valqeron.engine";
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+pub const DEFAULT_RPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DEFAULT_RPC_SOCKET_FILE_NAME: &str = "valqeron.sock";
+pub const DEFAULT_ENGINE_ENDPOINT: &str = "http://[::1]:50051";
+pub const DEFAULT_VALQERON_QUALIFIER: &str = "io";
+pub const DEFAULT_VALQERON_ORGANIZATION: &str = "valqeron";
+pub const DEFAULT_VALQERON_APP: &str = "valqeron";
 
 pub const SOCKET_ENV: &str = "VALQERON_SOCKET";
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct SocketPath(PathBuf);
+pub struct SocketPath(pub(crate) PathBuf);
 
 impl SocketPath {
-    /// Resolves the socket path from the `VALQERON_SOCKET` environment variable.
     pub fn resolve() -> Result<Self, ClientError> {
         Self::resolve_with(env::var_os(SOCKET_ENV))
     }
@@ -28,8 +33,6 @@ impl SocketPath {
         Ok(path.0.exists())
     }
 
-    /// Pure resolution core: env value is injected so tests never touch
-    /// process-global environment state.
     fn resolve_with(env_value: Option<OsString>) -> Result<Self, ClientError> {
         if let Some(value) = env_value {
             if !value.is_empty() {
@@ -37,10 +40,21 @@ impl SocketPath {
             }
         }
 
-        Err(ClientError::Config(format!(
-            "could not determine socket path; set {SOCKET_ENV}"
-        )))
+        resolve_default_project_dir()
+            .map(|dirs| dirs.data_local_dir().to_path_buf())
+            .map(|dir| Self(dir.join(DEFAULT_RPC_SOCKET_FILE_NAME)))
+            .ok_or(ClientError::Config(format!(
+                "could not determine socket path; set {SOCKET_ENV}"
+            )))
     }
+}
+
+fn resolve_default_project_dir() -> Option<ProjectDirs> {
+    ProjectDirs::from(
+        DEFAULT_VALQERON_QUALIFIER,
+        DEFAULT_VALQERON_ORGANIZATION,
+        DEFAULT_VALQERON_APP,
+    )
 }
 
 impl From<SocketPath> for PathBuf {
@@ -49,9 +63,6 @@ impl From<SocketPath> for PathBuf {
     }
 }
 
-/// Async-native core shared by both `crate::AsyncClient` and `crate::Client`.
-/// Not exposed directly — reach its services through `admin()` / `issuers()`
-/// on one of those two.
 pub(crate) struct Inner {
     channel: Channel,
     socket: PathBuf,
@@ -61,26 +72,35 @@ pub(crate) struct Inner {
 impl Inner {
     pub(crate) async fn connect(options: ClientOptions) -> Result<Self, ClientError> {
         let socket: PathBuf = match options.socket {
-            Some(path) => path,
+            Some(path) => path.into(),
             None => SocketPath::resolve()?.into(),
         };
 
-        let connect_timeout = options.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
-        let request_timeout = options
-            .request_timeout
-            .unwrap_or(DEFAULT_RPC_REQUEST_TIMEOUT);
-
         let endpoint = Endpoint::try_from(DEFAULT_ENGINE_ENDPOINT)
-            .map_err(|e| ClientError::Config(e.to_string()))?
-            .connect_timeout(connect_timeout)
-            .timeout(request_timeout);
+            .map_err(|e| ClientError::Config(format!("invalid endpoint: {e}")))?
+            .connect_timeout(options.connect_timeout)
+            .timeout(options.request_timeout);
 
         let dial_path = socket.clone();
+
         let connector = tower::service_fn(move |_uri: Uri| {
             let dial_path = dial_path.clone();
+
             async move {
-                let stream = tokio::net::UnixStream::connect(dial_path).await?;
-                Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
+                let stream = tokio::net::UnixStream::connect(&dial_path)
+                    .await
+                    .map_err(|e| {
+                        std::io::Error::new(
+                            e.kind(),
+                            format!(
+                                "connecting to Valqeron engine socket {}: {e}",
+                                dial_path.display()
+                            ),
+                        )
+                    })?;
+
+                // Simplified using the import at the top of your file
+                Ok::<_, std::io::Error>(TokioIo::new(stream))
             }
         });
 
@@ -97,7 +117,9 @@ impl Inner {
                 protocol_version: 0,
             },
         };
+
         inner.engine_info = inner.handshake().await?;
+
         Ok(inner)
     }
 
@@ -109,24 +131,17 @@ impl Inner {
         &self.engine_info
     }
 
-    /// A fresh, cheaply-constructed handle to the engine's admin RPCs.
     pub(crate) fn admin(&self) -> AdminService {
         AdminService::new(self.channel.clone(), self.socket.clone())
     }
 
-    /// A fresh, cheaply-constructed handle to the engine's issuer RPCs.
     pub(crate) fn issuers(&self) -> IssuerService {
         IssuerService::new(self.channel.clone(), self.socket.clone())
     }
 
-    // Add one accessor per new gRPC service here, e.g.:
-    // pub(crate) fn securities(&self) -> SecurityService {
-    //     SecurityService::new(self.channel.clone(), self.socket.clone())
-    // }
-
     async fn handshake(&self) -> Result<EngineInfo, ClientError> {
-        // Reuses AdminService::health rather than duplicating the RPC call.
         let health = self.admin().health().await?;
+
         if health.protocol_version != PROTOCOL_VERSION {
             return Err(ClientError::VersionMismatch {
                 client_protocol: PROTOCOL_VERSION,
@@ -135,27 +150,33 @@ impl Inner {
                 engine_version: health.engine_version,
             });
         }
+
         Ok(health)
     }
 }
 
 fn classify_connect_error(socket: &Path, err: &tonic::transport::Error) -> ClientError {
-    use std::error::Error as _;
-    let mut source: Option<&(dyn std::error::Error + 'static)> = err.source();
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(err);
+
     while let Some(current) = source {
         if let Some(io) = current.downcast_ref::<std::io::Error>() {
-            if matches!(
-                io.kind(),
-                std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
-            ) {
-                return ClientError::NotRunning {
+            return match io.kind() {
+                std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound => {
+                    ClientError::NotRunning {
+                        socket: socket.to_path_buf(),
+                    }
+                }
+
+                _ => ClientError::Unreachable {
                     socket: socket.to_path_buf(),
-                };
-            }
-            break;
+                    message: io.to_string(),
+                },
+            };
         }
+
         source = current.source();
     }
+
     ClientError::Unreachable {
         socket: socket.to_path_buf(),
         message: err.to_string(),

@@ -1,4 +1,4 @@
-use crate::{map_status, BackgroundTaskDetail, ClientError, EngineInfo, EngineStatus};
+use crate::{BackgroundTaskDetail, ClientError, EngineInfo, EngineStatus, map_status};
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use std::time::SystemTime;
