@@ -228,9 +228,6 @@ pub enum IssuerMappingError {
     #[error(transparent)]
     Builder(#[from] IssuerBuilderError),
 
-    #[error("a patch must set at least one field")]
-    EmptyPatch,
-
     #[error("missing required field `{0}`")]
     MissingField(&'static str),
 }
