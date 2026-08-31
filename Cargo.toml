@@ -6,9 +6,7 @@ members = [
     "crates/cli",
     "crates/identifiers",
     "crates/engine",
-    "crates/proto",
-    "crates/client",
-    "crates/common",
+    "fuzz"
 ]
 
 [workspace.package]
@@ -23,9 +21,8 @@ valqeron-core = { path = "crates/core" }
 valqeron-cli = { path = "crates/cli" }
 valqeron-infrastructure = { path = "crates/infrastructure" }
 valqeron-identifiers = { path = "crates/identifiers" }
-valqeron-proto = { path = "crates/proto" }
-valqeron-client = { path = "crates/client" }
-valqeron-common = { path = "crates/common" }
+valqeron-engine = { path = "crates/engine" }
+valqeron-fuzz = { path = "fuzz" }
 
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
@@ -39,7 +36,7 @@ mockall = "0.15.0"
 tempfile = "3"
 loom = "0.7"
 clap = { version = "4", features = ["derive", "env"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"], default-features = false }
 serde_json = "1"
 directories = "6"
 tokio = { version = "1", features = [
@@ -54,11 +51,17 @@ tokio = { version = "1", features = [
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = "0.14"
 tonic-prost = "0.14"
+prost-types = "0.14"
 prost = "0.14"
 tower = "0.5"
 hyper-util = "0.1"
 tonic-prost-build = "0.14"
 protox = "0.9"
+libfuzzer-sys = "0.4.13"
+criterion = "0.8.2"
+proptest = { version = "1.11.0", default-features = false }
+schemars = "1.2.2"
+arbitrary = "1.4.2"
 
 [profile.release]
 codegen-units = 1
