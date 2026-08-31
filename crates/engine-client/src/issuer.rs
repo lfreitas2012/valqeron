@@ -157,6 +157,13 @@ impl RegisterIssuerRequest {
         self.dry_run = true;
         self
     }
+
+    /// Set dry-run from a flag rather than a hardcoded `true` — handy where
+    /// the caller already has a `bool` (e.g. a CLI's `--dry-run` flag).
+    pub fn dry_run_if(mut self, dry_run: bool) -> Self {
+        self.dry_run = dry_run;
+        self
+    }
 }
 
 /// Patch an existing issuer under optimistic concurrency control. Build
