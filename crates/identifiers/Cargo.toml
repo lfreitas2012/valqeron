@@ -8,11 +8,11 @@ version.workspace = true
 publish = false
 
 [dependencies]
-serde = { version = "1", features = ["derive"], default-features = false, optional = true }
-schemars = { version = "1", default-features = false, optional = true }
-arbitrary = { version = "1", features = ["derive"], optional = true }
-proptest = { version = "1", default-features = false, optional = true }
-serde_json = { version = "1", optional = true }
+serde = { workspace = true, features = ["derive"], default-features = false, optional = true }
+schemars = { workspace = true, optional = true }
+arbitrary = { workspace = true, features = ["derive"], optional = true }
+proptest = { workspace = true, default-features = false, optional = true }
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"
@@ -28,10 +28,6 @@ schemars = ["dep:schemars", "serde"]
 arbitrary = ["dep:arbitrary"]
 proptest = ["dep:proptest"]
 codegen = ["dep:serde_json"]
-
-[[bench]]
-name = "cnpj_benches"
-harness = false
 
 [[bench]]
 name = "isin_benches"

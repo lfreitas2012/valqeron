@@ -10,21 +10,20 @@ publish = false
 [dependencies]
 valqeron-core = { workspace = true }
 valqeron-infrastructure = { workspace = true }
-valqeron-proto = { workspace = true }
-valqeron-common = { workspace = true }
-chrono = { workspace = true }
+valqeron-engine-proto = { workspace = true }
 thiserror = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
-tokio = { workspace = true }
 tokio-stream = { workspace = true }
-tonic = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "macros"] }
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v7"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-valqeron-client = { workspace = true }
 
 [[bin]]
 name = "valqeron-engine"

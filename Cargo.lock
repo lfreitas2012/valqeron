@@ -2240,7 +2240,6 @@ dependencies = [
 name = "valqeron-engine"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "directories",
  "tempfile",
