@@ -2260,6 +2260,7 @@ name = "valqeron-engine-client"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "directories",
  "hyper-util",
  "serde",
  "tempfile",

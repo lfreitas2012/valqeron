@@ -53,13 +53,13 @@ tokio = { version = "1", features = [
     "net",
 ] }
 tokio-stream = { version = "0.1", features = ["net"] }
-tonic = "0.14"
-tonic-prost = "0.14"
-prost-types = "0.14"
-prost = "0.14"
-tower = "0.5"
-hyper-util = "0.1"
-tonic-prost-build = "0.14"
+tonic = "0.14.6"
+tonic-prost = "0.14.6"
+prost-types = "0.14.4"
+prost = "0.14.4"
+tower = "0.5.3"
+hyper-util = "0.1.20"
+tonic-prost-build = "0.14.6"
 protox = "0.9"
 libfuzzer-sys = "0.4.13"
 criterion = "0.8.2"
