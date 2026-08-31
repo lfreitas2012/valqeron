@@ -6,7 +6,9 @@ members = [
     "crates/cli",
     "crates/identifiers",
     "crates/engine",
-    "fuzz"
+    "fuzz",
+    "crates/engine-client",
+    "crates/engine-proto"
 ]
 
 [workspace.package]
@@ -22,6 +24,8 @@ valqeron-cli = { path = "crates/cli" }
 valqeron-infrastructure = { path = "crates/infrastructure" }
 valqeron-identifiers = { path = "crates/identifiers" }
 valqeron-engine = { path = "crates/engine" }
+valqeron-engine-proto = { path = "crates/engine-proto" }
+valqeron-engine-client = { path = "crates/engine-client" }
 valqeron-fuzz = { path = "fuzz" }
 
 thiserror = "2"
@@ -69,7 +73,7 @@ lto = "fat"
 opt-level = 3
 
 [workspace.lints.clippy]
-#pedantic = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 indexing_slicing = "deny"
