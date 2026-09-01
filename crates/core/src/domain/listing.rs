@@ -30,6 +30,10 @@ pub enum TickerSymbolError {
 }
 
 impl TickerSymbol {
+
+    /// # Errors
+    ///
+    /// Returns `TickerSymbolError`.
     pub fn new(value: impl Into<String>) -> Result<Self, TickerSymbolError> {
         let value = value.into();
         let trimmed = value.trim();
@@ -54,6 +58,7 @@ impl TickerSymbol {
         Ok(Self(normalized))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -72,6 +77,9 @@ pub enum MarketSegmentError {
 }
 
 impl MarketSegment {
+    /// # Errors
+    ///
+    /// Returns `MarketSegmentError`.
     pub fn new(value: impl Into<String>) -> Result<Self, MarketSegmentError> {
         let value = value.into();
         let trimmed = value.trim();
@@ -88,6 +96,7 @@ impl MarketSegment {
         Ok(Self(trimmed.into()))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -97,22 +106,27 @@ impl MarketSegment {
 pub struct ListingId(Uuid);
 
 impl ListingId {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
 
+    #[must_use]
     pub fn from_uuid(uuid: Uuid) -> Self {
         Self(uuid)
     }
 
+    #[must_use]
     pub fn value(&self) -> String {
         self.0.to_string()
     }
 
+    #[must_use]
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -138,10 +152,12 @@ pub enum ListingRoleError {
 }
 
 impl ListingRole {
+    #[must_use]
     pub fn is_primary(&self) -> bool {
         matches!(self, ListingRole::Primary)
     }
 
+    #[must_use]
     pub fn is_secondary(&self) -> bool {
         matches!(self, ListingRole::Secondary)
     }
@@ -186,14 +202,17 @@ pub enum ListingStatusError {
 }
 
 impl ListingStatus {
+    #[must_use]
     pub fn is_active(&self) -> bool {
         matches!(self, ListingStatus::Active)
     }
 
+    #[must_use]
     pub fn is_suspended(&self) -> bool {
         matches!(self, ListingStatus::Suspended)
     }
 
+    #[must_use]
     pub fn is_delisted(&self) -> bool {
         matches!(self, ListingStatus::Delisted)
     }
@@ -245,6 +264,10 @@ pub struct CurrencyCode([u8; CURRENCY_CODE_LEN]);
 impl CurrencyCode {
     /// Parses a currency code, trimming surrounding whitespace and normalizing
     /// to uppercase ASCII.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CurrencyCodeError`.
     pub fn parse(input: &str) -> Result<Self, CurrencyCodeError> {
         let trimmed = input.trim();
 
@@ -267,15 +290,21 @@ impl CurrencyCode {
 
     /// Alias for [`CurrencyCode::parse`], mirroring the `valqeron-identifiers`
     /// API.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CurrencyCodeError`.
     pub fn new(input: &str) -> Result<Self, CurrencyCodeError> {
         Self::parse(input)
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         // The constructor guarantees uppercase ASCII, so this never falls back.
         std::str::from_utf8(&self.0).unwrap_or_default()
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8; CURRENCY_CODE_LEN] {
         &self.0
     }
@@ -327,6 +356,7 @@ pub struct ListingSnapshot {
 }
 
 impl Listing {
+    #[must_use]
     pub fn builder(
         security_id: SecurityId,
         venue_id: VenueId,
@@ -335,40 +365,51 @@ impl Listing {
         ListingBuilder::new(security_id, venue_id, symbol)
     }
 
+    #[must_use]
     pub fn id(&self) -> &ListingId {
         &self.id
     }
+    #[must_use]
     pub fn security_id(&self) -> &SecurityId {
         &self.security_id
     }
+    #[must_use]
     pub fn venue_id(&self) -> &VenueId {
         &self.venue_id
     }
+    #[must_use]
     pub fn symbol(&self) -> &TickerSymbol {
         &self.symbol
     }
+    #[must_use]
     pub fn role(&self) -> ListingRole {
         self.role
     }
+    #[must_use]
     pub fn status(&self) -> ListingStatus {
         self.status
     }
+    #[must_use]
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
+    #[must_use]
     pub fn currency(&self) -> Option<&CurrencyCode> {
         self.currency.as_ref()
     }
+    #[must_use]
     pub fn segment(&self) -> Option<&MarketSegment> {
         self.segment.as_ref()
     }
+    #[must_use]
     pub fn listed_on(&self) -> Option<NaiveDate> {
         self.listed_on
     }
+    #[must_use]
     pub fn delisted_on(&self) -> Option<NaiveDate> {
         self.delisted_on
     }
-
+    #[must_use]
     pub fn reconstitute(snapshot: ListingSnapshot) -> Self {
         Self {
             id: snapshot.id,
@@ -413,6 +454,7 @@ pub enum ListingBuilderError {
 }
 
 impl ListingBuilder {
+    #[must_use]
     pub fn new(security_id: SecurityId, venue_id: VenueId, symbol: TickerSymbol) -> Self {
         Self {
             security_id,
@@ -429,46 +471,57 @@ impl ListingBuilder {
         }
     }
 
+    #[must_use]
     pub fn id(mut self, id: ListingId) -> Self {
         self.id = Some(id);
         self
     }
 
+    #[must_use]
     pub fn role(mut self, role: ListingRole) -> Self {
         self.role = Some(role);
         self
     }
 
+    #[must_use]
     pub fn status(mut self, status: ListingStatus) -> Self {
         self.status = Some(status);
         self
     }
 
+    #[must_use]
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
         self
     }
 
+    #[must_use]
     pub fn currency(mut self, currency: CurrencyCode) -> Self {
         self.currency = Some(currency);
         self
     }
 
+    #[must_use]
     pub fn segment(mut self, segment: MarketSegment) -> Self {
         self.segment = Some(segment);
         self
     }
 
+    #[must_use]
     pub fn listed_on(mut self, listed_on: NaiveDate) -> Self {
         self.listed_on = Some(listed_on);
         self
     }
 
+    #[must_use]
     pub fn delisted_on(mut self, delisted_on: NaiveDate) -> Self {
         self.delisted_on = Some(delisted_on);
         self
     }
 
+    /// # Errors
+    ///
+    /// Returns `ListingBuilderError`.
     pub fn build(self) -> Result<Listing, ListingBuilderError> {
         let id = self.id.unwrap_or_default();
         let role = self.role.unwrap_or_default();
@@ -769,34 +822,60 @@ delegate_listing_repository!(Arc<R>);
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ListingRepository {
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn find_by_id(&self, id: &ListingId) -> RepositoryResult<Option<Versioned<Listing>>>;
 
     /// Resolves an actively traded ticker on a venue, e.g. `VALE3` on B3.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn find_active_by_venue_and_symbol(
         &self,
         venue_id: &VenueId,
         symbol: &TickerSymbol,
     ) -> RepositoryResult<Option<Versioned<Listing>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Listing>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn list_by_security(
         &self,
         security_id: &SecurityId,
     ) -> RepositoryResult<Vec<Versioned<Listing>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn list_by_venue(&self, venue_id: &VenueId) -> RepositoryResult<Vec<Versioned<Listing>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn list_paged(
         &self,
         after: Option<ListingId>,
         limit: u32,
     ) -> RepositoryResult<Vec<Versioned<Listing>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists(&self, id: &ListingId) -> RepositoryResult<bool>;
 
     /// An active listing already occupies this ticker on the venue. Delisted
     /// tickers may be recycled, hence "active".
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists_active_by_venue_and_symbol(
         &self,
         venue_id: &VenueId,
@@ -804,6 +883,10 @@ pub trait ListingRepository {
     ) -> RepositoryResult<bool>;
 
     /// The security already has an active listing on the venue.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists_active_for_security_on_venue(
         &self,
         security_id: &SecurityId,
@@ -811,13 +894,23 @@ pub trait ListingRepository {
     ) -> RepositoryResult<bool>;
 
     /// The security already has an active primary listing (on any venue).
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists_active_primary_for_security(
         &self,
         security_id: &SecurityId,
     ) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn insert(&self, listing: &Listing) -> RepositoryResult<()>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn apply_patch(
         &self,
         id: &ListingId,
@@ -825,8 +918,14 @@ pub trait ListingRepository {
         patch: ListingPatch,
     ) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn update(&self, listing: &Listing, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn delete(&self, id: &ListingId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 }
 
@@ -862,6 +961,10 @@ pub enum RegisterListingError {
 /// 4. the security must not already be actively listed on the venue;
 /// 5. a primary listing requires the security to have no other active
 ///    primary listing.
+///
+/// # Errors
+///
+/// Returns `RegisterListingError`.
 pub fn register_listing<L, S, V>(
     listings: &L,
     securities: &S,
