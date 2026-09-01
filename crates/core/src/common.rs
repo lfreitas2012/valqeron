@@ -59,38 +59,41 @@ impl<T> Loading<T> {
     }
 }
 
+#[must_use]
 pub fn os_str_is_off(value: &OsStr) -> bool {
-    value
-        .to_str()
-        .map(|s| {
-            matches!(
-                s.trim().to_ascii_lowercase().as_str(),
-                "off" | "false" | "0" | "none"
-            )
-        })
-        .unwrap_or(false)
+    value.to_str().is_some_and(|s| {
+        matches!(
+            s.trim().to_ascii_lowercase().as_str(),
+            "off" | "false" | "0" | "none"
+        )
+    })
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct UniqueIdentifier(Uuid);
 
 impl UniqueIdentifier {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
 
+    #[must_use]
     pub fn from_uuid(uuid: Uuid) -> Self {
         Self(uuid)
     }
 
+    #[must_use]
     pub fn value(&self) -> String {
         self.0.to_string()
     }
 
+    #[must_use]
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
