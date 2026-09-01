@@ -7,16 +7,20 @@ pub use error::{StorageError, StorageFault};
 pub struct Repositories<E: StorageEngine> {
     pub issuers: E::Issuers,
     pub securities: E::Securities,
-    pub background_task: E::BackgroundTasks,
+    // pub background_task: E::BackgroundTasks,
 }
 
 pub trait StorageEngine: Sized + Send + Sync {
     type Issuers: IssuerRepository;
     type Securities: SecurityRepository;
-    type BackgroundTasks: BackgroundTasksRepository;
+    // type BackgroundTasks: BackgroundTasksRepository;
 
     fn repositories(&self) -> Repositories<Self>;
 
+    /// # Errors
+    ///
+    /// Wil return `StorageError` if the underlying storage engine is unavailable or a storage fault
+    /// occurs.
     fn dry_run<F, T>(&self, f: F) -> Result<T, StorageError>
     where
         F: FnOnce(&Repositories<Self>) -> T;
@@ -35,6 +39,10 @@ impl<E: StorageEngine> PersistenceManager<E> {
         self.engine.repositories()
     }
 
+    /// # Errors
+    ///
+    /// Wil return `StorageError` if the underlying storage engine is unavailable or a storage fault
+    /// occurs.
     pub fn dry_run<F, T>(&self, f: F) -> Result<T, StorageError>
     where
         F: FnOnce(&Repositories<E>) -> T,
