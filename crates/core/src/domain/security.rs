@@ -26,6 +26,9 @@ pub enum SecurityNameError {
 }
 
 impl SecurityName {
+    /// # Errors
+    ///
+    /// Return `SecurityNameError`.
     pub fn new(value: impl Into<String>) -> Result<Self, SecurityNameError> {
         let value = value.into();
         let trimmed = value.trim();
@@ -42,6 +45,7 @@ impl SecurityName {
         Ok(Self(trimmed.into()))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -51,22 +55,27 @@ impl SecurityName {
 pub struct SecurityId(Uuid);
 
 impl SecurityId {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
 
+    #[must_use]
     pub fn from_uuid(uuid: Uuid) -> Self {
         Self(uuid)
     }
 
+    #[must_use]
     pub fn value(&self) -> String {
         self.0.to_string()
     }
 
+    #[must_use]
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -96,6 +105,7 @@ pub enum SecurityKindError {
 }
 
 impl SecurityKind {
+    #[must_use]
     pub fn is_depositary_receipt(&self) -> bool {
         matches!(self, SecurityKind::DepositaryReceipt)
     }
@@ -140,10 +150,12 @@ pub enum SecurityStatusError {
 }
 
 impl SecurityStatus {
+    #[must_use]
     pub fn is_active(&self) -> bool {
         matches!(self, SecurityStatus::Active)
     }
 
+    #[must_use]
     pub fn is_retired(&self) -> bool {
         matches!(self, SecurityStatus::Retired)
     }
@@ -186,6 +198,9 @@ pub enum DrRatioError {
 }
 
 impl DepositaryReceiptRatio {
+    /// # Errors
+    ///
+    /// Return `DrRatioError`.
     pub fn new(receipts: u32, underlying: u32) -> Result<Self, DrRatioError> {
         let receipts = NonZeroU32::new(receipts).ok_or(DrRatioError::ZeroReceipts)?;
         let underlying = NonZeroU32::new(underlying).ok_or(DrRatioError::ZeroUnderlying)?;
@@ -206,7 +221,7 @@ impl DepositaryReceiptRatio {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Security {
     id: SecurityId,
     issuer_id: IssuerId,
@@ -236,41 +251,52 @@ pub struct SecuritySnapshot {
 }
 
 impl Security {
+    #[must_use]
     pub fn builder(issuer_id: IssuerId, kind: SecurityKind) -> SecurityBuilder {
         SecurityBuilder::new(issuer_id, kind)
     }
-
+    #[must_use]
     pub fn id(&self) -> &SecurityId {
         &self.id
     }
+    #[must_use]
     pub fn issuer_id(&self) -> &IssuerId {
         &self.issuer_id
     }
+    #[must_use]
     pub fn kind(&self) -> SecurityKind {
         self.kind
     }
+    #[must_use]
     pub fn status(&self) -> SecurityStatus {
         self.status
     }
+    #[must_use]
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
+    #[must_use]
     pub fn name(&self) -> Option<&SecurityName> {
         self.name.as_ref()
     }
+    #[must_use]
     pub fn isin(&self) -> Option<&Isin> {
         self.isin.as_ref()
     }
+    #[must_use]
     pub fn cfi(&self) -> Option<&Cfi> {
         self.cfi.as_ref()
     }
+    #[must_use]
     pub fn underlying_security_id(&self) -> Option<&SecurityId> {
         self.underlying_security_id.as_ref()
     }
+    #[must_use]
     pub fn dr_ratio(&self) -> Option<&DepositaryReceiptRatio> {
         self.dr_ratio.as_ref()
     }
 
+    #[must_use]
     pub fn reconstitute(snapshot: SecuritySnapshot) -> Self {
         Self {
             id: snapshot.id,
@@ -315,6 +341,7 @@ pub enum SecurityBuilderError {
 }
 
 impl SecurityBuilder {
+    #[must_use]
     pub fn new(issuer_id: IssuerId, kind: SecurityKind) -> Self {
         Self {
             issuer_id,
@@ -330,46 +357,57 @@ impl SecurityBuilder {
         }
     }
 
+    #[must_use]
     pub fn id(mut self, id: SecurityId) -> Self {
         self.id = Some(id);
         self
     }
 
+    #[must_use]
     pub fn status(mut self, status: SecurityStatus) -> Self {
         self.status = Some(status);
         self
     }
 
+    #[must_use]
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
         self
     }
 
+    #[must_use]
     pub fn name(mut self, name: SecurityName) -> Self {
         self.name = Some(name);
         self
     }
 
+    #[must_use]
     pub fn isin(mut self, isin: Isin) -> Self {
         self.isin = Some(isin);
         self
     }
 
+    #[must_use]
     pub fn cfi(mut self, cfi: Cfi) -> Self {
         self.cfi = Some(cfi);
         self
     }
 
+    #[must_use]
     pub fn underlying_security_id(mut self, underlying_security_id: SecurityId) -> Self {
         self.underlying_security_id = Some(underlying_security_id);
         self
     }
 
+    #[must_use]
     pub fn dr_ratio(mut self, dr_ratio: DepositaryReceiptRatio) -> Self {
         self.dr_ratio = Some(dr_ratio);
         self
     }
 
+    /// # Errors
+    ///
+    /// Returns `SecurityBuilderError`.
     pub fn build(self) -> Result<Security, SecurityBuilderError> {
         let id = self.id.unwrap_or_default();
         let status = self.status.unwrap_or_default();
@@ -544,26 +582,53 @@ impl SecurityPatchBuilder<NonEmpty> {
 // ================ SECURITY REPOSITORY ================
 #[cfg_attr(test, mockall::automock)]
 pub trait SecurityRepository {
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn find_by_id(&self, id: &SecurityId) -> RepositoryResult<Option<Versioned<Security>>>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn find_by_isin(&self, isin: &Isin) -> RepositoryResult<Option<Versioned<Security>>>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Security>>>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn list_by_issuer(&self, issuer_id: &IssuerId) -> RepositoryResult<Vec<Versioned<Security>>>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn list_paged(
         &self,
         after: Option<SecurityId>,
         limit: u32,
     ) -> RepositoryResult<Vec<Versioned<Security>>>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn exists(&self, id: &SecurityId) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn exists_by_isin(&self, isin: &Isin) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn insert(&self, security: &Security) -> RepositoryResult<()>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn apply_patch(
         &self,
         id: &SecurityId,
@@ -571,8 +636,14 @@ pub trait SecurityRepository {
         patch: SecurityPatch,
     ) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn update(&self, security: &Security, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Return `StorageFault` if a storage error occurs.
     fn delete(&self, id: &SecurityId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 }
 
@@ -656,6 +727,10 @@ pub enum RegisterSecurityError {
     Storage(#[from] StorageFault),
 }
 
+/// # Errors
+///
+/// Return `RegisterSecurityError` if unknown isser, duplicated isin, unknown uncerlying security or
+/// storage fault.
 pub fn register_security<S, I>(
     securities: &S,
     issuers: &I,
