@@ -1,7 +1,7 @@
 //! Trading venue aggregate: the place where securities are admitted to
 //! trading, keyed by its ISO 10383 MIC (e.g. `BVMF` for B3, `XNYS` for NYSE).
 //!
-//! The MIC is registry-validated ([`valqeron_identifiers::Mic`]), so the ISO
+//! The MIC is registry-validated ([`Mic`]), so the ISO
 //! 10383 operating/segment hierarchy and the venue's country are **derived**
 //! from the embedded registry rather than stored: a segment venue (e.g.
 //! `XNGS`, Nasdaq Global Select) reports its market operator (`XNAS`) via
@@ -33,6 +33,9 @@ pub enum VenueNameError {
 }
 
 impl VenueName {
+    /// # Errors
+    ///
+    /// Returns `VenueNameError` if value empty or too long.
     pub fn new(value: impl Into<String>) -> Result<Self, VenueNameError> {
         let value = value.into();
         let trimmed = value.trim();
@@ -49,6 +52,7 @@ impl VenueName {
         Ok(Self(trimmed.into()))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -58,22 +62,27 @@ impl VenueName {
 pub struct VenueId(Uuid);
 
 impl VenueId {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
 
+    #[must_use]
     pub fn from_uuid(uuid: Uuid) -> Self {
         Self(uuid)
     }
 
+    #[must_use]
     pub fn value(&self) -> String {
         self.0.to_string()
     }
 
+    #[must_use]
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -103,10 +112,12 @@ pub enum VenueStatusError {
 }
 
 impl VenueStatus {
+    #[must_use]
     pub fn is_active(&self) -> bool {
         matches!(self, VenueStatus::Active)
     }
 
+    #[must_use]
     pub fn is_retired(&self) -> bool {
         matches!(self, VenueStatus::Retired)
     }
@@ -144,22 +155,27 @@ pub struct Venue {
 }
 
 impl Venue {
+    #[must_use]
     pub fn builder(mic: Mic) -> VenueBuilder {
         VenueBuilder::new(mic)
     }
 
+    #[must_use]
     pub fn id(&self) -> &VenueId {
         &self.id
     }
     pub fn mic(&self) -> &Mic {
         &self.mic
     }
+    #[must_use]
     pub fn status(&self) -> VenueStatus {
         self.status
     }
+    #[must_use]
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
+    #[must_use]
     pub fn name(&self) -> Option<&VenueName> {
         self.name.as_ref()
     }
@@ -173,16 +189,19 @@ impl Venue {
     /// The venue's ISO 3166-1 country as published in the ISO 10383 registry;
     /// `None` for the off-exchange pseudo-MICs published under the `ZZ`
     /// marker (e.g. `XOFF`).
+    #[must_use]
     pub fn country_code(&self) -> Option<CountryCode> {
         self.mic.country_code()
     }
 
     /// This venue operates its own market per the ISO 10383 registry (its
     /// published operating MIC is itself).
+    #[must_use]
     pub fn is_operating_venue(&self) -> bool {
         self.mic.is_operating()
     }
 
+    #[must_use]
     pub fn reconstitute(
         id: VenueId,
         mic: Mic,
@@ -209,6 +228,7 @@ pub struct VenueBuilder {
 }
 
 impl VenueBuilder {
+    #[must_use]
     pub fn new(mic: Mic) -> Self {
         Self {
             mic,
@@ -219,21 +239,25 @@ impl VenueBuilder {
         }
     }
 
+    #[must_use]
     pub fn id(mut self, id: VenueId) -> Self {
         self.id = Some(id);
         self
     }
 
+    #[must_use]
     pub fn status(mut self, status: VenueStatus) -> Self {
         self.status = Some(status);
         self
     }
 
+    #[must_use]
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
         self
     }
 
+    #[must_use]
     pub fn name(mut self, name: VenueName) -> Self {
         self.name = Some(name);
         self
@@ -332,29 +356,56 @@ impl VenuePatchBuilder<NonEmpty> {
 // ================ VENUE REPOSITORY ================
 #[cfg_attr(test, mockall::automock)]
 pub trait VenueRepository {
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn find_by_id(&self, id: &VenueId) -> RepositoryResult<Option<Versioned<Venue>>>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn find_by_mic(&self, mic: &Mic) -> RepositoryResult<Option<Versioned<Venue>>>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn list_all(&self) -> RepositoryResult<Vec<Versioned<Venue>>>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn list_by_country(
         &self,
         country_code: &CountryCode,
     ) -> RepositoryResult<Vec<Versioned<Venue>>>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn list_paged(
         &self,
         after: Option<VenueId>,
         limit: u32,
     ) -> RepositoryResult<Vec<Versioned<Venue>>>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn exists(&self, id: &VenueId) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn exists_by_mic(&self, mic: &Mic) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn insert(&self, venue: &Venue) -> RepositoryResult<()>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn apply_patch(
         &self,
         id: &VenueId,
@@ -362,8 +413,14 @@ pub trait VenueRepository {
         patch: VenuePatch,
     ) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn update(&self, venue: &Venue, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Will return `StorageFault` if a storage fault occurs.
     fn delete(&self, id: &VenueId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 }
 
@@ -441,6 +498,9 @@ pub enum RegisterVenueError {
     Storage(#[from] StorageFault),
 }
 
+/// # Errors
+///
+/// Will return `RegisterVenueError` if ducplicated MIC or storage fault.
 pub fn register_venue<R: VenueRepository + ?Sized>(
     repo: &R,
     venue: &Venue,
