@@ -579,7 +579,7 @@ impl fmt::Debug for Cnpj {
 /// Reported by [`CnpjError::InvalidCharacter`] to describe what was expected where an invalid
 /// character was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum CharacterClass {
+pub enum CharacterClass {
     /// An ASCII digit, `'0'...='9'`.
     Digit,
     /// An ASCII digit or an uppercase ASCII letter, `'0'...='9' | 'A'...='Z'`.
@@ -682,27 +682,35 @@ fn validate_not_repeated(candidate: &[u8; 14]) -> Result<(), CnpjError> {
 }
 
 fn validate_check_digits(candidate: &[u8; 14]) -> Result<(), CnpjError> {
-    let values: [u32; 14] = core::array::from_fn(|i| char_value(candidate[i]));
+    let base: &[u8; BASE_LEN] = candidate
+        .get(..BASE_LEN)
+        .and_then(|s| s.try_into().ok())
+        .unwrap_or(&[b'0'; BASE_LEN]);
 
-    let dv1 = compute_check_digit(&values[..BASE_LEN], &WEIGHTS_DV1);
-    let found_dv1 = values[12] as u8;
-    if dv1 != found_dv1 {
+    let (expected_dv1, expected_dv2) = compute_valid_check_digits(base);
+
+    let found_dv1 = candidate
+        .get(12)
+        .and_then(|&b| u8::try_from(char_value(b)).ok())
+        .unwrap_or(0);
+
+    if expected_dv1 != found_dv1 {
         return Err(CnpjError::InvalidCheckDigits {
             position: 13,
-            expected: dv1,
+            expected: expected_dv1,
             found: found_dv1,
         });
     }
 
-    let mut dv2_input = [0u32; BASE_LEN + 1];
-    dv2_input[..BASE_LEN].copy_from_slice(&values[..BASE_LEN]);
-    dv2_input[BASE_LEN] = dv1 as u32;
-    let dv2 = compute_check_digit(&dv2_input, &WEIGHTS_DV2);
-    let found_dv2 = values[13] as u8;
-    if dv2 != found_dv2 {
+    let found_dv2 = candidate
+        .get(13)
+        .and_then(|&b| u8::try_from(char_value(b)).ok())
+        .unwrap_or(0);
+
+    if expected_dv2 != found_dv2 {
         return Err(CnpjError::InvalidCheckDigits {
             position: 14,
-            expected: dv2,
+            expected: expected_dv2,
             found: found_dv2,
         });
     }
@@ -713,20 +721,19 @@ fn validate_check_digits(candidate: &[u8; 14]) -> Result<(), CnpjError> {
 /// Computes the two verification digits for a well-formed 12-character base segment (each byte
 /// already `'0'...='9'` or `'A'...='Z'`).
 ///
-/// Exposed to sibling modules ([`super::arbitrary`], [`super::proptest`]) so they can generate
+/// Exposed to sibling modules ([`arbitrary`], [`proptest`]) so they can generate
 /// structurally valid, checksum-correct `Cnpj` values without duplicating the Módulo 11 algorithm.
-/// Only called when one of those optional features is enabled, hence the `allow`.
-#[cfg_attr(
-    not(any(feature = "arbitrary", feature = "proptest")),
-    allow(dead_code)
-)]
 fn compute_valid_check_digits(base: &[u8; BASE_LEN]) -> (u8, u8) {
-    let base_values: [u32; BASE_LEN] = core::array::from_fn(|i| char_value(base[i]));
+    let base_values: [u32; BASE_LEN] = base.map(char_value);
     let dv1 = compute_check_digit(&base_values, &WEIGHTS_DV1);
 
-    let mut dv2_input = [0u32; BASE_LEN + 1];
-    dv2_input[..BASE_LEN].copy_from_slice(&base_values);
-    dv2_input[BASE_LEN] = dv1 as u32;
+    let dv2_input: [u32; BASE_LEN + 1] = core::array::from_fn(|i| {
+        base_values
+            .get(i)
+            .copied()
+            .unwrap_or_else(|| u32::from(dv1))
+    });
+
     let dv2 = compute_check_digit(&dv2_input, &WEIGHTS_DV2);
 
     (dv1, dv2)
@@ -736,12 +743,18 @@ fn compute_valid_check_digits(base: &[u8; BASE_LEN]) -> (u8, u8) {
 /// weighted sum, remainder mod 11, then `0` if the remainder is `0` or `1`, otherwise `11 - remainder`.
 fn compute_check_digit(values: &[u32], weights: &[u32]) -> u8 {
     debug_assert_eq!(values.len(), weights.len());
-    let sum: u32 = values.iter().zip(weights).map(|(v, w)| v * w).sum();
-    let remainder = sum % 11;
+
+    let sum: u32 = values
+        .iter()
+        .zip(weights)
+        .fold(0u32, |acc, (v, w)| acc.saturating_add(v.saturating_mul(*w)));
+
+    let remainder = sum.checked_rem(11).unwrap_or(0);
+
     if remainder < 2 {
         0
     } else {
-        (11 - remainder) as u8
+        u8::try_from(11_u32.saturating_sub(remainder)).unwrap_or(0)
     }
 }
 
@@ -852,15 +865,19 @@ fn normalize(input: &str) -> Result<[u8; 14], CnpjError> {
     }
 
     let mut buf = [0u8; 14];
-    for (i, ch) in meaningful.enumerate() {
+    for (i, (slot, ch)) in buf.iter_mut().zip(meaningful).enumerate() {
         if !ch.is_ascii() {
             return Err(CnpjError::InvalidCharacter {
                 character: ch,
-                position: (i + 1) as u8,
+                // i is bounded by 14, so try_from will never fail.
+                // unwrap_or(0) satisfies the type system and linter safely
+                position: u8::try_from(i).unwrap_or(0).saturating_add(1),
                 expected: CharacterClass::Alphanumeric,
             });
         }
-        buf[i] = ch.to_ascii_uppercase() as u8;
+        // We just checked !ch.is_ascii(), so this try_from is guaranteed to succeed.
+        // unwrap_or(b'\0') provides a safe, unreachable fallback.
+        *slot = u8::try_from(u32::from(ch.to_ascii_uppercase())).unwrap_or(b'\0');
     }
 
     Ok(buf)
