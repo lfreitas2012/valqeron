@@ -29,6 +29,9 @@ pub enum IssuerNameError {
 }
 
 impl IssuerName {
+    /// # Errors
+    ///
+    /// Returns `IssuerNameError`.
     pub fn new(value: impl Into<String>) -> Result<Self, IssuerNameError> {
         let value = value.into();
         let trimmed = value.trim();
@@ -45,6 +48,7 @@ impl IssuerName {
         Ok(Self(trimmed.into()))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -54,22 +58,27 @@ impl IssuerName {
 pub struct IssuerId(Uuid);
 
 impl IssuerId {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())
     }
 
+    #[must_use]
     pub fn from_uuid(uuid: Uuid) -> Self {
         Self(uuid)
     }
 
+    #[must_use]
     pub fn value(&self) -> String {
         self.0.to_string()
     }
 
+    #[must_use]
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -95,10 +104,12 @@ pub enum IssuerStatusError {
 }
 
 impl IssuerStatus {
+    #[must_use]
     pub fn is_active(&self) -> bool {
         matches!(self, IssuerStatus::Active)
     }
 
+    #[must_use]
     pub fn is_retired(&self) -> bool {
         matches!(self, IssuerStatus::Retired)
     }
@@ -125,7 +136,7 @@ impl From<IssuerStatus> for String {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Issuer {
     id: IssuerId,
     status: IssuerStatus,
@@ -152,36 +163,46 @@ pub struct IssuerSnapshot {
 }
 
 impl Issuer {
+    #[must_use]
     pub fn builder() -> IssuerBuilder {
         IssuerBuilder::new()
     }
 
+    #[must_use]
     pub fn id(&self) -> &IssuerId {
         &self.id
     }
+    #[must_use]
     pub fn status(&self) -> IssuerStatus {
         self.status
     }
+    #[must_use]
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
     }
+    #[must_use]
     pub fn name(&self) -> Option<&IssuerName> {
         self.name.as_ref()
     }
+    #[must_use]
     pub fn cnpj(&self) -> Option<&Cnpj> {
         self.cnpj.as_ref()
     }
+    #[must_use]
     pub fn lei(&self) -> Option<&Lei> {
         self.lei.as_ref()
     }
+    #[must_use]
     pub fn country_code(&self) -> Option<&CountryCode> {
         self.country_code.as_ref()
     }
 
+    #[must_use]
     pub fn securities(&self) -> Option<&[Security]> {
         self.securities.as_loaded().map(Vec::as_slice)
     }
 
+    #[must_use]
     pub fn reconstitute(snapshot: IssuerSnapshot) -> Self {
         Self {
             id: snapshot.id,
@@ -220,45 +241,56 @@ pub struct IssuerBuilder {
 }
 
 impl IssuerBuilder {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn id(mut self, id: IssuerId) -> Self {
         self.id = Some(id);
         self
     }
 
+    #[must_use]
     pub fn status(mut self, status: IssuerStatus) -> Self {
         self.status = Some(status);
         self
     }
 
+    #[must_use]
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
         self
     }
 
+    #[must_use]
     pub fn name(mut self, name: IssuerName) -> Self {
         self.name = Some(name);
         self
     }
 
+    #[must_use]
     pub fn cnpj(mut self, cnpj: Cnpj) -> Self {
         self.cnpj = Some(cnpj);
         self
     }
 
+    #[must_use]
     pub fn lei(mut self, lei: Lei) -> Self {
         self.lei = Some(lei);
         self
     }
 
+    #[must_use]
     pub fn country_code(mut self, country_code: CountryCode) -> Self {
         self.country_code = Some(country_code);
         self
     }
 
+    /// # Errors
+    ///
+    /// Returns `IssuerBuilderError`.
     pub fn build(self) -> Result<Issuer, IssuerBuilderError> {
         let id = self.id.unwrap_or_default();
         let status = self.status.unwrap_or_default();
@@ -490,14 +522,23 @@ delegate_issuer_repository!(Arc<R>);
 
 #[cfg_attr(test, mockall::automock)]
 pub trait IssuerRepository {
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn find_by_id(
         &self,
         id: &IssuerId,
         mode: LoadMode,
     ) -> RepositoryResult<Option<Versioned<Issuer>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn list_paged(
         &self,
         after: Option<IssuerId>,
@@ -505,14 +546,29 @@ pub trait IssuerRepository {
         mode: LoadMode,
     ) -> RepositoryResult<Vec<Versioned<Issuer>>>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists_by_cnpj(&self, cnpj: &Cnpj) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn exists_by_lei(&self, lei: &Lei) -> RepositoryResult<bool>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn insert(&self, issuer: &Issuer) -> RepositoryResult<()>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn apply_patch(
         &self,
         id: &IssuerId,
@@ -520,8 +576,14 @@ pub trait IssuerRepository {
         patch: IssuerPatch,
     ) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn update(&self, issuer: &Issuer, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 
+    /// # Errors
+    ///
+    /// Returns `StorageFault`.
     fn delete(&self, id: &IssuerId, expected_version: u32) -> RepositoryResult<WriteOutcome>;
 }
 
@@ -538,6 +600,9 @@ pub enum RegisterIssuerError {
     Storage(#[from] StorageFault),
 }
 
+/// # Errors
+///
+/// Returns `RegisterIssuerError`.
 pub fn register_issuer<R: IssuerRepository + ?Sized>(
     repo: &R,
     issuer: &Issuer,
@@ -556,6 +621,95 @@ pub fn register_issuer<R: IssuerRepository + ?Sized>(
 
     repo.insert(issuer)?;
     Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GetIssuerError {
+    #[error(transparent)]
+    Storage(#[from] StorageFault),
+}
+
+/// # Errors
+///
+/// Returns `GetIssuerError`.
+pub fn get_issuer<R: IssuerRepository + ?Sized>(
+    repo: &R,
+    id: &IssuerId,
+    mode: LoadMode,
+) -> Result<Option<Versioned<Issuer>>, GetIssuerError> {
+    Ok(repo.find_by_id(id, mode)?)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ListIssuersError {
+    #[error(transparent)]
+    Storage(#[from] StorageFault),
+}
+
+/// # Errors
+///
+/// Returns `ListIssuersError`.
+pub fn list_issuers<R: IssuerRepository + ?Sized>(
+    repo: &R,
+    after: Option<IssuerId>,
+    limit: u32,
+    mode: LoadMode,
+) -> Result<Vec<Versioned<Issuer>>, ListIssuersError> {
+    Ok(repo.list_paged(after, limit, mode)?)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PatchIssuerError {
+    #[error("an issuer with this CNPJ already exists")]
+    DuplicateCnpj,
+
+    #[error("an issuer with this LEI already exists")]
+    DuplicateLei,
+
+    #[error(transparent)]
+    Storage(#[from] StorageFault),
+}
+
+/// # Errors
+///
+/// Returns `PatchIssuerError`.
+pub fn patch_issuer<R: IssuerRepository + ?Sized>(
+    repo: &R,
+    id: &IssuerId,
+    expected_version: u32,
+    patch: IssuerPatch,
+) -> Result<WriteOutcome, PatchIssuerError> {
+    // Optional domain-level guardrails before hitting the repo
+    if let Some(cnpj) = patch.cnpj()
+        && repo.exists_by_cnpj(cnpj)?
+    {
+        return Err(PatchIssuerError::DuplicateCnpj);
+    }
+
+    if let Some(lei) = patch.lei()
+        && repo.exists_by_lei(lei)?
+    {
+        return Err(PatchIssuerError::DuplicateLei);
+    }
+
+    Ok(repo.apply_patch(id, expected_version, patch)?)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DeleteIssuerError {
+    #[error(transparent)]
+    Storage(#[from] StorageFault),
+}
+
+/// # Errors
+///
+/// Returns `DeleteIssuerError`.
+pub fn delete_issuer<R: IssuerRepository + ?Sized>(
+    repo: &R,
+    id: &IssuerId,
+    expected_version: u32,
+) -> Result<WriteOutcome, DeleteIssuerError> {
+    Ok(repo.delete(id, expected_version)?)
 }
 
 #[cfg(test)]

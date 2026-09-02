@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::common::UniqueIdentifier;
 use chrono::{DateTime, Utc};
 use std::fmt;
@@ -109,7 +111,7 @@ impl ScheduledBackgroundTask<Pending> {
             id: self.id,
             name: self.name,
             attempts: TaskAttemptTracker {
-                current_attempt: self.attempts.current_attempt + 1,
+                current_attempt: self.attempts.current_attempt.saturating_add(1),
                 ..self.attempts
             },
             state: Running,
@@ -180,7 +182,7 @@ impl ScheduledBackgroundTask<Retrying> {
             id: self.id,
             name: self.name,
             attempts: TaskAttemptTracker {
-                current_attempt: self.attempts.current_attempt + 1,
+                current_attempt: self.attempts.current_attempt.saturating_add(1),
                 ..self.attempts
             },
             state: Running,

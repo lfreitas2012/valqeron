@@ -334,7 +334,7 @@ impl Cnpj {
     #[inline]
     #[must_use]
     pub fn root(&self) -> &str {
-        &self.as_str()[0..8]
+        self.as_str().get(0..8).unwrap_or("")
     }
 
     /// Returns the 4-character branch/order segment.
@@ -352,7 +352,7 @@ impl Cnpj {
     #[inline]
     #[must_use]
     pub fn branch_code(&self) -> &str {
-        &self.as_str()[8..12]
+        self.as_str().get(8..12).unwrap_or("")
     }
 
     /// Returns `true` when the branch/order segment is `"0001"`.
@@ -407,7 +407,10 @@ impl Cnpj {
     #[inline]
     #[must_use]
     pub fn check_digits(&self) -> (u8, u8) {
-        (self.bytes[12] - b'0', self.bytes[13] - b'0')
+        (
+            self.bytes[12].saturating_sub(b'0'),
+            self.bytes[13].saturating_sub(b'0'),
+        )
     }
 }
 
@@ -648,7 +651,7 @@ fn validate(candidate: &[u8; 14]) -> Result<(), CnpjError> {
 /// as a special case.
 #[inline]
 fn char_value(byte: u8) -> u32 {
-    (byte - b'0') as u32
+    u32::from(byte.saturating_sub(b'0'))
 }
 
 fn validate_character_classes(candidate: &[u8; 14]) -> Result<(), CnpjError> {
@@ -658,22 +661,23 @@ fn validate_character_classes(candidate: &[u8; 14]) -> Result<(), CnpjError> {
         } else {
             byte.is_ascii_digit()
         };
+
         if !is_valid {
             let expected = if i < BASE_LEN {
                 CharacterClass::Alphanumeric
             } else {
                 CharacterClass::Digit
             };
+
             return Err(CnpjError::InvalidCharacter {
-                character: byte as char,
-                position: (i + 1) as u8,
+                character: char::from(byte),
+                position: u8::try_from(i).unwrap_or(0).saturating_add(1),
                 expected,
             });
         }
     }
     Ok(())
 }
-
 fn validate_not_repeated(candidate: &[u8; 14]) -> Result<(), CnpjError> {
     if candidate.iter().all(|&b| b == candidate[0]) {
         return Err(CnpjError::RepeatedDigits);
@@ -924,6 +928,7 @@ impl<'de> Deserialize<'de> for Cnpj {
 }
 
 // ================================= SCHEMARS, PROPTEST, ARBITRARY =================================
+#[cfg(any(feature = "proptest", feature = "arbitrary"))]
 const ALPHABET: &[u8; 36] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 #[cfg(feature = "schemars")]
