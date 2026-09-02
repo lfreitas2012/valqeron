@@ -3,8 +3,7 @@ use std::path::Path;
 use valqeron_core::{Repositories, StorageEngine, StorageError};
 
 use crate::sqlite::database::{Database, DatabaseConfig, WalCheckpointStats};
-use crate::sqlite::issuer::SqliteIssuerRepository;
-use crate::sqlite::security::SqliteSecurityRepository;
+use crate::sqlite::repositories::{SqliteIssuerRepository, SqliteSecurityRepository};
 
 pub struct SqliteStorageEngine {
     db: Database,

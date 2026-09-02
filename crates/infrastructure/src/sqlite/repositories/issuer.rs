@@ -1,19 +1,61 @@
-use std::collections::HashMap;
-
 use crate::sqlite::database::{Db, DbHandle};
-use crate::sqlite::issuer::model::IssuerRow;
-use crate::sqlite::issuer::queries;
-use crate::sqlite::security::model::SecurityRow;
-use crate::sqlite::security::queries as security_queries;
+use crate::sqlite::repositories::securities::{
+    SecurityRow, list_by_issuer, security_columns_qualified,
+};
+use crate::sqlite::row::{
+    FromRow, canonical_timestamp, column_datetime, column_index, column_uuid, conversion_failure,
+};
 use crate::sqlite::support::{backend, with_busy_retry, write_outcome};
+use rusqlite::types::Type;
+use rusqlite::{Connection, OptionalExtension, Row, params};
+use std::collections::HashMap;
+use std::str::FromStr;
 use uuid::Uuid;
+use valqeron_core::Cnpj;
 use valqeron_core::common::{LoadMode, Loading, RepositoryResult, Versioned, WriteOutcome};
 use valqeron_core::domain::issuer::{
-    Issuer, IssuerId, IssuerPatch, IssuerRepository, IssuerSnapshot,
+    Issuer, IssuerId, IssuerName, IssuerPatch, IssuerRepository, IssuerSnapshot, IssuerStatus,
 };
 use valqeron_core::domain::security::Security;
-use valqeron_identifiers::{Cnpj, Lei};
+use valqeron_identifiers::{CountryCode, Lei};
 
+// ======================== MODEL ========================
+/// One `issuer` row, mapped to a snapshot rather than the entity so the
+/// repository can decide how to satisfy the requested
+/// [`valqeron_core::LoadMode`]: reconstitute immediately (lazy,
+/// `Loading::NotLoaded`) or attach the batch-loaded securities first
+/// (eager).
+#[derive(Debug)]
+pub(crate) struct IssuerRow(pub Versioned<IssuerSnapshot>);
+
+impl IssuerRow {
+    pub(crate) fn into_inner(self) -> Versioned<IssuerSnapshot> {
+        self.0
+    }
+}
+
+impl FromRow for IssuerRow {
+    fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        let snapshot = IssuerSnapshot {
+            id: column_issuer_id(row, "id")?,
+            status: column_status(row, "status")?,
+            created_at: column_datetime(row, "created_at")?,
+            name: column_opt_name(row, "name")?,
+            cnpj: column_opt_cnpj(row, "cnpj")?,
+            lei: column_opt_lei(row, "lei")?,
+            country_code: column_opt_country_code(row, "country_code")?,
+            securities: Loading::NotLoaded,
+        };
+        let version: u32 = row.get("version")?;
+
+        Ok(Self(Versioned {
+            data: snapshot,
+            version,
+        }))
+    }
+}
+
+// ======================== REPOSITORY ========================
 const ISSUER_VERSION_SQL: &str = "SELECT version FROM issuer WHERE id = ?1";
 
 pub struct SqliteIssuerRepository {
@@ -79,14 +121,14 @@ impl IssuerRepository for SqliteIssuerRepository {
         mode: LoadMode,
     ) -> RepositoryResult<Option<Versioned<Issuer>>> {
         let conn = self.db.read();
-        let Some(row) = queries::find_by_id(&conn, id).map_err(backend)? else {
+        let Some(row) = find_by_id(&conn, id).map_err(backend)? else {
             return Ok(None);
         };
 
         match mode {
             LoadMode::Lazy => Ok(Some(reconstitute_lazy(row))),
             LoadMode::Eager => {
-                let securities = security_queries::list_by_issuer(&conn, id)
+                let securities = list_by_issuer(&conn, id)
                     .map_err(backend)?
                     .into_iter()
                     .map(|row| row.into_inner().data)
@@ -98,12 +140,12 @@ impl IssuerRepository for SqliteIssuerRepository {
 
     fn list_all(&self, mode: LoadMode) -> RepositoryResult<Vec<Versioned<Issuer>>> {
         let conn = self.db.read();
-        let rows = queries::list_all(&conn).map_err(backend)?;
+        let rows = list_all(&conn).map_err(backend)?;
 
         match mode {
             LoadMode::Lazy => Ok(rows.into_iter().map(reconstitute_lazy).collect()),
             LoadMode::Eager => {
-                let securities = queries::securities_for_all_issuers(&conn).map_err(backend)?;
+                let securities = securities_for_all_issuers(&conn).map_err(backend)?;
                 Ok(hydrate_rows(rows, securities))
             }
         }
@@ -116,13 +158,13 @@ impl IssuerRepository for SqliteIssuerRepository {
         mode: LoadMode,
     ) -> RepositoryResult<Vec<Versioned<Issuer>>> {
         let conn = self.db.read();
-        let rows = queries::list_paged(&conn, after.as_ref(), limit).map_err(backend)?;
+        let rows = list_paged(&conn, after.as_ref(), limit).map_err(backend)?;
 
         match mode {
             LoadMode::Lazy => Ok(rows.into_iter().map(reconstitute_lazy).collect()),
             LoadMode::Eager => {
-                let securities = queries::securities_for_issuer_page(&conn, after.as_ref(), limit)
-                    .map_err(backend)?;
+                let securities =
+                    securities_for_issuer_page(&conn, after.as_ref(), limit).map_err(backend)?;
                 Ok(hydrate_rows(rows, securities))
             }
         }
@@ -130,23 +172,23 @@ impl IssuerRepository for SqliteIssuerRepository {
 
     fn exists(&self, id: &IssuerId) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists(&conn, id).map_err(backend)
+        exists(&conn, id).map_err(backend)
     }
 
     fn exists_by_cnpj(&self, cnpj: &Cnpj) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists_by_cnpj(&conn, cnpj).map_err(backend)
+        exists_by_cnpj(&conn, cnpj).map_err(backend)
     }
 
     fn exists_by_lei(&self, lei: &Lei) -> RepositoryResult<bool> {
         let conn = self.db.read();
-        queries::exists_by_lei(&conn, lei).map_err(backend)
+        exists_by_lei(&conn, lei).map_err(backend)
     }
 
     fn insert(&self, issuer: &Issuer) -> RepositoryResult<()> {
         with_busy_retry(|| {
             let conn = self.db.write();
-            queries::insert(&conn, issuer).map(|_| ())
+            insert(&conn, issuer).map(|_| ())
         })
         .map_err(backend)
     }
@@ -159,7 +201,7 @@ impl IssuerRepository for SqliteIssuerRepository {
     ) -> RepositoryResult<WriteOutcome> {
         with_busy_retry(|| {
             let conn = self.db.write();
-            match queries::apply_patch(&conn, id, expected_version, &patch)? {
+            match apply_patch(&conn, id, expected_version, &patch)? {
                 0 => write_outcome(&conn, ISSUER_VERSION_SQL, id.as_bytes(), expected_version),
                 _ => Ok(WriteOutcome::Applied),
             }
@@ -171,7 +213,7 @@ impl IssuerRepository for SqliteIssuerRepository {
         let id = issuer.id();
         with_busy_retry(|| {
             let conn = self.db.write();
-            match queries::update(&conn, issuer, expected_version)? {
+            match update(&conn, issuer, expected_version)? {
                 0 => write_outcome(&conn, ISSUER_VERSION_SQL, id.as_bytes(), expected_version),
                 _ => Ok(WriteOutcome::Applied),
             }
@@ -182,7 +224,7 @@ impl IssuerRepository for SqliteIssuerRepository {
     fn delete(&self, id: &IssuerId, expected_version: u32) -> RepositoryResult<WriteOutcome> {
         with_busy_retry(|| {
             let conn = self.db.write();
-            match queries::delete(&conn, id, expected_version)? {
+            match delete(&conn, id, expected_version)? {
                 0 => write_outcome(&conn, ISSUER_VERSION_SQL, id.as_bytes(), expected_version),
                 _ => Ok(WriteOutcome::Applied),
             }
@@ -191,18 +233,240 @@ impl IssuerRepository for SqliteIssuerRepository {
     }
 }
 
+// ======================== QUERIES ========================
+const ISSUER_COLUMNS: &str = "id, name, status, created_at, cnpj, lei, country_code, version";
+
+fn find_by_id(conn: &Connection, id: &IssuerId) -> rusqlite::Result<Option<IssuerRow>> {
+    let sql = format!("SELECT {ISSUER_COLUMNS} FROM issuer WHERE id = ?1");
+    let mut stmt = conn.prepare_cached(&sql)?;
+    stmt.query_row(params![id.as_bytes()], IssuerRow::from_row)
+        .optional()
+}
+
+fn list_all(conn: &Connection) -> rusqlite::Result<Vec<IssuerRow>> {
+    let sql = format!("SELECT {ISSUER_COLUMNS} FROM issuer ORDER BY id");
+    let mut stmt = conn.prepare_cached(&sql)?;
+
+    stmt.query_map([], IssuerRow::from_row)?.collect()
+}
+
+fn list_paged(
+    conn: &Connection,
+    after: Option<&IssuerId>,
+    limit: u32,
+) -> rusqlite::Result<Vec<IssuerRow>> {
+    match after {
+        Some(id) => {
+            let sql =
+                format!("SELECT {ISSUER_COLUMNS} FROM issuer WHERE id > ?1 ORDER BY id LIMIT ?2");
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![id.as_bytes(), limit], IssuerRow::from_row)?
+                .collect()
+        }
+        None => {
+            let sql = format!("SELECT {ISSUER_COLUMNS} FROM issuer ORDER BY id LIMIT ?1");
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![limit], IssuerRow::from_row)?
+                .collect()
+        }
+    }
+}
+
+fn exists(conn: &Connection, id: &IssuerId) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare_cached("SELECT 1 FROM issuer WHERE id = ?1")?;
+    stmt.query_row(params![id.as_bytes()], |_| Ok(()))
+        .optional()
+        .map(|found| found.is_some())
+}
+
+fn exists_by_cnpj(conn: &Connection, cnpj: &Cnpj) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare_cached("SELECT 1 FROM issuer WHERE cnpj = ?1")?;
+    stmt.query_row(params![cnpj.as_str()], |_| Ok(()))
+        .optional()
+        .map(|found| found.is_some())
+}
+
+fn exists_by_lei(conn: &Connection, lei: &Lei) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare_cached("SELECT 1 FROM issuer WHERE lei = ?1")?;
+    stmt.query_row(params![lei.as_str()], |_| Ok(()))
+        .optional()
+        .map(|found| found.is_some())
+}
+
+fn insert(conn: &Connection, issuer: &Issuer) -> rusqlite::Result<usize> {
+    let mut stmt = conn.prepare_cached(
+        "INSERT INTO issuer (id, name, status, created_at, cnpj, lei, country_code)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?;
+    stmt.execute(params![
+        issuer.id().as_bytes(),
+        issuer.name().map(IssuerName::as_str),
+        status_as_str(issuer.status()),
+        canonical_timestamp(issuer.created_at()),
+        issuer.cnpj().map(|c| c.as_str()),
+        issuer.lei().map(|l| l.as_str()),
+        issuer.country_code().map(|c| c.as_str()),
+    ])
+}
+
+fn apply_patch(
+    conn: &Connection,
+    id: &IssuerId,
+    expected_version: u32,
+    patch: &IssuerPatch,
+) -> rusqlite::Result<usize> {
+    let mut stmt = conn.prepare_cached(
+        "UPDATE issuer SET
+            name = COALESCE(?2, name),
+            status = COALESCE(?3, status),
+            cnpj = COALESCE(?4, cnpj),
+            lei = COALESCE(?5, lei),
+            country_code = COALESCE(?6, country_code),
+            version = version + 1
+         WHERE id = ?1 AND version = ?7",
+    )?;
+    stmt.execute(params![
+        id.as_bytes(),
+        patch.name().map(IssuerName::as_str),
+        patch.status().map(status_as_str),
+        patch.cnpj().map(|c| c.as_str()),
+        patch.lei().map(|l| l.as_str()),
+        patch.country_code().map(|c| c.as_str()),
+        expected_version,
+    ])
+}
+
+fn update(conn: &Connection, issuer: &Issuer, expected_version: u32) -> rusqlite::Result<usize> {
+    let mut stmt = conn.prepare_cached(
+        "UPDATE issuer SET
+            name = ?2,
+            status = ?3,
+            cnpj = ?4,
+            lei = ?5,
+            country_code = ?6,
+            version = version + 1
+         WHERE id = ?1 AND version = ?7",
+    )?;
+    stmt.execute(params![
+        issuer.id().as_bytes(),
+        issuer.name().map(IssuerName::as_str),
+        status_as_str(issuer.status()),
+        issuer.cnpj().map(|c| c.as_str()),
+        issuer.lei().map(|l| l.as_str()),
+        issuer.country_code().map(|c| c.as_str()),
+        expected_version,
+    ])
+}
+
+fn delete(conn: &Connection, id: &IssuerId, expected_version: u32) -> rusqlite::Result<usize> {
+    let mut stmt = conn.prepare_cached("DELETE FROM issuer WHERE id = ?1 AND version = ?2")?;
+    stmt.execute(params![id.as_bytes(), expected_version])
+}
+
+// Eager-hydration companions: each read shape has exactly one batched
+// securities query, so hydrating N issuers always costs 2 statements
+// (issuers + securities), never 1 + N.
+
+/// Securities of every issuer, ordered by owner for in-memory grouping.
+/// Companion to `list_all`.
+fn securities_for_all_issuers(conn: &Connection) -> rusqlite::Result<Vec<SecurityRow>> {
+    let columns = security_columns_qualified("s");
+    let sql = format!("SELECT {columns} FROM security s ORDER BY s.issuer_id, s.id");
+    let mut stmt = conn.prepare_cached(&sql)?;
+
+    stmt.query_map([], SecurityRow::from_row)?.collect()
+}
+
+/// Securities of exactly the issuers a `list_paged` call returns, obtained
+/// by joining against the identical keyset-page subquery. Companion to
+/// `list_paged`.
+fn securities_for_issuer_page(
+    conn: &Connection,
+    after: Option<&IssuerId>,
+    limit: u32,
+) -> rusqlite::Result<Vec<SecurityRow>> {
+    let columns = security_columns_qualified("s");
+    match after {
+        Some(id) => {
+            let sql = format!(
+                "SELECT {columns} FROM security s
+                 JOIN (SELECT id FROM issuer WHERE id > ?1 ORDER BY id LIMIT ?2) page
+                   ON s.issuer_id = page.id
+                 ORDER BY s.issuer_id, s.id"
+            );
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![id.as_bytes(), limit], SecurityRow::from_row)?
+                .collect()
+        }
+        None => {
+            let sql = format!(
+                "SELECT {columns} FROM security s
+                 JOIN (SELECT id FROM issuer ORDER BY id LIMIT ?1) page
+                   ON s.issuer_id = page.id
+                 ORDER BY s.issuer_id, s.id"
+            );
+            let mut stmt = conn.prepare_cached(&sql)?;
+            stmt.query_map(params![limit], SecurityRow::from_row)?
+                .collect()
+        }
+    }
+}
+
+// ======================== MAPPINGS ========================
+fn column_issuer_id(row: &Row, name: &str) -> rusqlite::Result<IssuerId> {
+    column_uuid(row, name).map(IssuerId::from_uuid)
+}
+
+fn column_status(row: &Row, name: &str) -> rusqlite::Result<IssuerStatus> {
+    let raw: String = row.get(name)?;
+    IssuerStatus::from_str(&raw)
+        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
+}
+
+fn column_opt_name(row: &Row, name: &str) -> rusqlite::Result<Option<IssuerName>> {
+    let raw: Option<String> = row.get(name)?;
+    raw.map(IssuerName::new)
+        .transpose()
+        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
+}
+
+fn column_opt_cnpj(row: &Row, name: &str) -> rusqlite::Result<Option<Cnpj>> {
+    let raw: Option<String> = row.get(name)?;
+    raw.map(|s| Cnpj::new(&s))
+        .transpose()
+        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
+}
+
+fn column_opt_lei(row: &Row, name: &str) -> rusqlite::Result<Option<Lei>> {
+    let raw: Option<String> = row.get(name)?;
+    raw.map(|s| Lei::new(&s))
+        .transpose()
+        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
+}
+
+fn column_opt_country_code(row: &Row, name: &str) -> rusqlite::Result<Option<CountryCode>> {
+    let raw: Option<String> = row.get(name)?;
+    raw.map(|s| CountryCode::from_str(&s))
+        .transpose()
+        .map_err(|e| conversion_failure(column_index(row, name), Type::Text, e))
+}
+
+fn status_as_str(status: IssuerStatus) -> String {
+    status.into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sqlite::database::{Database, TempDatabase};
-    use crate::sqlite::security::SqliteSecurityRepository;
+    use crate::sqlite::repositories::securities::SqliteSecurityRepository;
     use chrono::Utc;
     use std::str::FromStr;
     use valqeron_core::domain::issuer::{IssuerName, IssuerStatus};
     use valqeron_core::domain::security::{
         SecurityId, SecurityKind, SecurityName, SecurityRepository, SecurityStatus,
     };
-    use valqeron_identifiers::{Cnpj, CountryCode, Lei};
+    use valqeron_identifiers::{CountryCode, Lei};
 
     fn test_repo() -> (TempDatabase, SqliteIssuerRepository) {
         let db = Database::open_temp();
@@ -849,5 +1113,120 @@ mod tests {
         assert_eq!(child.kind(), SecurityKind::PreferredShare);
         assert_eq!(child.name().unwrap().as_str(), "Acme PN");
         assert_eq!(child.isin(), security.isin());
+    }
+}
+
+#[cfg(test)]
+mod tests_models {
+    use super::*;
+    use crate::sqlite::database::{Database, Db};
+    use std::str::FromStr;
+    use valqeron_core::domain::issuer::{IssuerId, IssuerStatus};
+    use valqeron_identifiers::CountryCode;
+
+    #[test]
+    fn issuer_row_round_trips_all_columns() {
+        let db = Database::open_temp();
+        let handle = db.handle();
+
+        let id = IssuerId::new();
+        {
+            let conn = handle.write();
+            conn.execute(
+                "INSERT INTO issuer (id, name, status, created_at, cnpj, lei, country_code, version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    id.as_bytes(),
+                    "Acme Corp",
+                    "RETIRED",
+                    "2026-01-02T03:04:05+00:00",
+                    "12.345.678/0001-95",
+                    Option::<String>::None,
+                    "BR",
+                    7u32,
+                ],
+            )
+                .unwrap();
+        }
+
+        let conn = handle.read();
+        let row = conn
+            .query_row(
+                "SELECT id, name, status, created_at, cnpj, lei, country_code, version
+                 FROM issuer WHERE id = ?1",
+                rusqlite::params![id.as_bytes()],
+                IssuerRow::from_row,
+            )
+            .unwrap();
+
+        let Versioned { data, version } = row.into_inner();
+        assert_eq!(data.id, id);
+        assert_eq!(data.status, IssuerStatus::Retired);
+        assert_eq!(data.created_at.to_rfc3339(), "2026-01-02T03:04:05+00:00");
+        assert_eq!(data.name.unwrap().as_str(), "Acme Corp");
+        assert_eq!(data.cnpj.unwrap(), Cnpj::new("12.345.678/0001-95").unwrap());
+        assert!(data.lei.is_none());
+        assert_eq!(
+            data.country_code.unwrap(),
+            CountryCode::from_str("BR").unwrap()
+        );
+        assert!(
+            matches!(data.securities, Loading::NotLoaded),
+            "row mapping alone must not claim the securities relation was fetched"
+        );
+        assert_eq!(version, 7);
+    }
+
+    #[test]
+    fn issuer_row_maps_null_optionals_to_none() {
+        let db = Database::open_temp();
+        let handle = db.handle();
+
+        let id = IssuerId::new();
+        {
+            let conn = handle.write();
+            conn.execute(
+                "INSERT INTO issuer (id, status, created_at) VALUES (?1, 'ACTIVE', ?2)",
+                rusqlite::params![id.as_bytes(), "2026-01-01T00:00:00+00:00"],
+            )
+            .unwrap();
+        }
+
+        let conn = handle.read();
+        let row = conn
+            .query_row(
+                "SELECT id, name, status, created_at, cnpj, lei, country_code, version
+                 FROM issuer WHERE id = ?1",
+                rusqlite::params![id.as_bytes()],
+                IssuerRow::from_row,
+            )
+            .unwrap();
+
+        let snapshot = row.into_inner().data;
+        assert!(snapshot.name.is_none());
+        assert!(snapshot.cnpj.is_none());
+        assert!(snapshot.lei.is_none());
+        assert!(snapshot.country_code.is_none());
+        assert_eq!(snapshot.status, IssuerStatus::Active);
+    }
+
+    #[test]
+    fn issuer_row_rejects_invalid_status() {
+        let db = Database::open_temp();
+        let handle = db.handle();
+
+        let conn = handle.read();
+        let result: rusqlite::Result<IssuerRow> = conn.query_row(
+            "SELECT randomblob(16) AS id, NULL AS name, 'BOGUS' AS status,
+                    '2026-01-01T00:00:00+00:00' AS created_at, NULL AS cnpj,
+                    NULL AS lei, NULL AS country_code, 1 AS version",
+            [],
+            IssuerRow::from_row,
+        );
+
+        assert!(matches!(
+            result,
+            Err(rusqlite::Error::FromSqlConversionFailure(..))
+        ));
     }
 }
