@@ -99,40 +99,6 @@ message WriteOutcomeProto {
   }
 }
 
-// Errors travel as plain gRPC statuses: a tonic code plus the engine error's
-// human-readable message. (Protocol v2 removed the former RFC-7807
-// ProblemDetailProto status-details payload — nothing consumed it.)
-
-message HealthRequestProto {}
-
-message HealthResponseProto {
-  string engine_version = 1;
-  uint32 protocol_version = 2;
-}
-
-message StatusRequestProto {}
-
-message StatusResponseProto {
-  string engine_version = 1;
-  uint32 protocol_version = 2;
-  uint32 pid = 5;
-}
-
-message BackgroundTaskDetail {
-  bytes id = 1;
-  string name = 2;
-  google.protobuf.Timestamp created_at = 3;
-}
-
-message ListBackgroundTasksRequestProto {
-}
-
-message ListBackgroundTasksResponseProto {
-  string engine_version = 1;
-  uint32 protocol_version = 2;
-  repeated BackgroundTaskDetail tasks = 3;
-}
-
 service RpcIssuerService {
   rpc Register(RegisterIssuerRequestProto) returns (RegisterIssuerResponseProto);
   rpc Get(GetIssuerRequestProto) returns (GetIssuerResponseProto);
@@ -141,8 +107,3 @@ service RpcIssuerService {
   rpc Delete(DeleteIssuerRequestProto) returns (DeleteIssuerResponseProto);
 }
 
-service RpcAdminService {
-  rpc Health(HealthRequestProto) returns (HealthResponseProto);
-  rpc Status(StatusRequestProto) returns (StatusResponseProto);
-  rpc ListBackgroundTasks(ListBackgroundTasksRequestProto) returns (ListBackgroundTasksResponseProto);
-}
