@@ -25,7 +25,10 @@ pub struct SocketPath(pub(crate) PathBuf);
 
 impl SocketPath {
     pub fn resolve() -> Result<Self, ClientError> {
-        Self::resolve_with(env::var_os(SOCKET_ENV))
+        let project_data_dir =
+            resolve_default_project_dir().map(|dirs| dirs.data_local_dir().to_path_buf());
+
+        Self::resolve_with(env::var_os(SOCKET_ENV), project_data_dir)
     }
 
     pub fn exists() -> Result<bool, ClientError> {
@@ -33,15 +36,17 @@ impl SocketPath {
         Ok(path.0.exists())
     }
 
-    fn resolve_with(env_value: Option<OsString>) -> Result<Self, ClientError> {
+    fn resolve_with(
+        env_value: Option<OsString>,
+        project_data_dir: Option<PathBuf>,
+    ) -> Result<Self, ClientError> {
         if let Some(value) = env_value {
             if !value.is_empty() {
                 return Ok(Self(PathBuf::from(value)));
             }
         }
 
-        resolve_default_project_dir()
-            .map(|dirs| dirs.data_local_dir().to_path_buf())
+        project_data_dir
             .map(|dir| Self(dir.join(DEFAULT_RPC_SOCKET_FILE_NAME)))
             .ok_or(ClientError::Config(format!(
                 "could not determine socket path; set {SOCKET_ENV}"

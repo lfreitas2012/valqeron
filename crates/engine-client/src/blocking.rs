@@ -9,7 +9,7 @@ use crate::issuer::{
 };
 use crate::{BackgroundTaskDetail, ClientError, EngineInfo, EngineStatus};
 use tokio::runtime::Runtime;
-use valqeron_core::common::{Versioned, WriteOutcome};
+use valqeron_core::common::{UniqueIdentifier, Versioned, WriteOutcome};
 use valqeron_core::domain::issuer::{Issuer, IssuerId};
 
 pub struct BlockingAdmin<'a> {
@@ -30,8 +30,13 @@ impl<'a> BlockingAdmin<'a> {
         self.runtime.block_on(self.inner.status())
     }
 
-    pub fn list_background_tasks(&self) -> Result<Vec<BackgroundTaskDetail>, ClientError> {
-        self.runtime.block_on(self.inner.list_background_tasks())
+    pub fn list_background_tasks(
+        &self,
+        after: Option<&UniqueIdentifier>,
+        limit: u32,
+    ) -> Result<Vec<BackgroundTaskDetail>, ClientError> {
+        self.runtime
+            .block_on(self.inner.list_background_tasks(after, limit))
     }
 }
 

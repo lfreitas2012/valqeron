@@ -70,6 +70,7 @@ pub struct BackgroundTaskDetail {
     pub id: Uuid,
     pub name: String,
     pub created_at: DateTime<Utc>,
+    pub last_updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, thiserror::Error)]

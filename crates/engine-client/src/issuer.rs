@@ -645,10 +645,7 @@ mod tests {
     #[test]
     fn parse_issuer_id_and_timestamp() {
         let valid_uuid = "018f6e80-8e2b-7b00-a54b-d7d8e9f01234";
-        assert_eq!(
-            parse_issuer_id(valid_uuid).unwrap().value(),
-            valid_uuid
-        );
+        assert_eq!(parse_issuer_id(valid_uuid).unwrap().value(), valid_uuid);
         assert!(parse_issuer_id("invalid").is_err());
 
         let rfc3339_z = "2026-08-31T20:00:00Z";
@@ -687,13 +684,14 @@ mod tests {
         assert!(err_id.to_string().contains("invalid issuer id: abc"));
 
         let err_ts = IssuerMappingError::InvalidTimestamp("xyz".to_string());
-        assert!(err_ts.to_string().contains("invalid created_at timestamp: xyz"));
+        assert!(
+            err_ts
+                .to_string()
+                .contains("invalid created_at timestamp: xyz")
+        );
 
         let err_field = IssuerMappingError::MissingField("outcome");
-        assert_eq!(
-            err_field.to_string(),
-            "missing required field `outcome`"
-        );
+        assert_eq!(err_field.to_string(), "missing required field `outcome`");
 
         let err_name: IssuerMappingError = IssuerName::new("").unwrap_err().into();
         assert!(err_name.to_string().contains("empty"));
@@ -726,19 +724,25 @@ mod tests {
             .unwrap();
         assert_eq!(registered.version, 1);
         assert_eq!(
-            mock.last_register_request.lock().await.as_ref().unwrap().dry_run,
+            mock.last_register_request
+                .lock()
+                .await
+                .as_ref()
+                .unwrap()
+                .dry_run,
             true
         );
 
         // Missing issuer in response
-        *mock.register_response.lock().await = Some(Ok(RegisterIssuerResponseProto {
-            issuer: None,
-        }));
+        *mock.register_response.lock().await =
+            Some(Ok(RegisterIssuerResponseProto { issuer: None }));
         let err = service
             .register(RegisterIssuerRequest::new(sample_issuer()))
             .await
             .unwrap_err();
-        assert!(matches!(err, ClientError::InvalidResponse(msg) if msg.contains("register returned no issuer")));
+        assert!(
+            matches!(err, ClientError::InvalidResponse(msg) if msg.contains("register returned no issuer"))
+        );
 
         // Invalid issuer proto in response
         let mut invalid_proto = sample_issuer_proto();
@@ -827,9 +831,7 @@ mod tests {
         assert_eq!(req.limit, 20);
 
         // Empty list without after
-        *mock.list_response.lock().await = Some(Ok(ListIssuersResponseProto {
-            issuers: vec![],
-        }));
+        *mock.list_response.lock().await = Some(Ok(ListIssuersResponseProto { issuers: vec![] }));
         let list = service.list(None, 50).await.unwrap();
         assert!(list.is_empty());
         let req = mock.last_list_request.lock().await.clone().unwrap();
@@ -895,11 +897,11 @@ mod tests {
         );
 
         // Missing outcome
-        *mock.patch_response.lock().await = Some(Ok(PatchIssuerResponseProto {
-            outcome: None,
-        }));
+        *mock.patch_response.lock().await = Some(Ok(PatchIssuerResponseProto { outcome: None }));
         let err = service.patch(&id, patch_req.clone()).await.unwrap_err();
-        assert!(matches!(err, ClientError::InvalidResponse(msg) if msg.contains("patch returned no outcome")));
+        assert!(
+            matches!(err, ClientError::InvalidResponse(msg) if msg.contains("patch returned no outcome"))
+        );
 
         // RPC error
         *mock.patch_response.lock().await = Some(Err(Status::not_found("issuer not found")));
@@ -930,15 +932,22 @@ mod tests {
         assert!(req.dry_run);
 
         // Missing outcome
-        *mock.delete_response.lock().await = Some(Ok(DeleteIssuerResponseProto {
-            outcome: None,
-        }));
-        let err = service.delete(&id, DeleteIssuerRequest::new(1)).await.unwrap_err();
-        assert!(matches!(err, ClientError::InvalidResponse(msg) if msg.contains("delete returned no outcome")));
+        *mock.delete_response.lock().await = Some(Ok(DeleteIssuerResponseProto { outcome: None }));
+        let err = service
+            .delete(&id, DeleteIssuerRequest::new(1))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ClientError::InvalidResponse(msg) if msg.contains("delete returned no outcome"))
+        );
 
         // RPC error
-        *mock.delete_response.lock().await = Some(Err(Status::failed_precondition("cannot delete")));
-        let err = service.delete(&id, DeleteIssuerRequest::new(1)).await.unwrap_err();
+        *mock.delete_response.lock().await =
+            Some(Err(Status::failed_precondition("cannot delete")));
+        let err = service
+            .delete(&id, DeleteIssuerRequest::new(1))
+            .await
+            .unwrap_err();
         assert!(matches!(err, ClientError::Rpc { .. }));
 
         handle.abort();
