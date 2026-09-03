@@ -38,3 +38,13 @@ CREATE INDEX IF NOT EXISTS idx_security_issuer_id ON security (issuer_id);
 
 CREATE INDEX IF NOT EXISTS idx_security_underlying_security_id ON security (underlying_security_id)
     WHERE underlying_security_id IS NOT NULL;
+
+-- ================ TASK REGISTRY ================
+CREATE TABLE IF NOT EXISTS background_tasks_registry
+(
+    id              BLOB PRIMARY KEY NOT NULL,
+    name            TEXT             NOT NULL,
+    created_at      TEXT             NOT NULL,
+    last_updated_at TEXT             NOT NULL,
+    version         INTEGER          NOT NULL DEFAULT 1
+);
