@@ -16,8 +16,5 @@ tonic = { workspace = true }
 tonic-prost-build = { workspace = true }
 protox = { workspace = true }
 
-[lints]
-workspace = true
-
 [lib]
 name = "valqeron_engine_proto"
