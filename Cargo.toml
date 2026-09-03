@@ -63,9 +63,9 @@ tonic-prost-build = "0.14.6"
 protox = "0.9"
 libfuzzer-sys = "0.4.13"
 criterion = "0.8.2"
-proptest = { version = "1.11.0", default-features = false }
+proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 schemars = "1.2.2"
-arbitrary = "1.4.2"
+arbitrary = { version = "1.4.2", features = ["derive"] }
 
 [profile.release]
 codegen-units = 1
