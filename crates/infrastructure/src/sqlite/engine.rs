@@ -3,7 +3,9 @@ use std::path::Path;
 use valqeron_core::{Repositories, StorageEngine, StorageError};
 
 use crate::sqlite::database::{Database, DatabaseConfig, WalCheckpointStats};
-use crate::sqlite::repositories::{SqliteIssuerRepository, SqliteSecurityRepository};
+use crate::sqlite::repositories::{
+    SqliteBackgroundTasksRepository, SqliteIssuerRepository, SqliteSecurityRepository,
+};
 
 pub struct SqliteStorageEngine {
     db: Database,
@@ -36,11 +38,15 @@ impl SqliteStorageEngine {
 impl StorageEngine for SqliteStorageEngine {
     type Issuers = SqliteIssuerRepository;
     type Securities = SqliteSecurityRepository;
+    type BackgroundTaskDefinition = SqliteBackgroundTasksRepository;
 
     fn repositories(&self) -> Repositories<Self> {
         Repositories {
             issuers: SqliteIssuerRepository::new(self.db.handle()),
             securities: SqliteSecurityRepository::new(self.db.handle()),
+            background_task_definition: SqliteBackgroundTasksRepository::new(
+                self.db.handle(),
+            ),
         }
     }
 
@@ -52,6 +58,9 @@ impl StorageEngine for SqliteStorageEngine {
             let repositories = Repositories {
                 issuers: SqliteIssuerRepository::new(handle.clone()),
                 securities: SqliteSecurityRepository::new(handle.clone()),
+                background_task_definition: SqliteBackgroundTasksRepository::new(
+                    handle.clone(),
+                ),
             };
             f(&repositories)
         })
