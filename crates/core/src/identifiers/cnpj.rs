@@ -85,7 +85,7 @@
 //!   string (`^[A-Z0-9]{12}[0-9]{2}$`). Implies `serde`.
 //! - **`arbitrary`**: implements `Arbitrary` for [`Cnpj`], generating structurally valid,
 //!   checksum-correct values for fuzz targets.
-//! - **`proptest`**: exposes reusable `proptest` strategies (`valqeron_identifiers::cnpj::proptest`,
+//! - **`proptest`**: exposes reusable `proptest` strategies (`valqeron_core::identifiers::cnpj::proptest`,
 //!   when this feature is enabled) for generating checksum-valid [`Cnpj`] values and their
 //!   formatted string representations, so downstream property tests don't need to hand-roll a
 //!   generator.
@@ -99,7 +99,7 @@
 //! human-readable message:
 //!
 //! ```
-//! use valqeron_identifiers::{Cnpj, CnpjError};
+//! use valqeron_core::identifiers::{Cnpj, CnpjError};
 //!
 //! match Cnpj::parse("12.345.678/0001-XX") {
 //!     Ok(cnpj) => println!("valid: {cnpj}"),
@@ -113,7 +113,7 @@
 //! # Examples
 //!
 //! ```
-//! use valqeron_identifiers::Cnpj;
+//! use valqeron_core::identifiers::Cnpj;
 //!
 //! let numeric = Cnpj::parse("00.000.000/0001-91").unwrap();
 //! assert!(numeric.is_root());
@@ -128,7 +128,7 @@
 //! Sorting and deduplicating a batch of CNPJs, e.g., after importing them from a spreadsheet:
 //!
 //! ```
-//! use valqeron_identifiers::Cnpj;
+//! use valqeron_core::identifiers::Cnpj;
 //!
 //! let mut cnpjs: Vec<Cnpj> = ["11.222.333/0002-62", "00.000.000/0001-91", "00.000.000/0001-91"]
 //!     .into_iter()
@@ -147,7 +147,7 @@ use proptest::prelude::{Strategy, prop};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
-#[cfg(feature = "proptest")]
+#[cfg(feature = "schemars")]
 use std::borrow::Cow;
 use std::{
     fmt,
@@ -199,7 +199,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// assert!(Cnpj::parse("00.000.000/0001-91").is_ok());
     /// assert!(Cnpj::parse("00000000000191").is_ok());
@@ -220,7 +220,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// assert_eq!(Cnpj::new("00000000000191"), Cnpj::parse("00000000000191"));
     /// ```
@@ -246,7 +246,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::from_bytes(*b"00000000000191").unwrap();
     /// assert_eq!(cnpj.as_str(), "00000000000191");
@@ -267,7 +267,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::parse("00000000000191").unwrap();
     /// assert_eq!(cnpj.as_bytes(), b"00000000000191");
@@ -286,7 +286,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::parse("00.000.000/0001-91").unwrap();
     /// assert_eq!(cnpj.as_str(), "00000000000191");
@@ -307,7 +307,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::parse("00000000000191").unwrap();
     /// assert_eq!(cnpj.formatted().as_str(), "00.000.000/0001-91");
@@ -326,7 +326,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::parse("00000000000191").unwrap();
     /// assert_eq!(cnpj.root(), "00000000");
@@ -344,7 +344,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::parse("11.222.333/0002-62").unwrap();
     /// assert_eq!(cnpj.branch_code(), "0002");
@@ -360,7 +360,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// assert!(Cnpj::parse("00000000000191").unwrap().is_root());
     /// assert!(!Cnpj::parse("11.222.333/0002-62").unwrap().is_root());
@@ -380,7 +380,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let matriz = Cnpj::parse("00000000000191").unwrap();
     /// assert_eq!(matriz.branch_number(), Some(1));
@@ -399,7 +399,7 @@ impl Cnpj {
     /// # Examples
     ///
     /// ```
-    /// use valqeron_identifiers::Cnpj;
+    /// use valqeron_core::identifiers::Cnpj;
     ///
     /// let cnpj = Cnpj::parse("00000000000191").unwrap();
     /// assert_eq!(cnpj.check_digits(), (9, 1));

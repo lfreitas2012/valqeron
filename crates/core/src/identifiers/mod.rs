@@ -1,5 +1,6 @@
-mod cnpj;
+pub mod cnpj;
 
+#[doc(inline)]
 pub use cnpj::{Cnpj, CnpjError, FormattedCnpj};
 
 #[cfg(feature = "arbitrary")]
