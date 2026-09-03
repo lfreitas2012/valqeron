@@ -1,19 +1,8 @@
-#![cfg_attr(
-    test,
-    allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        clippy::unwrap_used
-    )
-)]
-
 mod engine;
 mod grpc;
 mod lifecycle;
 mod notify;
 mod storage;
-mod tasks;
 
 use std::io::IsTerminal;
 use std::path::Path;
