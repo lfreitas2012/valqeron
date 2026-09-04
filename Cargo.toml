@@ -4,11 +4,11 @@ members = [
     "crates/core",
     "crates/infrastructure",
     "crates/cli",
-    "crates/identifiers",
     "crates/engine",
     "fuzz",
     "crates/engine-client",
-    "crates/engine-proto"
+    "crates/engine-proto",
+    "crates/macros"
 ]
 
 [workspace.package]
@@ -22,11 +22,11 @@ version = "0.1.0"
 valqeron-core = { path = "crates/core" }
 valqeron-cli = { path = "crates/cli" }
 valqeron-infrastructure = { path = "crates/infrastructure" }
-valqeron-identifiers = { path = "crates/identifiers" }
 valqeron-engine = { path = "crates/engine" }
 valqeron-engine-proto = { path = "crates/engine-proto" }
 valqeron-engine-client = { path = "crates/engine-client" }
 valqeron-fuzz = { path = "fuzz" }
+valqeron-macros = { path = "crates/macros" }
 
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
