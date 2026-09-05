@@ -1,8 +1,8 @@
 #![no_main]
 
+use libfuzzer_sys::arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
 use valqeron_core::identifiers::Cnpj;
-use valqeron_core::identifiers::arbitrary::Unstructured;
 
 fuzz_target!(|data: &[u8]| {
     let mut u = Unstructured::new(data);

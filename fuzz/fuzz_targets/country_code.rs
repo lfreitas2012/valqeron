@@ -1,8 +1,8 @@
 #![no_main]
 
-use arbitrary::{Arbitrary, Unstructured};
-use valqeron_identifiers::{CountryCode, CountryCodeError};
+use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
+use valqeron_core::identifiers::{CountryCode, CountryCodeError};
 
 const LEN: usize = 2;
 const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -25,13 +25,19 @@ fn check(value: CountryCode) {
     assert_eq!(value.as_str().parse::<CountryCode>(), Ok(value));
     assert_eq!(CountryCode::try_from(value.as_str()), Ok(value));
     assert_eq!(CountryCode::try_from(*value.as_bytes()), Ok(value));
-    assert_eq!(CountryCode::try_from(value.as_bytes().as_slice()), Ok(value));
+    assert_eq!(
+        CountryCode::try_from(value.as_bytes().as_slice()),
+        Ok(value)
+    );
 
     // Equality and reference conversions agree with the canonical string/bytes.
     assert_eq!(value, *value.as_str());
     assert_eq!(value, value.as_str());
     assert_eq!(<CountryCode as AsRef<str>>::as_ref(&value), value.as_str());
-    assert_eq!(<CountryCode as AsRef<[u8]>>::as_ref(&value), value.as_bytes());
+    assert_eq!(
+        <CountryCode as AsRef<[u8]>>::as_ref(&value),
+        value.as_bytes()
+    );
 
     // serde round-trips through the canonical string.
     let json = serde_json::to_string(&value).expect("serialize");

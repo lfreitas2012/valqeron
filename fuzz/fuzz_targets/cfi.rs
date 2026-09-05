@@ -2,7 +2,8 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
-use valqeron_identifiers::{Cfi, CfiError};
+use valqeron_core::Cfi;
+use valqeron_core::identifiers::CfiError;
 
 const LEN: usize = 6;
 const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";

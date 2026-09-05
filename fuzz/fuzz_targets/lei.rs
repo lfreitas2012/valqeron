@@ -1,8 +1,8 @@
 #![no_main]
 
-use arbitrary::{Arbitrary, Unstructured};
-use valqeron_identifiers::{Lei, LeiError};
+use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
+use valqeron_core::identifiers::{Lei, LeiError};
 
 const LEN: usize = 20;
 const BASE_LEN: usize = 18;
@@ -45,7 +45,10 @@ fn check(value: Lei) {
 
     // serde round-trips through the canonical string.
     let json = serde_json::to_string(&value).expect("serialize");
-    assert_eq!(serde_json::from_str::<Lei>(&json).expect("deserialize"), value);
+    assert_eq!(
+        serde_json::from_str::<Lei>(&json).expect("deserialize"),
+        value
+    );
 
     // Rendering must never panic.
     let _ = format!("{value}");

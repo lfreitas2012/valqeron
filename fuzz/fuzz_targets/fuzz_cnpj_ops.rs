@@ -1,10 +1,8 @@
 #![no_main]
 
+use libfuzzer_sys::arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-
-use arbitrary::Arbitrary;
 use valqeron_core::identifiers::Cnpj;
-use valqeron_core::identifiers::arbitrary;
 
 #[derive(Arbitrary, Debug)]
 enum CnpjOp {

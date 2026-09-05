@@ -2,7 +2,7 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
-use valqeron_identifiers::{Mic, MicError};
+use valqeron_core::identifiers::{Mic, MicError};
 
 const LEN: usize = 4;
 const ALPHANUMERIC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

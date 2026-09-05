@@ -1,8 +1,8 @@
 #![no_main]
 
-use arbitrary::{Arbitrary, Unstructured};
-use valqeron_identifiers::{CountryCode, Isin, IsinError};
+use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
+use valqeron_core::identifiers::{CountryCode, Isin, IsinError};
 
 const LEN: usize = 12;
 const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
