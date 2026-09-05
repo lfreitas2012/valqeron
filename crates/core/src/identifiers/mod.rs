@@ -1,4 +1,4 @@
-mod cfi;
+pub mod cfi;
 mod cnpj;
 mod country_code;
 mod isin;
@@ -19,6 +19,3 @@ pub use mic::{Mic, MicError};
 
 #[doc(inline)]
 pub use lei::{Lei, LeiError};
-
-#[doc(inline)]
-pub use cfi::{Cfi, CfiError};

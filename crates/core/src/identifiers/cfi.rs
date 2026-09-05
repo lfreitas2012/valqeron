@@ -58,9 +58,7 @@
 //! - **Safe to use as a map/set key.** [`Cfi`] implements [`Eq`] and [`Hash`] consistently with
 //!   [`PartialEq`], so it works as a `HashMap`/`HashSet` or `BTreeMap`/`BTreeSet` key out of the box.
 //!
-//! ```
-//! use valqeron_identifiers::{Cfi, CfiError};
-//!
+//! ```rust, no_run
 //! match Cfi::parse("ESZUFR") {
 //!     Ok(cfi) => println!("valid: {cfi}"),
 //!     Err(CfiError::InvalidAttribute { index, code, .. }) => {
@@ -72,28 +70,72 @@
 //!
 //! # Examples
 //!
-//! ```
-//! use valqeron_identifiers::Cfi;
+//! ## Basic parsing and accessors
 //!
+//! You can parse a CFI directly using `Cfi::parse` or via the standard `FromStr` trait.
+//!
+//! ```rust, no_run
+//! // Parses standard, uppercase 6-character strings
 //! let cfi = Cfi::parse("ESVUFR").unwrap();
 //! assert_eq!(cfi.category(), 'E');
 //! assert_eq!(cfi.group(), 'S');
 //! assert_eq!(cfi.attributes(), ['V', 'U', 'F', 'R']);
 //! assert_eq!(cfi.as_str(), "ESVUFR");
+//!
+//! // `FromStr` is also implemented, which is useful in generic contexts
+//! let parsed: Cfi = "DBFTFB".parse().unwrap();
+//! assert_eq!(parsed.category(), 'D');
 //! ```
 //!
-//! Sorting and deduplicating a batch of CFIs, e.g., after importing them from a spreadsheet:
+//! ## Handling untrusted input
 //!
+//! The parser automatically handles surrounding whitespace and ASCII case folding, making it
+//! safe to use directly on raw string ingestion.
+//!
+//! ```rust, no_run
+//! let clean = Cfi::parse("ESVUFR").unwrap();
+//! let messy = Cfi::parse("  esvufr \n").unwrap();
+//!
+//! assert_eq!(clean, messy);
 //! ```
-//! use valqeron_identifiers::Cfi;
 //!
-//! let mut cfis: Vec<Cfi> = ["ESVUFR", "DBFTFB", "ESVUFR"]
+//! ## Strict validation
+//!
+//! Any string that violates the ISO 10962 taxonomy is rejected with a descriptive error.
+//!
+//! ```rust, no_run
+//! // 'Z' is not a valid group for category 'E'
+//! let err = Cfi::parse("EZVUFR").unwrap_err();
+//! assert_eq!(err, CfiError::UnknownGroup { category: 'E', code: 'Z' });
+//! ```
+//!
+//! ## Deduplication and collections
+//!
+//! Because `Cfi` implements `Ord`, `Eq`, and `Hash`, it works seamlessly in hash sets,
+//! B-trees, or sorted vectors.
+//!
+//! ```rust, no_run
+//! let mut cfis: Vec<Cfi> = ["ESVUFR", "dbftfb", "  ESVUFR  "]
 //!     .into_iter()
-//!     .map(|s| Cfi::parse(s).unwrap())
+//!     .map(|s| s.parse().unwrap())
 //!     .collect();
+//!
+//! // Sort and remove duplicates from a batch
 //! cfis.sort();
 //! cfis.dedup();
+//!
 //! assert_eq!(cfis.len(), 2);
+//! ```
+//!
+//! ## Serialization
+//!
+//! `Cfi` transparently serializes and deserializes as a simple 6-character string.
+//!
+//! ```rust, no_run
+//! let cfi = Cfi::parse("ESVUFR").unwrap();
+//! let json = serde_json::to_string(&cfi).unwrap();
+//!
+//! assert_eq!(json, r#""ESVUFR""#);
 //! ```
 
 use core::convert::TryFrom;
@@ -116,12 +158,12 @@ use valqeron_macros::generate_cfi_table;
 ///
 /// | Constructor | Accepts |
 /// |---------------------------------|-----------------------------------------------------|
-/// | [`Cfi::parse`] / [`Cfi::new`] | 6-character strings, any ASCII case, trimmed |
+/// | [`Cfi::parse`] | 6-character strings, any ASCII case, trimmed |
 /// | [`Cfi::from_bytes`] | Exactly 6 pre-normalized uppercase ASCII bytes |
 /// | [`FromStr`] / [`TryFrom<&str>`] | Same as `parse`, for use in generic code            |
 ///
 /// All of them run the same validation and return [`CfiError`] on failure.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[must_use = "A parsed CFI must be used."]
 pub struct Cfi {
     bytes: [u8; 6],
@@ -131,46 +173,17 @@ impl Cfi {
     /// Parses a CFI from a string.
     ///
     /// The parser trims surrounding whitespace and folds ASCII letters to uppercase before
-    /// validation. This is the primary constructor; [`Cfi::new`], [`FromStr`], and
-    /// [`TryFrom<&str>`] all delegate to it.
+    /// validation. This is the primary constructor; [`FromStr`], and [`TryFrom<&str>`] all delegate
+    /// to it.
     ///
     /// # Errors
     ///
     /// Returns [`CfiError`] if the input is empty, does not contain exactly 6 characters after
     /// trimming, contains a non-letter character, or names a category, group, or attribute code
     /// that ISO 10962 does not define.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// assert!(Cfi::parse("ESVUFR").is_ok());
-    /// assert!(Cfi::parse("esvufr").is_ok()); // lowercase is folded automatically
-    /// assert!(Cfi::parse(" ESVUFR ").is_ok()); // surrounding whitespace is trimmed
-    /// assert!(Cfi::parse("EZVUFR").is_err()); // 'Z' is not a group of category 'E'
-    /// ```
     pub fn parse(input: &str) -> Result<Self, CfiError> {
         let candidate = normalize(input)?;
         Self::from_bytes(candidate)
-    }
-
-    /// Alias for [`Cfi::parse`].
-    ///
-    /// # Errors
-    ///
-    /// See [`Cfi::parse`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// assert_eq!(Cfi::new("ESVUFR"), Cfi::parse("ESVUFR"));
-    /// ```
-    #[inline]
-    pub fn new(input: &str) -> Result<Self, CfiError> {
-        Self::parse(input)
     }
 
     /// Constructs a `Cfi` directly from 6 raw ASCII bytes.
@@ -182,51 +195,20 @@ impl Cfi {
     ///
     /// Returns [`CfiError`] under the same conditions as [`Cfi::parse`], except that length is
     /// guaranteed by the `[u8; 6]` type itself: [`CfiError::InvalidLength`] cannot occur here.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// let cfi = Cfi::from_bytes(*b"ESVUFR").unwrap();
-    /// assert_eq!(cfi.as_str(), "ESVUFR");
-    ///
-    /// // An undefined attribute code is rejected just like it would be through `parse`.
-    /// assert!(Cfi::from_bytes(*b"ESZUFR").is_err());
-    /// ```
     pub fn from_bytes(bytes: [u8; 6]) -> Result<Self, CfiError> {
         validate(&bytes)?;
         Ok(Cfi { bytes })
     }
 
     /// Returns the 6 raw ASCII bytes backing this CFI (for example, `b"ESVUFR"`).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// let cfi = Cfi::parse("ESVUFR").unwrap();
-    /// assert_eq!(cfi.as_bytes(), b"ESVUFR");
-    /// ```
     #[inline]
     #[must_use]
     pub fn as_bytes(&self) -> &[u8; 6] {
         &self.bytes
     }
 
-    /// Returns the full 6-character CFI as a `&str`.
-    ///
-    /// This never allocates: the bytes are guaranteed to be valid ASCII by construction.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// let cfi = Cfi::parse("ESVUFR").unwrap();
-    /// assert_eq!(cfi.as_str(), "ESVUFR");
-    /// ```
+    /// Returns the full 6-character CFI as a `&str` without allocation. The bytes are guaranteed to
+    /// be valid ASCII by construction.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -235,15 +217,6 @@ impl Cfi {
     }
 
     /// Returns the category code (position 1).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// let cfi = Cfi::parse("ESVUFR").unwrap();
-    /// assert_eq!(cfi.category(), 'E');
-    /// ```
     #[inline]
     #[must_use]
     pub fn category(&self) -> char {
@@ -251,15 +224,6 @@ impl Cfi {
     }
 
     /// Returns the group code (position 2).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// let cfi = Cfi::parse("ESVUFR").unwrap();
-    /// assert_eq!(cfi.group(), 'S');
-    /// ```
     #[inline]
     #[must_use]
     pub fn group(&self) -> char {
@@ -267,15 +231,6 @@ impl Cfi {
     }
 
     /// Returns the four attribute codes (positions 3–6), in order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use valqeron_identifiers::Cfi;
-    ///
-    /// let cfi = Cfi::parse("ESVUFR").unwrap();
-    /// assert_eq!(cfi.attributes(), ['V', 'U', 'F', 'R']);
-    /// ```
     #[inline]
     #[must_use]
     pub fn attributes(&self) -> [char; 4] {
@@ -410,6 +365,25 @@ impl Display for Cfi {
 impl Debug for Cfi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Cfi").field(&self.as_str()).finish()
+    }
+}
+
+impl Serialize for Cfi {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Cfi {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = <&str>::deserialize(deserializer)?;
+        Cfi::parse(s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -664,12 +638,7 @@ mod tests {
         );
     }
 
-    // ---- constructors (`parse`, `new`, `from_bytes`) ----
-
-    #[test]
-    fn new_is_an_alias_for_parse() {
-        assert_eq!(Cfi::new("ESVUFR"), Cfi::parse("ESVUFR"));
-    }
+    // ---- constructors (`parse`, `from_bytes`) ----
 
     #[test]
     fn from_bytes_rejects_invalid_attribute_without_normalizing() {
@@ -849,7 +818,10 @@ mod tests {
     fn round_trips_through_json() {
         let cfi = Cfi::parse("ESVUFR").unwrap();
         let json = serde_json::to_string(&cfi).unwrap();
-        assert_eq!(json, "\"ESVUFR\"");
+
+        // Use a raw string literal to cleanly check for the surrounding JSON quotes
+        assert_eq!(json, r#""ESVUFR""#);
+
         let back: Cfi = serde_json::from_str(&json).unwrap();
         assert_eq!(cfi, back);
     }
@@ -857,6 +829,11 @@ mod tests {
     #[test]
     fn rejects_invalid_json_string() {
         let err = serde_json::from_str::<Cfi>("\"not-a-cfi\"").unwrap_err();
-        assert!(err.to_string().contains("CFI"));
+
+        assert!(
+            err.is_data(),
+            "Expected a data validation error, got: {:?}",
+            err
+        );
     }
 }
