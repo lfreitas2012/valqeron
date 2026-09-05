@@ -139,15 +139,10 @@
 //! assert_eq!(cnpjs.len(), 2);
 //! ```
 
-#[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-#[cfg(feature = "proptest")]
 use proptest::prelude::{Strategy, prop};
-#[cfg(feature = "schemars")]
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
-#[cfg(feature = "schemars")]
 use std::borrow::Cow;
 use std::{
     fmt,
@@ -615,10 +610,6 @@ const BASE_LEN: usize = 12;
 ///
 /// This is only used by fuzz/property generators. It preserves the generated shape while avoiding
 /// the one pattern that `validate` rejects independently.
-#[cfg_attr(
-    not(any(feature = "arbitrary", feature = "proptest")),
-    allow(dead_code)
-)]
 fn avoid_all_repeated(base: &mut [u8; BASE_LEN]) {
     if base.iter().all(|&b| b == base[0]) {
         base[0] = if base[0] == b'0' { b'1' } else { b'0' };
@@ -678,6 +669,7 @@ fn validate_character_classes(candidate: &[u8; 14]) -> Result<(), CnpjError> {
     }
     Ok(())
 }
+
 fn validate_not_repeated(candidate: &[u8; 14]) -> Result<(), CnpjError> {
     if candidate.iter().all(|&b| b == candidate[0]) {
         return Err(CnpjError::RepeatedDigits);
@@ -888,7 +880,6 @@ fn normalize(input: &str) -> Result<[u8; 14], CnpjError> {
 }
 
 // ================================= SERDE =================================
-#[cfg(feature = "serde")]
 impl Serialize for Cnpj {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -898,10 +889,8 @@ impl Serialize for Cnpj {
     }
 }
 
-#[cfg(feature = "serde")]
 struct CnpjVisitor;
 
-#[cfg(feature = "serde")]
 impl<'de> Visitor<'de> for CnpjVisitor {
     type Value = Cnpj;
 
@@ -917,7 +906,6 @@ impl<'de> Visitor<'de> for CnpjVisitor {
     }
 }
 
-#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for Cnpj {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -928,10 +916,8 @@ impl<'de> Deserialize<'de> for Cnpj {
 }
 
 // ================================= SCHEMARS, PROPTEST, ARBITRARY =================================
-#[cfg(any(feature = "proptest", feature = "arbitrary"))]
 const ALPHABET: &[u8; 36] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-#[cfg(feature = "schemars")]
 impl JsonSchema for Cnpj {
     fn schema_name() -> Cow<'static, str> {
         Cow::Borrowed("Cnpj")
@@ -951,8 +937,8 @@ impl JsonSchema for Cnpj {
 
 /// A strategy producing structurally valid, checksum-correct [`Cnpj`] values, spanning both the
 /// legacy numeric-only format and the alphanumeric format.
-#[cfg(feature = "proptest")]
-pub fn valid_cnpj() -> impl Strategy<Value = Cnpj> {
+
+pub fn valid_cnpj() -> impl Strategy<Value=Cnpj> {
     prop::collection::vec(0..ALPHABET.len(), BASE_LEN).prop_map(|indices| {
         let mut base = [0u8; BASE_LEN];
         for (slot, idx) in base.iter_mut().zip(indices) {
@@ -972,12 +958,11 @@ pub fn valid_cnpj() -> impl Strategy<Value = Cnpj> {
 
 /// A strategy producing a valid [`Cnpj`] rendered with conventional `AA.AAA.AAA/AAAA-DD` punctuation,
 /// useful for round-trip-through-formatting property tests.
-#[cfg(feature = "proptest")]
-pub fn valid_cnpj_formatted_string() -> impl Strategy<Value = String> {
+
+pub fn valid_cnpj_formatted_string() -> impl Strategy<Value=String> {
     valid_cnpj().prop_map(|c| c.formatted().to_string())
 }
 
-#[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for Cnpj {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let mut base = [0u8; BASE_LEN];
@@ -1153,7 +1138,7 @@ mod tests_formated {
     }
 }
 
-#[cfg(all(test, feature = "arbitrary"))]
+#[cfg(test)]
 mod tests_arbitrary {
     use super::*;
     use arbitrary::Unstructured;
@@ -1172,7 +1157,7 @@ mod tests_arbitrary {
     }
 }
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 mod tests_serde {
     use crate::identifiers::cnpj::Cnpj;
 
@@ -1192,7 +1177,7 @@ mod tests_serde {
     }
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests_proptest {
     use super::*;
     use proptest::{prop_assert, prop_assert_eq, proptest};
@@ -1212,7 +1197,7 @@ mod tests_proptest {
     }
 }
 
-#[cfg(all(test, feature = "schemars"))]
+#[cfg(test)]
 mod tests_schema {
     use crate::identifiers::cnpj::Cnpj;
     use schemars::schema_for;
