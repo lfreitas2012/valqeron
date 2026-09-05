@@ -1,8 +1,6 @@
-#![allow(clippy::unwrap_used)]
-
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use valqeron_identifiers::Mic;
+use valqeron_core::identifiers::Mic;
 
 const NYSE: &str = "XNYS";
 const SEGMENT: &str = "ARCX";

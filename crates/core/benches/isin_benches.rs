@@ -1,8 +1,6 @@
-#![allow(clippy::unwrap_used)]
-
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use valqeron_identifiers::Isin;
+use valqeron_core::identifiers::Isin;
 
 const NUMERIC_NSIN: &str = "US0231351067";
 const ALPHANUMERIC_NSIN: &str = "BRPETRACNOR9";

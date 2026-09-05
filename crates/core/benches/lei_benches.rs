@@ -1,8 +1,6 @@
-#![allow(clippy::unwrap_used)]
-
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use valqeron_identifiers::Lei;
+use valqeron_core::identifiers::Lei;
 
 const MIXED_BASE: &str = "5493000IBP32UQZ0KL24";
 const LETTER_HEAVY_BASE: &str = "54930084UKLVMY22DS16";

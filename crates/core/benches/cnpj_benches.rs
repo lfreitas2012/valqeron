@@ -1,13 +1,7 @@
-#![allow(
-    clippy::arithmetic_side_effects,
-    clippy::indexing_slicing,
-    clippy::unwrap_used
-)]
-
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::fmt::Write;
 use std::hint::black_box;
-use valqeron_identifiers::Cnpj;
+use valqeron_core::identifiers::Cnpj;
 
 const NUMERIC_PUNCTUATED: &str = "00.000.000/0001-91";
 const NUMERIC_RAW: &str = "00000000000191";
