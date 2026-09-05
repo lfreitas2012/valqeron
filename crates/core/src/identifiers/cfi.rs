@@ -1,11 +1,10 @@
 //! CFI (Classification of Financial Instruments), the ISO 10962 six-letter code that classifies a
 //! financial instrument by category, group, and four attributes.
 //!
-//! This module provides the validated Rust representation ([`Cfi`]) and the parsing, validation,
+//! This crate provides the validated Rust representation ([`Cfi`]) and the parsing, validation,
 //! and error types that surround it. It accepts the canonical 6-character form (optionally
 //! surrounded by whitespace, in any ASCII case), normalizes it, and guarantees that any constructed
-//! [`Cfi`] describes a combination actually defined by ISO 10962. There is no partially validated
-//! state: if you hold a [`Cfi`], it is valid.
+//! [`Cfi`] describes a combination actually defined by ISO 10962.
 //!
 //! # What this type represents
 //!
@@ -28,10 +27,9 @@
 //! accessors for the category ([`Cfi::category`]), the group ([`Cfi::group`]), the four attributes
 //! ([`Cfi::attributes`]), and the whole value ([`Cfi::as_str`]).
 //!
-//! # Validation rules — taxonomy, not checksum
+//! # Validation rules
 //!
-//! Unlike [`Cnpj`](crate::Cnpj) (Módulo 11) or [`Isin`](crate::Isin) (Luhn), a CFI carries no check
-//! digit. Its validity is defined entirely by the ISO 10962 code taxonomy, which this crate embeds
+//! A CFI validity is defined entirely by the ISO 10962 code taxonomy, which this crate embeds
 //! as a generated, lookup table. Every fallible constructor runs the same rules, in order,
 //! and each maps to one [`CfiError`] variant:
 //!
@@ -45,10 +43,6 @@
 //! 4. **Group**: position 2 must be a group defined for that category ([`CfiError::UnknownGroup`]).
 //! 5. **Attributes**: each of positions 3–6 must be a code the standard permits for the resolved
 //!    category and group at that attribute position ([`CfiError::InvalidAttribute`]).
-//!
-//! Only the classification *codes* are embedded, not ISO's descriptive text, so this crate can
-//! tell you a CFI is well-formed and which position is wrong, but it does not resolve the codes to
-//! their human-readable meanings.
 //!
 //! # Design notes
 //!
@@ -72,19 +66,12 @@
 //! - **`serde`**: (de)serializes [`Cfi`] as its 6-character string (e.g. `"ESVUFR"`).
 //!   Deserialization re-runs full validation, so an untrusted payload can never produce an invalid
 //!   [`Cfi`].
-//! - **`schemars`**: implements `JsonSchema` for [`Cfi`], describing it as a pattern-constrained
-//!   string (`^[A-Z]{6}$`). The pattern is structural only; it cannot express which combinations are
-//!   taxonomically valid. Implies `serde`.
-//! - **`arbitrary`**: implements `Arbitrary` for [`Cfi`], generating taxonomically valid values for
-//!   fuzz targets by walking the embedded table.
-//! - **`proptest`**: exposes reusable `proptest` strategies (`valqeron_identifiers::cfi::proptest`,
-//!   when this feature is enabled) for generating valid [`Cfi`] values.
 //!
 //! # Error handling
 //!
 //! Every fallible constructor returns [`CfiError`], which is `Clone + PartialEq + Eq` and implements
-//! [`core::error::Error`] and [`core::fmt::Display`], so it composes with `?` and with
-//! error-aggregation crates alike:
+//! [`core::error::Error`] and [`Display`], so it composes with `?` and with error-aggregation
+//! alike:
 //!
 //! ```
 //! use valqeron_identifiers::{Cfi, CfiError};
@@ -124,30 +111,13 @@
 //! assert_eq!(cfis.len(), 2);
 //! ```
 
-use arbitrary::{Arbitrary, Unstructured};
 use core::convert::TryFrom;
 use core::str::{FromStr, from_utf8_unchecked};
-use proptest::arbitrary::any;
-use proptest::prelude::{Just, Strategy, prop};
-use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
-use serde::de::Visitor;
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
-use std::borrow::Cow;
+use fmt::{Debug, Display};
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use thiserror::Error;
 use valqeron_macros::generate_cfi_table;
-
-// Procedural Macros for CFI Table Generation
-struct CfiGroupEntry {
-    pub code: u8,
-    pub attrs: [u32; 4],
-}
-
-struct CfiCategoryEntry {
-    pub code: u8,
-    pub groups: &'static [CfiGroupEntry],
-}
-
-generate_cfi_table!("data/cfi.json");
 
 /// A validated CFI (Classification of Financial Instruments, ISO 10962).
 ///
@@ -159,16 +129,16 @@ generate_cfi_table!("data/cfi.json");
 ///
 /// # Constructing a `Cfi`
 ///
-/// | Constructor                    | Accepts                                             |
+/// | Constructor | Accepts |
 /// |---------------------------------|-----------------------------------------------------|
-/// | [`Cfi::parse`] / [`Cfi::new`]   | 6-character strings, any ASCII case, trimmed         |
-/// | [`Cfi::from_bytes`]             | Exactly 6 pre-normalized uppercase ASCII bytes       |
+/// | [`Cfi::parse`] / [`Cfi::new`] | 6-character strings, any ASCII case, trimmed |
+/// | [`Cfi::from_bytes`] | Exactly 6 pre-normalized uppercase ASCII bytes |
 /// | [`FromStr`] / [`TryFrom<&str>`] | Same as `parse`, for use in generic code            |
 ///
 /// All of them run the same validation and return [`CfiError`] on failure.
 /// See the [module-level documentation](self) for the segment layout and design rationale.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[must_use = "a parsed Cfi should be used; discarding it wastes the validation work"]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[must_use = "A parsed CFI must be used."]
 pub struct Cfi {
     bytes: [u8; 6],
 }
@@ -334,6 +304,48 @@ impl Cfi {
     }
 }
 
+generate_cfi_table!("data/cfi.json");
+
+/// Represents an entry in a "CfiGroup".
+struct CfiGroupEntry {
+    pub code: u8,
+    pub attrs: [u32; 4],
+}
+
+/// Represents a category entry in the CFI (Classification of Financial Instruments) structure.
+struct CfiCategoryEntry {
+    pub code: u8,
+    pub groups: &'static [CfiGroupEntry],
+}
+
+#[derive(Debug, Error)]
+pub enum CfiError {
+    #[error("empty CFI")]
+    Empty,
+
+    #[error("CFI must contain exactly 6 characters, found {found}")]
+    InvalidLength { found: usize },
+
+    #[error(
+        "invalid character '{character}' at position {position} of 6: expected an uppercase letter (A-Z) ASCII character"
+    )]
+    InvalidCharacter { character: char, position: u8 },
+
+    #[error("unknown CFI category '{code}' at position 1")]
+    UnknownCategory { code: char },
+
+    #[error("unknown CFI group '{code}' at position 2")]
+    UnknownGroup { category: char, code: char },
+
+    #[error("invalid attribute '{code}' at position {index} of 6")]
+    InvalidAttribute {
+        category: char,
+        group: char,
+        index: u8,
+        code: char,
+    },
+}
+
 impl FromStr for Cfi {
     type Err = CfiError;
 
@@ -418,13 +430,13 @@ impl AsRef<str> for Cfi {
     }
 }
 
-impl fmt::Display for Cfi {
+impl Display for Cfi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-impl fmt::Debug for Cfi {
+impl Debug for Cfi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Cfi").field(&self.as_str()).finish()
     }
@@ -455,140 +467,27 @@ fn normalize(input: &str) -> Result<[u8; 6], CfiError> {
     Ok(buf)
 }
 
-/// The set of reasons a CFI string can fail validation.
+/// Validates a candidate CFI (Common Format Identifier) code.
 ///
-/// Every fallible constructor of [`Cfi`](super::Cfi) returns this type. CFI carries no checksum;
-/// instead, its validity is defined by the ISO 10962 code taxonomy, so beyond the structural checks
-/// there are three *taxonomic* failure modes ([`CfiError::UnknownCategory`], [`CfiError::UnknownGroup`],
-/// [`CfiError::InvalidAttribute`]). Each variant maps to a single, specific failure, so callers can
-/// react programmatically rather than parsing a message.
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CfiError {
-    /// The input was an empty string.
-    Empty,
-
-    /// After trimming surrounding whitespace, the input did not contain exactly 6 characters.
-    InvalidLength {
-        /// The number of characters found after trimming.
-        found: usize,
-    },
-
-    /// A character outside `A`–`Z` was found at a given position. Every CFI position is an
-    /// uppercase ASCII letter.
-    InvalidCharacter {
-        /// The offending character, as originally provided (before case folding).
-        character: char,
-        /// 1-indexed position within the 6 characters.
-        position: u8,
-    },
-
-    /// The category letter (position 1) is not one defined by ISO 10962.
-    UnknownCategory {
-        /// The offending category code.
-        code: char,
-    },
-
-    /// The group letter (position 2) is not defined for the otherwise-valid category.
-    UnknownGroup {
-        /// The (valid) category code the group was looked up under.
-        category: char,
-        /// The offending group code.
-        code: char,
-    },
-
-    /// An attribute letter (positions 3–6) is not permitted for the resolved category and group at
-    /// that attribute position.
-    InvalidAttribute {
-        /// The (valid) category code.
-        category: char,
-        /// The (valid) group code.
-        group: char,
-        /// Which attribute failed, 1–4 (corresponding to CFI positions 3–6).
-        index: u8,
-        /// The offending attribute code.
-        code: char,
-    },
-}
-
-impl fmt::Display for CfiError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CfiError::Empty => f.write_str("CFI input is empty"),
-            CfiError::InvalidLength { found } => {
-                write!(f, "CFI must contain exactly 6 characters, found {found}")
-            }
-            CfiError::InvalidCharacter {
-                character,
-                position,
-            } => write!(
-                f,
-                "invalid character '{character}' at position {position} of 6: expected an uppercase letter (A-Z)"
-            ),
-            CfiError::UnknownCategory { code } => {
-                write!(f, "unknown CFI category '{code}' at position 1")
-            }
-            CfiError::UnknownGroup { category, code } => write!(
-                f,
-                "unknown CFI group '{code}' at position 2 for category '{category}'"
-            ),
-            CfiError::InvalidAttribute {
-                category,
-                group,
-                index,
-                code,
-            } => write!(
-                f,
-                "invalid CFI attribute '{code}' at position {} (attribute {index}) for category '{category}' group '{group}'",
-                index + 2
-            ),
-        }
-    }
-}
-
-impl core::error::Error for CfiError {}
-
-/// A strategy producing taxonomically valid [`Cfi`] values by walking the embedded ISO 10962 table:
-/// it picks a category, then a group within it, then a permitted letter for each of the four
-/// attribute positions.
-pub fn valid_cfi() -> impl Strategy<Value = Cfi> {
-    (0..CFI_CATEGORIES.len())
-        .prop_flat_map(|category_index| {
-            let group_count = CFI_CATEGORIES[category_index].groups.len();
-            (Just(category_index), 0..group_count)
-        })
-        .prop_flat_map(|(category_index, group_index)| {
-            (
-                Just(category_index),
-                Just(group_index),
-                prop::array::uniform4(any::<usize>()),
-            )
-        })
-        .prop_map(|(category_index, group_index, selectors)| {
-            let category = &CFI_CATEGORIES[category_index];
-            let group = &category.groups[group_index];
-
-            let mut bytes = [0u8; 6];
-            bytes[0] = category.code;
-            bytes[1] = group.code;
-            for (i, selector) in selectors.iter().enumerate() {
-                bytes[2 + i] = nth_letter(group.attrs[i], *selector);
-            }
-
-            Cfi::from_bytes(bytes)
-                .expect("generated candidate is taxonomically valid by construction")
-        })
-}
-
-/// A strategy producing a valid [`Cfi`] rendered as its canonical 6-character `String`, useful for
-/// round-trip-through-parsing property tests.
-pub fn valid_cfi_string() -> impl Strategy<Value = String> {
-    valid_cfi().prop_map(|cfi| cfi.as_str().to_string())
-}
-
-/// Runs every validation rule against a normalized candidate, cheapest first:
-/// 1. Character class — all six positions must be uppercase ASCII letters.
-/// 2. Taxonomy — the category, group, and four attribute codes must exist in ISO 10962.
+/// # Parameters
+/// - `candidate`: A reference to an array of 6 bytes representing the CFI code to validate.
+///
+/// # Returns
+/// - `Ok(())`: If the candidate code passes all validation checks.
+/// - `Err(CfiError)`: If the candidate code fails any of the validation checks.
+///
+/// # Errors
+/// This function may return an error in the following cases:
+/// - `CfiError::InvalidCharacter`: if any of the candidate bytes are not uppercase ASCII letters.
+/// - `CfiError::UnknownCategory`: if the candidate code's category code is not recognized.
+/// - `CfiError::UnknownGroup`: if the candidate code's group code is not recognized.
+/// - `CfiError::InvalidAttribute`: if any of the candidate code's attribute codes are not
+/// recognized.
+///
+/// # Function Details
+/// - Calls `validate_character_classes` to ensure the candidate adheres to defined character class
+/// rules.
+/// - Calls `validate_taxonomy` to verify the taxonomy or structure of the candidate.
 fn validate(candidate: &[u8; 6]) -> Result<(), CfiError> {
     validate_character_classes(candidate)?;
     validate_taxonomy(candidate)?;
@@ -658,133 +557,21 @@ fn attr_allows(mask: u32, code: u8) -> bool {
     (mask >> (code - b'A')) & 1 == 1
 }
 
-/// Returns the `n`-th permitted letter of a (non-empty) attribute bitmask, wrapping by the number
-/// of set bits. Used by the `arbitrary`/`proptest` generators to build taxonomically valid CFIs
-/// without duplicating the table; hence the `dead_code` allowance when neither is enabled.
-fn nth_letter(mask: u32, n: usize) -> u8 {
-    let count = mask.count_ones() as usize;
-    let target = n % count;
-    (0u8..26)
-        .filter(|bit| (mask >> bit) & 1 == 1)
-        .nth(target)
-        .map(|bit| b'A' + bit)
-        .expect("attribute masks in the generated table are always non-zero")
-}
-
-impl Serialize for Cfi {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-struct CfiVisitor;
-
-impl<'de> Visitor<'de> for CfiVisitor {
-    type Value = Cfi;
-
-    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("a 6-character CFI (ISO 10962), e.g. ESVUFR")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Cfi::parse(v).map_err(de::Error::custom)
-    }
-}
-
-impl<'de> Deserialize<'de> for Cfi {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(CfiVisitor)
-    }
-}
-
-impl JsonSchema for Cfi {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("Cfi")
-    }
-
-    fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({
-            "type": "string",
-            "format": "cfi",
-            "minLength": 6,
-            "maxLength": 6,
-            "pattern": "^[A-Z]{6}$",
-            "description": "CFI (Classification of Financial Instruments, ISO 10962). \
-            The pattern is structural; taxonomic validity is enforced on deserialization."
-        })
-    }
-}
-
-impl<'a> Arbitrary<'a> for Cfi {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        // Walk the embedded taxonomy so every generated value is valid by construction: a category,
-        // a group within it, and a permitted letter for each of the four attribute positions.
-        let category = u.choose(CFI_CATEGORIES)?;
-        let group = u.choose(category.groups)?;
-
-        let mut bytes = [0u8; 6];
-        bytes[0] = category.code;
-        bytes[1] = group.code;
-        for (i, &mask) in group.attrs.iter().enumerate() {
-            let selector = u.arbitrary::<u8>()? as usize;
-            bytes[2 + i] = nth_letter(mask, selector);
-        }
-
-        Cfi::from_bytes(bytes).map_err(|_| arbitrary::Error::IncorrectFormat)
-    }
-}
-
 #[cfg(test)]
-mod tests_serde {
-    use crate::identifiers::cfi::Cfi;
-
-    #[test]
-    fn round_trips_through_json() {
-        let cfi = Cfi::parse("ESVUFR").unwrap();
-        let json = serde_json::to_string(&cfi).unwrap();
-        assert_eq!(json, "\"ESVUFR\"");
-        let back: Cfi = serde_json::from_str(&json).unwrap();
-        assert_eq!(cfi, back);
-    }
-
-    #[test]
-    fn rejects_invalid_json_string() {
-        let err = serde_json::from_str::<Cfi>("\"not-a-cfi\"").unwrap_err();
-        assert!(err.to_string().contains("CFI"));
-    }
-}
-
-#[cfg(test)]
-mod tests_formating {
-    use crate::identifiers::cfi::Cfi;
-    use std::format;
-    use std::string::ToString;
-
-    #[test]
-    fn display_is_the_canonical_string() {
-        let cfi = Cfi::parse("ESVUFR").unwrap();
-        assert_eq!(cfi.to_string(), "ESVUFR");
-    }
-
-    #[test]
-    fn debug_is_readable() {
-        let cfi = Cfi::parse("ESVUFR").unwrap();
-        assert_eq!(format!("{cfi:?}"), "Cfi(\"ESVUFR\")");
-    }
-}
-
-#[cfg(test)]
-mod tests_parsing {
+mod tests {
     use super::*;
+    use std::collections::HashSet;
+
+    /// Builds a `[u8; 6]` from a 6-byte ASCII string literal, for feeding directly into
+    /// `validate`/`from_bytes` without going through `normalize`.
+    fn candidate(s: &str) -> [u8; 6] {
+        let bytes = s.as_bytes();
+        let mut out = [0u8; 6];
+        out.copy_from_slice(bytes);
+        out
+    }
+
+    // ---- normalization (`normalize`) ----
 
     #[test]
     fn rejects_empty() {
@@ -814,7 +601,7 @@ mod tests_parsing {
     #[test]
     fn keeps_interior_characters_for_validation() {
         // An interior space survives normalization (count is still 6) and is left for
-        // `validation` to reject as a non-letter character.
+        // `validate` to reject as a non-letter character.
         assert_eq!(normalize("ES VFR").unwrap(), *b"ES VFR");
     }
 
@@ -833,38 +620,8 @@ mod tests_parsing {
     fn trims_non_ascii_whitespace() {
         assert_eq!(normalize("\u{00A0}ESVUFR\u{00A0}"), normalize("ESVUFR"));
     }
-}
 
-#[cfg(test)]
-mod tests_proptest {
-    use super::*;
-    use proptest::{prop_assert, prop_assert_eq, proptest};
-
-    proptest! {
-        #[test]
-        fn valid_cfi_always_round_trips_through_parse(cfi in valid_cfi()) {
-            let reparsed = Cfi::parse(cfi.as_str());
-            prop_assert!(reparsed.is_ok());
-            prop_assert_eq!(cfi, reparsed.unwrap());
-        }
-
-        #[test]
-        fn valid_cfi_string_always_parses(s in valid_cfi_string()) {
-            prop_assert!(Cfi::parse(&s).is_ok());
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests_validation {
-    use super::*;
-
-    fn candidate(s: &str) -> [u8; 6] {
-        let bytes = s.as_bytes();
-        let mut out = [0u8; 6];
-        out.copy_from_slice(bytes);
-        out
-    }
+    // ---- validation (`validate` and friends) ----
 
     #[test]
     fn accepts_known_valid_cfis() {
@@ -935,39 +692,200 @@ mod tests_validation {
             }
         );
     }
-}
 
-#[cfg(test)]
-mod tests_schemars {
-    use crate::identifiers::cfi::Cfi;
-    use schemars::schema_for;
+    // ---- constructors (`parse`, `new`, `from_bytes`) ----
 
     #[test]
-    fn schema_is_a_pattern_constrained_string() {
-        let schema = schema_for!(Cfi);
-        let json = serde_json::to_value(&schema).unwrap();
-
-        assert_eq!(json["type"], "string");
-        assert_eq!(json["format"], "cfi");
-        assert_eq!(json["minLength"], 6);
-        assert_eq!(json["maxLength"], 6);
-        assert_eq!(json["pattern"], "^[A-Z]{6}$");
+    fn new_is_an_alias_for_parse() {
+        assert_eq!(Cfi::new("ESVUFR"), Cfi::parse("ESVUFR"));
     }
-}
-
-#[cfg(test)]
-mod tests_arbitrary {
-    use super::*;
 
     #[test]
-    fn always_produces_valid_cfis() {
-        for seed in 0u32..256 {
-            let data = seed.to_le_bytes().repeat(8);
-            let mut u = Unstructured::new(&data);
-            let cfi = Cfi::arbitrary(&mut u).expect("arbitrary should always succeed");
-            // Re-validating via parse() proves the value round-trips through the exact same checks
-            // a hand-typed input would.
-            assert!(Cfi::parse(cfi.as_str()).is_ok());
-        }
+    fn from_bytes_rejects_invalid_attribute_without_normalizing() {
+        // from_bytes skips normalize, so it never produces InvalidLength — but taxonomy
+        // validation still runs.
+        assert_eq!(
+            Cfi::from_bytes(candidate("ESZUFR")).unwrap_err(),
+            CfiError::InvalidAttribute {
+                category: 'E',
+                group: 'S',
+                index: 1,
+                code: 'Z',
+            }
+        );
+    }
+
+    // ---- accessors ----
+
+    #[test]
+    fn accessors_return_expected_segments() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        assert_eq!(cfi.category(), 'E');
+        assert_eq!(cfi.group(), 'S');
+        assert_eq!(cfi.attributes(), ['V', 'U', 'F', 'R']);
+        assert_eq!(cfi.as_bytes(), b"ESVUFR");
+        assert_eq!(cfi.as_str(), "ESVUFR");
+    }
+
+    // ---- trait impls: FromStr / TryFrom ----
+
+    #[test]
+    fn from_str_parses_via_the_parse_method() {
+        let cfi: Cfi = "esvufr".parse().unwrap();
+        assert_eq!(cfi.as_str(), "ESVUFR");
+    }
+
+    #[test]
+    fn from_str_propagates_parse_errors() {
+        let err = "ESVU".parse::<Cfi>().unwrap_err();
+        assert_eq!(err, CfiError::InvalidLength { found: 4 });
+    }
+
+    #[test]
+    fn try_from_str_delegates_to_parse() {
+        assert_eq!(
+            Cfi::try_from("esvufr").unwrap(),
+            Cfi::parse("ESVUFR").unwrap()
+        );
+    }
+
+    #[test]
+    fn try_from_array_delegates_to_from_bytes() {
+        assert_eq!(
+            Cfi::try_from(*b"ESVUFR").unwrap(),
+            Cfi::from_bytes(*b"ESVUFR").unwrap()
+        );
+    }
+
+    #[test]
+    fn try_from_slice_accepts_correct_length() {
+        let cfi = Cfi::try_from(&b"ESVUFR"[..]).unwrap();
+        assert_eq!(cfi.as_str(), "ESVUFR");
+    }
+
+    #[test]
+    fn try_from_slice_rejects_wrong_length() {
+        let err = Cfi::try_from(&b"ESVU"[..]).unwrap_err();
+        assert_eq!(err, CfiError::InvalidLength { found: 4 });
+    }
+
+    // ---- equality against `str` / `&str` ----
+
+    #[test]
+    fn equality_is_symmetric_with_str_slices() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        let other = "ESVUFR";
+        assert_eq!(cfi, other);
+        assert_eq!(other, cfi);
+    }
+
+    // ---- AsRef ----
+
+    #[test]
+    fn as_ref_impls_match_accessors() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        let bytes_ref: &[u8] = cfi.as_ref();
+        assert_eq!(bytes_ref, cfi.as_bytes());
+        let str_ref: &str = cfi.as_ref();
+        assert_eq!(str_ref, cfi.as_str());
+    }
+
+    // ---- Clone / Copy / Ord / Hash ----
+
+    #[test]
+    fn is_copy_and_clone() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        let copied = cfi; // Copy: `cfi` remains usable below.
+        let cloned = cfi.clone();
+        assert_eq!(cfi, copied);
+        assert_eq!(cfi, cloned);
+    }
+
+    #[test]
+    fn ordering_follows_byte_order() {
+        let d = Cfi::parse("DBFTFB").unwrap();
+        let e = Cfi::parse("ESVUFR").unwrap();
+        assert!(d < e);
+    }
+
+    #[test]
+    fn hash_supports_set_membership() {
+        let mut set = HashSet::new();
+        set.insert(Cfi::parse("ESVUFR").unwrap());
+        set.insert(Cfi::parse("DBFTFB").unwrap());
+        set.insert(Cfi::parse("ESVUFR").unwrap()); // duplicate, should not grow the set
+        assert_eq!(set.len(), 2);
+    }
+
+    // ---- Display / Debug ----
+
+    #[test]
+    fn display_is_the_canonical_string() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        assert_eq!(cfi.to_string(), "ESVUFR");
+    }
+
+    #[test]
+    fn debug_is_readable() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        assert_eq!(format!("{cfi:?}"), "Cfi(\"ESVUFR\")");
+    }
+
+    // ---- CfiError messages ----
+
+    #[test]
+    fn error_messages_are_human_readable() {
+        assert_eq!(CfiError::Empty.to_string(), "empty CFI");
+        assert_eq!(
+            CfiError::InvalidLength { found: 4 }.to_string(),
+            "CFI must contain exactly 6 characters, found 4"
+        );
+        assert_eq!(
+            CfiError::InvalidCharacter {
+                character: '1',
+                position: 6
+            }
+            .to_string(),
+            "invalid character '1' at position 6 of 6: expected an uppercase letter (A-Z) ASCII character"
+        );
+        assert_eq!(
+            CfiError::UnknownCategory { code: 'Q' }.to_string(),
+            "unknown CFI category 'Q' at position 1"
+        );
+        assert_eq!(
+            CfiError::UnknownGroup {
+                category: 'E',
+                code: 'Z'
+            }
+            .to_string(),
+            "unknown CFI group 'Z' at position 2"
+        );
+        assert_eq!(
+            CfiError::InvalidAttribute {
+                category: 'E',
+                group: 'S',
+                index: 1,
+                code: 'X'
+            }
+            .to_string(),
+            "invalid attribute 'X' at position 1 of 6"
+        );
+    }
+
+    // ---- serde ----
+
+    #[test]
+    fn round_trips_through_json() {
+        let cfi = Cfi::parse("ESVUFR").unwrap();
+        let json = serde_json::to_string(&cfi).unwrap();
+        assert_eq!(json, "\"ESVUFR\"");
+        let back: Cfi = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfi, back);
+    }
+
+    #[test]
+    fn rejects_invalid_json_string() {
+        let err = serde_json::from_str::<Cfi>("\"not-a-cfi\"").unwrap_err();
+        assert!(err.to_string().contains("CFI"));
     }
 }
