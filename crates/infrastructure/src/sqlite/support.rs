@@ -5,7 +5,8 @@
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
-use valqeron_core::{StorageFault, WriteOutcome};
+use valqeron_core::StorageFault;
+use valqeron_core::common::WriteOutcome;
 
 const BUSY_MAX_ATTEMPTS: u32 = 5;
 

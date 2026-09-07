@@ -1,7 +1,7 @@
 use anyhow::Context;
 use directories::ProjectDirs;
 use std::path::{Path, PathBuf};
-use valqeron_common::os_str_is_off;
+use valqeron_core::common::os_str_is_off;
 
 const QUALIFIER: &str = "io";
 const ORGANIZATION: &str = "valqeron";
