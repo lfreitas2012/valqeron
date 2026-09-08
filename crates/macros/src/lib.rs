@@ -1,9 +1,12 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use serde_json::Value;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use syn::{LitStr, parse_macro_input};
+
+type MacroResult<T> = syn::Result<T>;
 
 // --- CFI Table Macro ---
 
@@ -20,30 +23,39 @@ struct CfiCategory {
 #[proc_macro]
 pub fn generate_cfi_table(input: TokenStream) -> TokenStream {
     let path_lit = parse_macro_input!(input as LitStr);
-    let rel_path = path_lit.value();
+    match build_cfi_table(&path_lit) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
-    let seed_path = Path::new(&manifest_dir).join(&rel_path);
-    let absolute_path_str = seed_path.to_str().expect("Path must be valid UTF-8");
+fn build_cfi_table(path_lit: &LitStr) -> MacroResult<proc_macro2::TokenStream> {
+    let span = path_lit.span();
+    let seed_path = resolve_seed_path(&path_lit.value(), span)?;
+    let absolute_path_str = seed_path
+        .to_str()
+        .ok_or_else(|| syn::Error::new(span, "seed path must be valid UTF-8"))?;
 
-    let raw = fs::read_to_string(&seed_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", seed_path.display()));
-    let json: Value = serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", seed_path.display()));
+    let raw = fs::read_to_string(&seed_path).map_err(|e| {
+        syn::Error::new(span, format!("failed to read {}: {e}", seed_path.display()))
+    })?;
+    let json: Value = serde_json::from_str(&raw).map_err(|e| {
+        syn::Error::new(
+            span,
+            format!("failed to parse {}: {e}", seed_path.display()),
+        )
+    })?;
 
-    let categories = parse_cfi_categories(&json);
+    let categories = parse_cfi_categories(&json, span)?;
 
     let mut category_tokens = Vec::new();
     for cat in categories {
-        let cat_code = syn::LitByte::new(cat.code, proc_macro2::Span::call_site());
+        let cat_code = syn::LitByte::new(cat.code, span);
         let mut group_tokens = Vec::new();
 
         for g in cat.groups {
-            let g_code = syn::LitByte::new(g.code, proc_macro2::Span::call_site());
-            let m0 = g.masks[0];
-            let m1 = g.masks[1];
-            let m2 = g.masks[2];
-            let m3 = g.masks[3];
+            let g_code = syn::LitByte::new(g.code, span);
+            let [m0, m1, m2, m3] = g.masks;
 
             group_tokens.push(quote! {
                 CfiGroupEntry {
@@ -63,75 +75,113 @@ pub fn generate_cfi_table(input: TokenStream) -> TokenStream {
         });
     }
 
-    let expanded = quote! {
+    Ok(quote! {
         const _: &[u8] = include_bytes!(#absolute_path_str);
 
         pub(crate) static CFI_CATEGORIES: &[CfiCategoryEntry] = &[
             #(#category_tokens),*
         ];
-    };
-
-    TokenStream::from(expanded)
+    })
 }
 
-fn parse_cfi_categories(json: &Value) -> Vec<CfiCategory> {
-    let cats = json["categories"]
-        .as_array()
-        .expect("top-level `categories` must be an array");
-    let mut out: Vec<CfiCategory> = cats
+fn resolve_seed_path(rel_path: &str, span: Span) -> MacroResult<PathBuf> {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| syn::Error::new(span, "CARGO_MANIFEST_DIR is not set"))?;
+    Ok(Path::new(&manifest_dir).join(rel_path))
+}
+
+fn parse_cfi_categories(json: &Value, span: Span) -> MacroResult<Vec<CfiCategory>> {
+    let cats = json
+        .get("categories")
+        .and_then(Value::as_array)
+        .ok_or_else(|| syn::Error::new(span, "top-level `categories` must be an array"))?;
+
+    let mut out = cats
         .iter()
-        .map(|cat| {
-            let code = single_letter(&cat["code"], "category code");
-            let mut groups = cat["groups"]
-                .as_array()
-                .expect("`groups` must be an array")
-                .iter()
-                .map(parse_cfi_group)
-                .collect::<Vec<_>>();
-            groups.sort_by_key(|g| g.code);
-            CfiCategory { code, groups }
-        })
-        .collect();
+        .map(|cat| parse_cfi_category(cat, span))
+        .collect::<MacroResult<Vec<_>>>()?;
     out.sort_by_key(|c| c.code);
-    out
+    Ok(out)
 }
 
-fn parse_cfi_group(group: &Value) -> CfiGroup {
-    let code = single_letter(&group["code"], "group code");
+fn parse_cfi_category(cat: &Value, span: Span) -> MacroResult<CfiCategory> {
+    let code_node = cat
+        .get("code")
+        .ok_or_else(|| syn::Error::new(span, "category missing `code`"))?;
+    let code = single_letter(code_node, "category code", span)?;
+
+    let groups_json = cat
+        .get("groups")
+        .and_then(Value::as_array)
+        .ok_or_else(|| syn::Error::new(span, "`groups` must be an array"))?;
+
+    let mut groups = groups_json
+        .iter()
+        .map(|g| parse_cfi_group(g, span))
+        .collect::<MacroResult<Vec<_>>>()?;
+    groups.sort_by_key(|g| g.code);
+
+    Ok(CfiCategory { code, groups })
+}
+
+fn parse_cfi_group(group: &Value, span: Span) -> MacroResult<CfiGroup> {
+    let code_node = group
+        .get("code")
+        .ok_or_else(|| syn::Error::new(span, "group missing `code`"))?;
+    let code = single_letter(code_node, "group code", span)?;
+
     let attr_keys = ["attribute1", "attribute2", "attribute3", "attribute4"];
     let mut masks = [0u32; 4];
 
-    for (i, key) in attr_keys.iter().enumerate() {
-        let values = group[*key]["attributeValues"]
-            .as_array()
-            .unwrap_or_else(|| panic!("`{key}.attributeValues` must be an array"));
+    for (slot, key) in masks.iter_mut().zip(attr_keys.iter()) {
+        let values = group
+            .get(*key)
+            .and_then(|attr| attr.get("attributeValues"))
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                syn::Error::new(span, format!("`{key}.attributeValues` must be an array"))
+            })?;
 
         let mut mask = 0u32;
         for value in values {
-            let letter = single_letter(&value["code"], "attribute value code");
-            mask |= 1 << (letter - b'A');
+            let code_node = value
+                .get("code")
+                .ok_or_else(|| syn::Error::new(span, "attribute value missing `code`"))?;
+            let letter = single_letter(code_node, "attribute value code", span)?;
+            let offset = letter
+                .checked_sub(b'A')
+                .ok_or_else(|| syn::Error::new(span, "attribute value code out of range"))?;
+            let bit = 1u32
+                .checked_shl(u32::from(offset))
+                .ok_or_else(|| syn::Error::new(span, "attribute value code out of range"))?;
+            mask |= bit;
         }
-        assert_ne!(
-            mask, 0,
-            "attribute `{key}` has no values in group {}",
-            code as char
-        );
-        masks[i] = mask;
+        if mask == 0 {
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "attribute `{key}` has no values in group {}",
+                    char::from(code)
+                ),
+            ));
+        }
+        *slot = mask;
     }
 
-    CfiGroup { code, masks }
+    Ok(CfiGroup { code, masks })
 }
 
-fn single_letter(node: &Value, what: &str) -> u8 {
+fn single_letter(node: &Value, what: &str, span: Span) -> MacroResult<u8> {
     let s = node
         .as_str()
-        .unwrap_or_else(|| panic!("{what} must be a string"));
-    let bytes = s.as_bytes();
-    assert!(
-        bytes.len() == 1 && bytes[0].is_ascii_uppercase(),
-        "{what} must be a single uppercase A-Z letter, found {s:?}"
-    );
-    bytes[0]
+        .ok_or_else(|| syn::Error::new(span, format!("{what} must be a string")))?;
+    match s.as_bytes() {
+        [b] if b.is_ascii_uppercase() => Ok(*b),
+        _ => Err(syn::Error::new(
+            span,
+            format!("{what} must be a single uppercase A-Z letter, found {s:?}"),
+        )),
+    }
 }
 
 // --- MIC Table Macro ---
@@ -155,181 +205,249 @@ struct Market {
 #[proc_macro]
 pub fn generate_mic_table(input: TokenStream) -> TokenStream {
     let path_lit = parse_macro_input!(input as LitStr);
-    let rel_path = path_lit.value();
+    match build_mic_table(&path_lit) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
-    let seed_path = Path::new(&manifest_dir).join(&rel_path);
-    let absolute_path_str = seed_path.to_str().expect("Path must be valid UTF-8");
+fn build_mic_table(path_lit: &LitStr) -> MacroResult<proc_macro2::TokenStream> {
+    let span = path_lit.span();
+    let seed_path = resolve_seed_path(&path_lit.value(), span)?;
+    let absolute_path_str = seed_path
+        .to_str()
+        .ok_or_else(|| syn::Error::new(span, "seed path must be valid UTF-8"))?;
 
-    let raw = fs::read_to_string(&seed_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", seed_path.display()));
+    let raw = fs::read_to_string(&seed_path).map_err(|e| {
+        syn::Error::new(span, format!("failed to read {}: {e}", seed_path.display()))
+    })?;
 
-    let markets = parse_mic_seed(&raw);
+    let markets = parse_mic_seed(&raw, span)?;
 
     let mut entry_tokens = Vec::new();
     for m in &markets {
-        let operating_idx = markets
+        let operating_pos = markets
             .binary_search_by_key(&m.operating, |x| x.mic)
-            .expect("finalize checked every operating reference");
+            .map_err(|_| syn::Error::new(span, "finalize checked every operating reference"))?;
+        let operating_idx = u16::try_from(operating_pos)
+            .map_err(|_| syn::Error::new(span, "too many entries in the MIC registry"))?;
 
-        let b0 = m.mic[0];
-        let b1 = m.mic[1];
-        let b2 = m.mic[2];
-        let b3 = m.mic[3];
-
-        let c0 = m.country[0];
-        let c1 = m.country[1];
+        let [b0, b1, b2, b3] = m.mic;
+        let [c0, c1] = m.country;
         let active = m.active;
 
         entry_tokens.push(quote! {
             MicEntry {
                 code: [#b0, #b1, #b2, #b3],
-                operating: #operating_idx as u16,
+                operating: #operating_idx,
                 country: [#c0, #c1],
                 active: #active,
             }
         });
     }
 
-    let expanded = quote! {
+    Ok(quote! {
         const _: &[u8] = include_bytes!(#absolute_path_str);
 
         pub(crate) static MIC_ENTRIES: &[MicEntry] = &[
             #(#entry_tokens),*
         ];
-    };
-
-    TokenStream::from(expanded)
+    })
 }
 
-fn parse_mic_seed(raw: &str) -> Vec<Market> {
-    let records = parse_csv(raw);
+fn parse_mic_seed(raw: &str, span: Span) -> MacroResult<Vec<Market>> {
+    let records = parse_csv(raw, span)?;
     let (header, rows) = records
         .split_first()
-        .expect("the seed must have a header row");
-    assert_eq!(
-        header,
-        &MIC_COLUMNS.map(String::from),
-        "the seed header must be exactly `{}`",
-        MIC_COLUMNS.join(",")
-    );
-    let columns = [0, 1, 2, 3, 4];
-    finalize_mic(parse_mic_rows(rows, &columns))
+        .ok_or_else(|| syn::Error::new(span, "the seed must have a header row"))?;
+
+    let header_matches = header
+        .iter()
+        .map(String::as_str)
+        .eq(MIC_COLUMNS.iter().copied());
+    if !header_matches {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "the seed header must be exactly `{}`",
+                MIC_COLUMNS.join(",")
+            ),
+        ));
+    }
+
+    let columns = [0usize, 1, 2, 3, 4];
+    finalize_mic(parse_mic_rows(rows, &columns, span)?, span)
 }
 
-fn parse_mic_rows(rows: &[Vec<String>], columns: &[usize; 5]) -> Vec<Market> {
+fn parse_mic_rows(
+    rows: &[Vec<String>],
+    columns: &[usize; 5],
+    span: Span,
+) -> MacroResult<Vec<Market>> {
     rows.iter()
-        .enumerate()
-        .map(|(i, row)| parse_mic_row(row, columns, i + 2))
+        .zip(2usize..)
+        .map(|(row, line)| parse_mic_row(row, columns, line, span))
         .collect()
 }
 
-fn parse_mic_row(row: &[String], columns: &[usize; 5], line: usize) -> Market {
-    let field = |i: usize| -> &str {
-        row.get(columns[i])
-            .unwrap_or_else(|| panic!("line {line}: missing `{}` column", MIC_COLUMNS[i]))
-            .trim()
+fn parse_mic_row(
+    row: &[String],
+    columns: &[usize; 5],
+    line: usize,
+    span: Span,
+) -> MacroResult<Market> {
+    let [c0, c1, c2, c3, c4] = *columns;
+    let [n0, n1, n2, n3, n4] = MIC_COLUMNS;
+
+    let field = |col: usize, name: &str| -> MacroResult<&str> {
+        row.get(col)
+            .map(|s| s.trim())
+            .ok_or_else(|| syn::Error::new(span, format!("line {line}: missing `{name}` column")))
     };
 
-    let mic = code4(field(0), line, MIC_COLUMNS[0]);
-    let operating = code4(field(1), line, MIC_COLUMNS[1]);
-    let kind = field(2);
-    let country = code2(field(3), line);
-    let status = field(4);
+    let mic = code4(field(c0, n0)?, line, n0, span)?;
+    let operating = code4(field(c1, n1)?, line, n1, span)?;
+    let kind = field(c2, n2)?;
+    let country = code2(field(c3, n3)?, line, n3, span)?;
+    let status = field(c4, n4)?;
 
     let self_operated = mic == operating;
     match kind {
-        "OPRT" => assert!(
-            self_operated,
-            "line {line}: kind is OPRT but the OPERATING MIC differs from the MIC"
-        ),
-        "SGMT" => assert!(
-            !self_operated,
-            "line {line}: kind is SGMT but the OPERATING MIC equals the MIC"
-        ),
-        other => panic!("line {line}: unknown OPRT/SGMT value {other:?}"),
+        "OPRT" if self_operated => {}
+        "OPRT" => {
+            return Err(syn::Error::new(
+                span,
+                format!("line {line}: kind is OPRT but the OPERATING MIC differs from the MIC"),
+            ));
+        }
+        "SGMT" if !self_operated => {}
+        "SGMT" => {
+            return Err(syn::Error::new(
+                span,
+                format!("line {line}: kind is SGMT but the OPERATING MIC equals the MIC"),
+            ));
+        }
+        other => {
+            return Err(syn::Error::new(
+                span,
+                format!("line {line}: unknown OPRT/SGMT value {other:?}"),
+            ));
+        }
     }
 
     let active = match status {
         "ACTIVE" => true,
         "EXPIRED" => false,
-        other => panic!("line {line}: unknown STATUS value {other:?}"),
+        other => {
+            return Err(syn::Error::new(
+                span,
+                format!("line {line}: unknown STATUS value {other:?}"),
+            ));
+        }
     };
 
-    Market {
+    Ok(Market {
         mic,
         operating,
         country,
         active,
-    }
+    })
 }
 
-fn finalize_mic(mut markets: Vec<Market>) -> Vec<Market> {
-    assert!(!markets.is_empty(), "the registry cannot be empty");
-    assert!(
-        u16::try_from(markets.len()).is_ok(),
-        "the table stores operating references as u16 indexes"
-    );
+fn finalize_mic(mut markets: Vec<Market>, span: Span) -> MacroResult<Vec<Market>> {
+    if markets.is_empty() {
+        return Err(syn::Error::new(span, "the registry cannot be empty"));
+    }
+    if u16::try_from(markets.len()).is_err() {
+        return Err(syn::Error::new(
+            span,
+            "the table stores operating references as u16 indexes",
+        ));
+    }
 
     markets.sort_by_key(|m| m.mic);
-    for pair in markets.windows(2) {
-        assert_ne!(
-            pair[0].mic,
-            pair[1].mic,
-            "duplicate MIC {:?}",
-            std::str::from_utf8(&pair[0].mic).unwrap()
-        );
+    for (a, b) in markets.iter().zip(markets.iter().skip(1)) {
+        if a.mic == b.mic {
+            return Err(syn::Error::new(
+                span,
+                format!("duplicate MIC {}", mic_display(a.mic)),
+            ));
+        }
     }
 
     for market in &markets {
         let mut current = *market;
         let mut hops = 0usize;
         while current.mic != current.operating {
-            let index = markets
+            let idx = markets
                 .binary_search_by_key(&current.operating, |m| m.mic)
-                .unwrap_or_else(|_| {
-                    panic!(
-                        "MIC {:?} references operating MIC {:?}, which is not in the registry",
-                        std::str::from_utf8(&current.mic).unwrap(),
-                        std::str::from_utf8(&current.operating).unwrap()
+                .map_err(|_| {
+                    syn::Error::new(
+                        span,
+                        format!(
+                            "MIC {} references operating MIC {}, which is not in the registry",
+                            mic_display(current.mic),
+                            mic_display(current.operating),
+                        ),
                     )
-                });
-            current = markets[index];
-            hops += 1;
-            assert!(
-                hops <= markets.len(),
-                "MIC {:?} starts a cycle of operating MIC references",
-                std::str::from_utf8(&market.mic).unwrap()
-            );
+                })?;
+            current = *markets
+                .get(idx)
+                .ok_or_else(|| syn::Error::new(span, "internal error resolving operating MIC"))?;
+            hops = hops.saturating_add(1);
+            if hops > markets.len() {
+                return Err(syn::Error::new(
+                    span,
+                    format!(
+                        "MIC {} starts a cycle of operating MIC references",
+                        mic_display(market.mic)
+                    ),
+                ));
+            }
         }
     }
 
-    markets
+    Ok(markets)
 }
 
-fn code4(s: &str, line: usize, what: &str) -> [u8; 4] {
-    let bytes = s.as_bytes();
-    assert!(
-        bytes.len() == 4
-            && bytes
-                .iter()
-                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()),
-        "line {line}: {what} must be four uppercase A-Z or 0-9 characters, found {s:?}"
-    );
-    [bytes[0], bytes[1], bytes[2], bytes[3]]
+fn mic_display(mic: [u8; 4]) -> String {
+    mic.iter().map(|&byte| char::from(byte)).collect()
 }
 
-fn code2(s: &str, line: usize) -> [u8; 2] {
-    let bytes = s.as_bytes();
-    assert!(
-        bytes.len() == 2 && bytes.iter().all(u8::is_ascii_uppercase),
-        "line {line}: {} must be two uppercase A-Z letters, found {s:?}",
-        MIC_COLUMNS[3]
-    );
-    [bytes[0], bytes[1]]
+fn is_code_char(byte: u8) -> bool {
+    byte.is_ascii_uppercase() || byte.is_ascii_digit()
 }
 
-fn parse_csv(input: &str) -> Vec<Vec<String>> {
+fn code4(s: &str, line: usize, what: &str, span: Span) -> MacroResult<[u8; 4]> {
+    match s.as_bytes() {
+        [byte0, byte1, byte2, byte3]
+            if is_code_char(*byte0)
+                && is_code_char(*byte1)
+                && is_code_char(*byte2)
+                && is_code_char(*byte3) =>
+        {
+            Ok([*byte0, *byte1, *byte2, *byte3])
+        }
+        _ => Err(syn::Error::new(
+            span,
+            format!(
+                "line {line}: {what} must be four uppercase A-Z or 0-9 characters, found {s:?}"
+            ),
+        )),
+    }
+}
+
+fn code2(s: &str, line: usize, what: &str, span: Span) -> MacroResult<[u8; 2]> {
+    match s.as_bytes() {
+        [a, b] if a.is_ascii_uppercase() && b.is_ascii_uppercase() => Ok([*a, *b]),
+        _ => Err(syn::Error::new(
+            span,
+            format!("line {line}: {what} must be two uppercase A-Z letters, found {s:?}"),
+        )),
+    }
+}
+
+fn parse_csv(input: &str, span: Span) -> MacroResult<Vec<Vec<String>>> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
 
     let mut records: Vec<Vec<String>> = Vec::new();
@@ -365,11 +483,13 @@ fn parse_csv(input: &str) -> Vec<Vec<String>> {
             _ => field.push(ch),
         }
     }
-    assert!(!in_quotes, "unterminated quoted field");
+    if in_quotes {
+        return Err(syn::Error::new(span, "unterminated quoted field"));
+    }
     if !field.is_empty() || !record.is_empty() {
         record.push(field);
         records.push(record);
     }
 
-    records
+    Ok(records)
 }
