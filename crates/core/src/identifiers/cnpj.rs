@@ -19,11 +19,21 @@ pub struct Cnpj {
 }
 
 impl Cnpj {
+    /// # Errors
+    ///
+    /// Returns [`CnpjError`] if the input is empty, doesn't contain exactly
+    /// 14 meaningful (non-punctuation, non-whitespace) characters, contains
+    /// a character outside its position's expected class, is all one
+    /// repeated digit, or has check digits that don't match the CNPJ mod-11
+    /// algorithm.
     pub fn parse(input: &str) -> Result<Self, CnpjError> {
         let candidate = normalize(input)?;
         Self::from_bytes(candidate)
     }
 
+    /// # Errors
+    ///
+    /// See [`Cnpj::parse`].
     #[doc(alias = "from_digits")]
     pub fn from_bytes(bytes: [u8; 14]) -> Result<Self, CnpjError> {
         validate(&bytes)?;
@@ -402,14 +412,10 @@ fn normalize(input: &str) -> Result<[u8; 14], CnpjError> {
         if !ch.is_ascii() {
             return Err(CnpjError::InvalidCharacter {
                 character: ch,
-                // i is bounded by 14, so try_from will never fail.
-                // unwrap_or(0) satisfies the type system and linter safely
                 position: u8::try_from(i).unwrap_or(0).saturating_add(1),
                 expected: CharacterClass::Alphanumeric,
             });
         }
-        // We just checked !ch.is_ascii(), so this try_from is guaranteed to succeed.
-        // unwrap_or(b'\0') provides a safe, unreachable fallback.
         *slot = u8::try_from(u32::from(ch.to_ascii_uppercase())).unwrap_or(b'\0');
     }
 
@@ -417,63 +423,19 @@ fn normalize(input: &str) -> Result<[u8; 14], CnpjError> {
 }
 
 #[cfg(test)]
-mod tests_parsers {
-    use crate::identifiers::cnpj::{CnpjError, normalize};
-
-    #[test]
-    fn rejects_empty() {
-        assert_eq!(normalize(""), Err(CnpjError::Empty));
-    }
-
-    #[test]
-    fn strips_conventional_punctuation() {
-        assert_eq!(normalize("12.345.678/0001-95"), normalize("12345678000195"));
-    }
-
-    #[test]
-    fn strips_all_whitespace() {
-        assert_eq!(
-            normalize(" \t12.345.678/0001-95\n \r"),
-            normalize("12345678000195")
-        );
-    }
-
-    #[test]
-    fn strips_non_ascii_whitespace() {
-        assert_eq!(
-            normalize("\u{00A0}12.345.678/0001-95\u{00A0}"),
-            normalize("12345678000195")
-        );
-    }
-
-    #[test]
-    fn uppercases_letters() {
-        assert_eq!(normalize("12abc34501de35").unwrap(), *b"12ABC34501DE35");
-    }
-
-    #[test]
-    fn rejects_wrong_length() {
-        assert_eq!(
-            normalize("1234"),
-            Err(CnpjError::InvalidLength { found: 4 })
-        );
-    }
-
-    #[test]
-    fn rejects_non_ascii() {
-        let err = normalize("12ç45678000195").unwrap_err();
-        assert!(matches!(
-            err,
-            CnpjError::InvalidCharacter {
-                character: 'ç', ..
-            }
-        ));
-    }
-}
-
-#[cfg(test)]
-mod tests_validation {
-    use crate::identifiers::cnpj::{CharacterClass, CnpjError, validate};
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::string_slice,
+    clippy::cast_possible_truncation,
+    clippy::cast_lossless
+)]
+mod tests {
+    use super::*;
 
     fn candidate(s: &str) -> [u8; 14] {
         let bytes = s.as_bytes();
@@ -482,88 +444,307 @@ mod tests_validation {
         out
     }
 
-    #[test]
-    fn accepts_valid_legacy_numeric_cnpj() {
-        // A well-known real CNPJ root (Banco do Brasil).
-        assert!(validate(&candidate("00000000000191")).is_ok());
+    mod parsing {
+        use super::*;
+
+        #[test]
+        fn rejects_empty() {
+            assert_eq!(normalize(""), Err(CnpjError::Empty));
+        }
+
+        #[test]
+        fn strips_conventional_punctuation() {
+            assert_eq!(normalize("12.345.678/0001-95"), normalize("12345678000195"));
+        }
+
+        #[test]
+        fn strips_all_whitespace() {
+            assert_eq!(
+                normalize(" \t12.345.678/0001-95\n \r"),
+                normalize("12345678000195")
+            );
+        }
+
+        #[test]
+        fn strips_non_ascii_whitespace() {
+            assert_eq!(
+                normalize("\u{00A0}12.345.678/0001-95\u{00A0}"),
+                normalize("12345678000195")
+            );
+        }
+
+        #[test]
+        fn uppercases_letters() {
+            assert_eq!(normalize("12abc34501de35").unwrap(), *b"12ABC34501DE35");
+        }
+
+        #[test]
+        fn rejects_wrong_length() {
+            assert_eq!(
+                normalize("1234"),
+                Err(CnpjError::InvalidLength { found: 4 })
+            );
+        }
+
+        #[test]
+        fn rejects_non_ascii() {
+            let err = normalize("12ç45678000195").unwrap_err();
+            assert!(matches!(
+                err,
+                CnpjError::InvalidCharacter {
+                    character: 'ç', ..
+                }
+            ));
+        }
+
+        #[test]
+        fn parse_and_from_str_agree() {
+            let via_parse = Cnpj::parse("00000000000191").unwrap();
+            let via_from_str: Cnpj = "00000000000191".parse().unwrap();
+            assert_eq!(via_parse, via_from_str);
+        }
     }
 
-    #[test]
-    fn accepts_valid_alphanumeric_cnpj() {
-        // Worked example from the official SERPRO technical note.
-        assert!(validate(&candidate("12ABC34501DE35")).is_ok());
-    }
+    mod validation {
+        use super::*;
 
-    #[test]
-    fn rejects_letter_in_check_digit_position() {
-        let err = validate(&candidate("12ABC34501DEA5")).unwrap_err();
-        assert_eq!(
-            err,
-            CnpjError::InvalidCharacter {
-                character: 'A',
-                position: 13,
-                expected: CharacterClass::Digit,
+        /// A second, deliberately naive implementation of the CNPJ mod-11 check-digit
+        /// algorithm, used only to cross-check `compute_valid_check_digits`. Mirrors
+        /// `char_value`'s rule directly: every character's value is its ASCII code minus
+        /// `b'0'`, for digits and uppercase letters alike.
+        fn reference_check_digits(base: &str) -> (u8, u8) {
+            fn mod11_digit(digits: &[u32], weights: &[u32]) -> u8 {
+                let mut sum = 0u32;
+                for (d, w) in digits.iter().zip(weights) {
+                    sum += d * w;
+                }
+                let rem = sum % 11;
+                if rem < 2 { 0 } else { (11 - rem) as u8 }
             }
-        );
-    }
 
-    #[test]
-    fn rejects_symbol_in_base() {
-        let err = validate(&candidate("12!BC34501DE35")).unwrap_err();
-        assert_eq!(
-            err,
-            CnpjError::InvalidCharacter {
-                character: '!',
-                position: 3,
-                expected: CharacterClass::Alphanumeric,
+            let base_digits: Vec<u32> = base.bytes().map(|c| u32::from(c - b'0')).collect();
+            let dv1 = mod11_digit(&base_digits, &WEIGHTS_DV1);
+
+            let mut dv2_digits = base_digits.clone();
+            dv2_digits.push(u32::from(dv1));
+            let dv2 = mod11_digit(&dv2_digits, &WEIGHTS_DV2);
+
+            (dv1, dv2)
+        }
+
+        #[test]
+        fn accepts_valid_legacy_numeric_cnpj() {
+            // A well-known real CNPJ root (Banco do Brasil).
+            assert!(validate(&candidate("00000000000191")).is_ok());
+        }
+
+        #[test]
+        fn accepts_valid_alphanumeric_cnpj() {
+            // Worked example from the official SERPRO technical note.
+            assert!(validate(&candidate("12ABC34501DE35")).is_ok());
+        }
+
+        #[test]
+        fn matches_the_reference_implementation() {
+            for base in [
+                "000000000001",
+                "12ABC34501DE",
+                "000000000000",
+                "999999999999",
+                "ZZZZZZZZZZZZ",
+            ] {
+                assert_eq!(
+                    compute_valid_check_digits(base.as_bytes().try_into().unwrap()),
+                    reference_check_digits(base),
+                    "{base}"
+                );
             }
-        );
+        }
+
+        #[test]
+        fn rejects_letter_in_check_digit_position() {
+            let err = validate(&candidate("12ABC34501DEA5")).unwrap_err();
+            assert_eq!(
+                err,
+                CnpjError::InvalidCharacter {
+                    character: 'A',
+                    position: 13,
+                    expected: CharacterClass::Digit,
+                }
+            );
+        }
+
+        #[test]
+        fn rejects_symbol_in_base() {
+            let err = validate(&candidate("12!BC34501DE35")).unwrap_err();
+            assert_eq!(
+                err,
+                CnpjError::InvalidCharacter {
+                    character: '!',
+                    position: 3,
+                    expected: CharacterClass::Alphanumeric,
+                }
+            );
+        }
+
+        #[test]
+        fn rejects_all_repeated_digit() {
+            assert_eq!(
+                validate(&candidate("11111111111111")).unwrap_err(),
+                CnpjError::RepeatedDigits
+            );
+        }
+
+        #[test]
+        fn rejects_bad_checksum() {
+            let err = validate(&candidate("00000000000192")).unwrap_err();
+            assert_eq!(
+                err,
+                CnpjError::InvalidCheckDigits {
+                    position: 14,
+                    expected: 1,
+                    found: 2,
+                }
+            );
+        }
+
+        #[test]
+        fn try_from_slice_rejects_wrong_length() {
+            let err = Cnpj::try_from(&b"0000000000019"[..]).unwrap_err();
+            assert_eq!(err, CnpjError::InvalidLength { found: 13 });
+        }
+
+        #[test]
+        fn try_from_array_matches_from_bytes() {
+            let bytes = candidate("00000000000191");
+            assert_eq!(Cnpj::try_from(bytes), Cnpj::from_bytes(bytes));
+        }
     }
 
-    #[test]
-    fn rejects_all_repeated_digit() {
-        assert_eq!(
-            validate(&candidate("11111111111111")).unwrap_err(),
-            CnpjError::RepeatedDigits
-        );
+    mod accessors {
+        use super::*;
+
+        #[test]
+        fn root_and_branch_code_partition_the_base() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(cnpj.root(), "00000000");
+            assert_eq!(cnpj.branch_code(), "0001");
+        }
+
+        #[test]
+        fn branch_number_parses_the_branch_code() {
+            assert_eq!(
+                Cnpj::parse("00000000000191").unwrap().branch_number(),
+                Some(1)
+            );
+        }
+
+        #[test]
+        fn check_digits_matches_computed_check_digits() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(cnpj.check_digits(), (9, 1));
+        }
+
+        #[test]
+        fn is_root_reflects_branch_code() {
+            assert!(Cnpj::parse("00000000000191").unwrap().is_root());
+
+            // Build a same-root, different-branch CNPJ from the algorithm itself (rather
+            // than asserting a fact about a real company's second branch).
+            let base = *b"000000000002";
+            let (dv1, dv2) = compute_valid_check_digits(&base);
+            let mut full = [0u8; 14];
+            let (left, right) = full.split_at_mut(12);
+            left.copy_from_slice(&base);
+            right.copy_from_slice(&[dv1 + b'0', dv2 + b'0']);
+
+            let segment = Cnpj::from_bytes(full).unwrap();
+            assert!(!segment.is_root());
+            assert_eq!(segment.branch_code(), "0002");
+        }
     }
 
-    #[test]
-    fn rejects_bad_checksum() {
-        let err = validate(&candidate("00000000000192")).unwrap_err();
-        assert_eq!(
-            err,
-            CnpjError::InvalidCheckDigits {
-                position: 14,
-                expected: 1,
-                found: 2,
-            }
-        );
+    mod formatting {
+        use super::*;
+
+        #[test]
+        fn formats_numeric_cnpj() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(cnpj.formatted().as_str(), "00.000.000/0001-91");
+            assert_eq!(cnpj.to_string(), "00.000.000/0001-91");
+        }
+
+        #[test]
+        fn formats_alphanumeric_cnpj() {
+            let cnpj = Cnpj::parse("12ABC34501DE35").unwrap();
+            assert_eq!(cnpj.formatted().as_str(), "12.ABC.345/01DE-35");
+        }
+
+        #[test]
+        fn debug_is_readable() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(format!("{cnpj:?}"), "Cnpj(\"00.000.000/0001-91\")");
+        }
+
+        #[test]
+        fn formatted_debug_is_readable() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(
+                format!("{:?}", cnpj.formatted()),
+                "FormattedCnpj(\"00.000.000/0001-91\")"
+            );
+        }
+
+        #[test]
+        fn formatted_derefs_to_str() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            let formatted = cnpj.formatted();
+            assert!(formatted.contains('/'));
+            assert_eq!(formatted.len(), 18);
+        }
+
+        #[test]
+        fn error_messages_are_human_readable() {
+            assert_eq!(CnpjError::Empty.to_string(), "CNPJ cannot be empty.");
+            assert_eq!(
+                CnpjError::RepeatedDigits.to_string(),
+                "A CNPJ cannot contain only repeated digits"
+            );
+        }
     }
-}
 
-#[cfg(test)]
-mod tests_formated {
-    use crate::identifiers::cnpj::Cnpj;
-    use std::format;
-    use std::string::ToString;
+    mod comparisons {
+        use super::*;
+        use std::collections::HashSet;
 
-    #[test]
-    fn formats_numeric_cnpj() {
-        let cnpj = Cnpj::parse("00000000000191").unwrap();
-        assert_eq!(cnpj.formatted().as_str(), "00.000.000/0001-91");
-        assert_eq!(cnpj.to_string(), "00.000.000/0001-91");
-    }
+        #[test]
+        fn compares_equal_to_matching_str() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(cnpj, "00000000000191");
+            assert_eq!("00000000000191", cnpj);
+            assert_ne!(cnpj, "12ABC34501DE35");
+        }
 
-    #[test]
-    fn formats_alphanumeric_cnpj() {
-        let cnpj = Cnpj::parse("12ABC34501DE35").unwrap();
-        assert_eq!(cnpj.formatted().as_str(), "12.ABC.345/01DE-35");
-    }
+        #[test]
+        fn orders_the_same_as_the_underlying_bytes() {
+            let a = Cnpj::parse("00000000000191").unwrap();
+            let b = Cnpj::parse("12ABC34501DE35").unwrap();
+            assert!(a < b);
+        }
 
-    #[test]
-    fn debug_is_readable() {
-        let cnpj = Cnpj::parse("00000000000191").unwrap();
-        assert_eq!(format!("{cnpj:?}"), "Cnpj(\"00.000.000/0001-91\")");
+        #[test]
+        fn hash_is_consistent_with_equality() {
+            let a = Cnpj::parse("00000000000191").unwrap();
+            let b = Cnpj::parse("00000000000191").unwrap();
+            let mut set = HashSet::new();
+            set.insert(a);
+            assert!(!set.insert(b), "equal Cnpjs must hash to the same bucket");
+        }
+
+        #[test]
+        fn as_ref_bytes_matches_as_bytes() {
+            let cnpj = Cnpj::parse("00000000000191").unwrap();
+            assert_eq!(AsRef::<[u8]>::as_ref(&cnpj), cnpj.as_bytes());
+        }
     }
 }

@@ -1,5 +1,5 @@
-use crate::identifiers::CountryCode;
 use crate::identifiers::common::CharacterClass;
+use crate::identifiers::country_code::CountryCode;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::{FromStr, from_utf8_unchecked};
@@ -14,16 +14,31 @@ pub struct Isin {
 }
 
 impl Isin {
+    /// # Errors
+    ///
+    /// Returns [`IsinError`] if the input is empty, is not exactly twelve
+    /// characters long, contains a character outside its position's
+    /// expected class, or has a check digit that doesn't match the Luhn
+    /// algorithm.
     pub fn parse(input: &str) -> Result<Self, IsinError> {
         let candidate = normalize(input)?;
         Self::from_bytes(candidate)
     }
 
+    /// Alias for [`Isin::parse`].
+    ///
+    /// # Errors
+    ///
+    /// See [`Isin::parse`].
     #[inline]
     pub fn new(input: &str) -> Result<Self, IsinError> {
         Self::parse(input)
     }
 
+    /// # Errors
+    ///
+    /// Returns [`IsinError`] if the bytes are not ASCII in the right
+    /// positions, or fail the Luhn check digit algorithm.
     pub fn from_bytes(bytes: [u8; 12]) -> Result<Self, IsinError> {
         validate(&bytes)?;
         Ok(Isin { bytes })
@@ -45,31 +60,39 @@ impl Isin {
     #[inline]
     #[must_use]
     pub fn country_code(&self) -> &str {
-        &self.as_str()[0..2]
+        // ASCII is one byte per character, so byte offset 2 is always a char boundary;
+        // `unwrap_or` is a defensive fallback that can never actually be reached.
+        self.as_str().get(0..2).unwrap_or("")
     }
 
     #[inline]
     #[must_use]
     pub fn country(&self) -> Option<CountryCode> {
-        CountryCode::from_bytes([self.bytes[0], self.bytes[1]]).ok()
+        let &[a, b] = self.bytes.first_chunk::<2>().unwrap_or(b"ZZ");
+        CountryCode::from_bytes([a, b]).ok()
     }
 
     #[inline]
     #[must_use]
     pub fn nsin(&self) -> &str {
-        &self.as_str()[2..11]
+        self.as_str().get(2..BASE_LEN).unwrap_or("")
     }
 
     #[inline]
     #[must_use]
     pub fn check_digit(&self) -> u8 {
-        self.bytes[11] - b'0'
+        let byte = self.bytes.last().copied().unwrap_or(b'0');
+        byte.wrapping_sub(b'0')
     }
 
     #[inline]
     #[must_use]
     pub fn computed_check_digit(&self) -> u8 {
-        compute_check_digit(&self.bytes[..11])
+        let base = self
+            .bytes
+            .first_chunk::<BASE_LEN>()
+            .unwrap_or(&[b'0'; BASE_LEN]);
+        compute_check_digit(base)
     }
 }
 
@@ -194,6 +217,19 @@ impl<'de> Deserialize<'de> for Isin {
     }
 }
 
+/// Which character class ISO 6166 expects at a given position: the first 2
+/// characters are the country code (letters only), the next 9 are the NSIN
+/// (alphanumeric), and the final 1 is the Luhn check digit.
+fn expected_class(position_index: usize) -> CharacterClass {
+    if position_index < 2 {
+        CharacterClass::Letter
+    } else if position_index < BASE_LEN {
+        CharacterClass::Alphanumeric
+    } else {
+        CharacterClass::Digit
+    }
+}
+
 fn validate(candidate: &[u8; 12]) -> Result<(), IsinError> {
     validate_character_classes(candidate)?;
     validate_check_digit(candidate)?;
@@ -201,23 +237,20 @@ fn validate(candidate: &[u8; 12]) -> Result<(), IsinError> {
 }
 
 fn validate_character_classes(candidate: &[u8; 12]) -> Result<(), IsinError> {
-    for (i, &byte) in candidate.iter().enumerate() {
-        let (is_valid, expected) = if i < 2 {
-            (byte.is_ascii_uppercase(), CharacterClass::Letter)
+    for ((i, &byte), position) in candidate.iter().enumerate().zip(1u8..) {
+        let is_valid = if i < 2 {
+            byte.is_ascii_uppercase()
         } else if i < BASE_LEN {
-            (
-                byte.is_ascii_digit() || byte.is_ascii_uppercase(),
-                CharacterClass::Alphanumeric,
-            )
+            byte.is_ascii_digit() || byte.is_ascii_uppercase()
         } else {
-            (byte.is_ascii_digit(), CharacterClass::Digit)
+            byte.is_ascii_digit()
         };
 
         if !is_valid {
             return Err(IsinError::InvalidCharacter {
-                character: byte as char,
-                position: (i + 1) as u8,
-                expected,
+                character: char::from(byte),
+                position,
+                expected: expected_class(i),
             });
         }
     }
@@ -225,37 +258,46 @@ fn validate_character_classes(candidate: &[u8; 12]) -> Result<(), IsinError> {
 }
 
 fn validate_check_digit(candidate: &[u8; 12]) -> Result<(), IsinError> {
-    let expected = compute_check_digit(&candidate[..BASE_LEN]);
-    // Character-class validation above guarantees `candidate[11]` is an ASCII digit.
-    let found = candidate[BASE_LEN] - b'0';
-    if expected != found {
-        return Err(IsinError::InvalidCheckDigit { expected, found });
+    let base = candidate
+        .first_chunk::<BASE_LEN>()
+        .unwrap_or(&[b'0'; BASE_LEN]);
+    let expected = compute_check_digit(base);
+
+    // Character-class validation above guarantees the final byte is an ASCII digit.
+    let found = candidate.last().copied().unwrap_or(b'0').wrapping_sub(b'0');
+
+    if expected == found {
+        Ok(())
+    } else {
+        Err(IsinError::InvalidCheckDigit { expected, found })
     }
-    Ok(())
 }
 
-fn compute_check_digit(base: &[u8]) -> u8 {
-    debug_assert_eq!(base.len(), BASE_LEN);
-
+fn compute_check_digit(base: &[u8; BASE_LEN]) -> u8 {
     let mut sum = 0u32;
     let mut double = true;
 
     for &c in base.iter().rev() {
         if c.is_ascii_digit() {
-            sum += luhn_step((c - b'0') as u32, double);
+            let digit = u32::from(c.wrapping_sub(b'0'));
+            sum = sum.wrapping_add(luhn_step(digit, double));
             double = !double;
         } else {
             // 'A' => 10, ..., 'Z' => 35; split into tens and units.
-            let value = (c - b'A' + 10) as u32;
+            let value = u32::from(c.wrapping_sub(b'A').wrapping_add(10));
+            let tens = value.checked_div(10).unwrap_or(0);
+            let units = value.checked_rem(10).unwrap_or(0);
             // Units is the rightmost digit of the expanded pair, so it is processed first.
-            sum += luhn_step(value % 10, double);
+            sum = sum.wrapping_add(luhn_step(units, double));
             double = !double;
-            sum += luhn_step(value / 10, double);
+            sum = sum.wrapping_add(luhn_step(tens, double));
             double = !double;
         }
     }
 
-    ((10 - (sum % 10)) % 10) as u8
+    let remainder = sum.checked_rem(10).unwrap_or(0);
+    let check = 10u32.wrapping_sub(remainder).checked_rem(10).unwrap_or(0);
+    u8::try_from(check).unwrap_or(0)
 }
 
 fn normalize(input: &str) -> Result<[u8; 12], IsinError> {
@@ -269,22 +311,21 @@ fn normalize(input: &str) -> Result<[u8; 12], IsinError> {
         return Err(IsinError::InvalidLength { found });
     }
 
-    let mut buf = [0u8; 12];
-    for (i, ch) in trimmed.chars().enumerate() {
+    // First pass: reject any non-ASCII character with a precise position/expected-class.
+    for ((i, ch), position) in trimmed.chars().enumerate().zip(1u8..) {
         if !ch.is_ascii() {
-            let expected = match i {
-                0 | 1 => CharacterClass::Letter,
-                2..=10 => CharacterClass::Alphanumeric,
-                11 => CharacterClass::Digit,
-                _ => unreachable!(),
-            };
             return Err(IsinError::InvalidCharacter {
                 character: ch,
-                position: (i + 1) as u8,
-                expected,
+                position,
+                expected: expected_class(i),
             });
         }
-        buf[i] = ch.to_ascii_uppercase() as u8;
+    }
+
+    // Second pass: every character is now known to be ASCII, so this can't fail.
+    let mut buf = [0u8; 12];
+    for (slot, ch) in buf.iter_mut().zip(trimmed.chars()) {
+        *slot = u8::try_from(ch.to_ascii_uppercase()).unwrap_or(0);
     }
 
     Ok(buf)
@@ -293,34 +334,30 @@ fn normalize(input: &str) -> Result<[u8; 12], IsinError> {
 #[inline]
 fn luhn_step(value: u32, double: bool) -> u32 {
     if double {
-        let doubled = value * 2;
-        if doubled > 9 { doubled - 9 } else { doubled }
+        let doubled = value.wrapping_mul(2);
+        if doubled > 9 {
+            doubled.wrapping_sub(9)
+        } else {
+            doubled
+        }
     } else {
         value
     }
 }
 
 #[cfg(test)]
-mod tests_formating {
-    use crate::identifiers::isin::Isin;
-    use std::format;
-    use std::string::ToString;
-
-    #[test]
-    fn display_is_the_canonical_string() {
-        let isin = Isin::parse("US0378331005").unwrap();
-        assert_eq!(isin.to_string(), "US0378331005");
-    }
-
-    #[test]
-    fn debug_is_readable() {
-        let isin = Isin::parse("US0378331005").unwrap();
-        assert_eq!(format!("{isin:?}"), "Isin(\"US0378331005\")");
-    }
-}
-
-#[cfg(test)]
-mod tests_validation {
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::string_slice,
+    clippy::cast_possible_truncation,
+    clippy::cast_lossless
+)]
+mod tests {
     use super::*;
 
     fn candidate(s: &str) -> [u8; 12] {
@@ -334,7 +371,7 @@ mod tests_validation {
     /// [`compute_check_digit`]: it materializes the full expanded digit buffer instead of doing a
     /// single reverse pass.
     fn reference_check_digit(base: &str) -> u8 {
-        let mut digits = std::vec::Vec::new();
+        let mut digits = Vec::new();
         for &c in base.as_bytes() {
             if c.is_ascii_digit() {
                 digits.push((c - b'0') as u32);
@@ -361,183 +398,298 @@ mod tests_validation {
         ((10 - (sum % 10)) % 10) as u8
     }
 
-    #[test]
-    fn accepts_known_real_world_isins() {
-        for s in [
-            "US0378331005", // Apple
-            "US0231351067", // Amazon
-            "BRPETRACNOR9", // Petrobras ON
-            "GB0002634946", // UK gilt
-            "DE0001102333", // German Bund
-            "JP3633400001", // Japanese equity
-            "AU000000BHP4", // BHP
-            "CH0012221716", // Nestlé
-        ] {
-            assert!(validate(&candidate(s)).is_ok(), "{s} should be valid");
+    mod formatting {
+        use super::*;
+
+        #[test]
+        fn display_is_the_canonical_string() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert_eq!(isin.to_string(), "US0378331005");
         }
-    }
 
-    #[test]
-    fn computes_the_documented_apple_check_digit() {
-        assert_eq!(compute_check_digit(b"US037833100"), 5);
-    }
+        #[test]
+        fn debug_is_readable() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert_eq!(format!("{isin:?}"), "Isin(\"US0378331005\")");
+        }
 
-    #[test]
-    fn computes_an_all_letter_nsin_check_digit() {
-        assert_eq!(compute_check_digit(b"BRPETRACNOR"), 9);
-    }
-
-    #[test]
-    fn single_pass_matches_the_reference_implementation() {
-        for base in [
-            "US037833100",
-            "US023135106",
-            "BRPETRACNOR",
-            "GB000263494",
-            "AU000000BHP",
-            "AA000000000",
-            "ZZZZZZZZZZZ",
-        ] {
+        #[test]
+        fn error_messages_are_human_readable() {
+            assert_eq!(IsinError::Empty.to_string(), "ISIN code cannot be empty");
             assert_eq!(
-                compute_check_digit(base.as_bytes()),
-                reference_check_digit(base),
-                "{base}"
+                IsinError::InvalidCheckDigit {
+                    expected: 5,
+                    found: 6
+                }
+                .to_string(),
+                "ISIN code has an invalid check digit; expected 5, found 6"
             );
         }
     }
 
-    #[test]
-    fn rejects_lowercase_country_code() {
-        let err = validate(&candidate("uS0378331005")).unwrap_err();
-        assert_eq!(
-            err,
-            IsinError::InvalidCharacter {
-                character: 'u',
-                position: 1,
-                expected: CharacterClass::Letter,
+    mod validation {
+        use super::*;
+
+        #[test]
+        fn accepts_known_real_world_isins() {
+            for s in [
+                "US0378331005", // Apple
+                "US0231351067", // Amazon
+                "BRPETRACNOR9", // Petrobras ON
+                "GB0002634946", // UK gilt
+                "DE0001102333", // German Bund
+                "JP3633400001", // Japanese equity
+                "AU000000BHP4", // BHP
+                "CH0012221716", // Nestlé
+            ] {
+                assert!(validate(&candidate(s)).is_ok(), "{s} should be valid");
             }
-        );
-    }
+        }
 
-    #[test]
-    fn rejects_digit_in_country_code() {
-        let err = validate(&candidate("1S0378331005")).unwrap_err();
-        assert_eq!(
-            err,
-            IsinError::InvalidCharacter {
-                character: '1',
-                position: 1,
-                expected: CharacterClass::Letter,
+        #[test]
+        fn computes_the_documented_apple_check_digit() {
+            assert_eq!(compute_check_digit(b"US037833100"), 5);
+        }
+
+        #[test]
+        fn computes_an_all_letter_nsin_check_digit() {
+            assert_eq!(compute_check_digit(b"BRPETRACNOR"), 9);
+        }
+
+        #[test]
+        fn single_pass_matches_the_reference_implementation() {
+            for base in [
+                "US037833100",
+                "US023135106",
+                "BRPETRACNOR",
+                "GB000263494",
+                "AU000000BHP",
+                "AA000000000",
+                "ZZZZZZZZZZZ",
+            ] {
+                assert_eq!(
+                    compute_check_digit(base.as_bytes().try_into().unwrap()),
+                    reference_check_digit(base),
+                    "{base}"
+                );
             }
-        );
+        }
+
+        #[test]
+        fn rejects_lowercase_country_code() {
+            let err = validate(&candidate("uS0378331005")).unwrap_err();
+            assert_eq!(
+                err,
+                IsinError::InvalidCharacter {
+                    character: 'u',
+                    position: 1,
+                    expected: CharacterClass::Letter,
+                }
+            );
+        }
+
+        #[test]
+        fn rejects_digit_in_country_code() {
+            let err = validate(&candidate("1S0378331005")).unwrap_err();
+            assert_eq!(
+                err,
+                IsinError::InvalidCharacter {
+                    character: '1',
+                    position: 1,
+                    expected: CharacterClass::Letter,
+                }
+            );
+        }
+
+        #[test]
+        fn rejects_letter_in_check_digit_position() {
+            let err = validate(&candidate("US037833100X")).unwrap_err();
+            assert_eq!(
+                err,
+                IsinError::InvalidCharacter {
+                    character: 'X',
+                    position: 12,
+                    expected: CharacterClass::Digit,
+                }
+            );
+        }
+
+        #[test]
+        fn rejects_wrong_check_digit() {
+            let err = validate(&candidate("US0378331006")).unwrap_err();
+            assert_eq!(
+                err,
+                IsinError::InvalidCheckDigit {
+                    expected: 5,
+                    found: 6,
+                }
+            );
+        }
+
+        #[test]
+        fn rejects_adjacent_transposition() {
+            // Luhn catches most single adjacent transpositions.
+            assert!(validate(&candidate("US3078331005")).is_err());
+        }
+
+        #[test]
+        fn try_from_slice_rejects_wrong_length() {
+            let err = Isin::try_from(&b"US037833100"[..]).unwrap_err();
+            assert_eq!(err, IsinError::InvalidLength { found: 11 });
+        }
+
+        #[test]
+        fn try_from_array_matches_from_bytes() {
+            let bytes = candidate("US0378331005");
+            assert_eq!(Isin::try_from(bytes), Isin::from_bytes(bytes));
+        }
     }
 
-    #[test]
-    fn rejects_letter_in_check_digit_position() {
-        let err = validate(&candidate("US037833100X")).unwrap_err();
-        assert_eq!(
-            err,
-            IsinError::InvalidCharacter {
-                character: 'X',
-                position: 12,
-                expected: CharacterClass::Digit,
-            }
-        );
+    mod parsing {
+        use super::*;
+
+        #[test]
+        fn rejects_empty() {
+            assert_eq!(normalize(""), Err(IsinError::Empty));
+        }
+
+        #[test]
+        fn trims_surrounding_whitespace() {
+            assert_eq!(normalize("  US0378331005 "), normalize("US0378331005"));
+        }
+
+        #[test]
+        fn uppercases_letters() {
+            assert_eq!(normalize("us0378331005").unwrap(), *b"US0378331005");
+        }
+
+        #[test]
+        fn rejects_wrong_length() {
+            assert_eq!(
+                normalize("US037833100"),
+                Err(IsinError::InvalidLength { found: 11 })
+            );
+        }
+
+        #[test]
+        fn whitespace_only_is_a_length_error() {
+            assert_eq!(normalize("   "), Err(IsinError::InvalidLength { found: 0 }));
+        }
+
+        #[test]
+        fn keeps_interior_characters_for_validation() {
+            // An interior space survives normalization (count is still 12) and is left for
+            // `validation` to reject as a non-alphanumeric character.
+            assert_eq!(normalize("US 378331005").unwrap(), *b"US 378331005");
+        }
+
+        #[test]
+        fn rejects_non_ascii() {
+            let err = normalize("US03783310£5").unwrap_err();
+            assert!(matches!(
+                err,
+                IsinError::InvalidCharacter {
+                    character: '£',
+                    position: 11,
+                    expected: CharacterClass::Alphanumeric,
+                }
+            ));
+        }
+
+        #[test]
+        fn reports_correct_expected_class_for_non_ascii() {
+            // Position 1 (Letter expected)
+            let err1 = normalize("£S0378331005").unwrap_err();
+            assert_eq!(
+                err1,
+                IsinError::InvalidCharacter {
+                    character: '£',
+                    position: 1,
+                    expected: CharacterClass::Letter,
+                }
+            );
+
+            // Position 12 (Digit expected)
+            let err12 = normalize("US037833100£").unwrap_err();
+            assert_eq!(
+                err12,
+                IsinError::InvalidCharacter {
+                    character: '£',
+                    position: 12,
+                    expected: CharacterClass::Digit,
+                }
+            );
+        }
+
+        #[test]
+        fn parse_and_from_str_agree() {
+            let via_parse = Isin::parse("US0378331005").unwrap();
+            let via_from_str: Isin = "US0378331005".parse().unwrap();
+            assert_eq!(via_parse, via_from_str);
+        }
+
+        #[test]
+        fn new_is_an_alias_for_parse() {
+            assert_eq!(Isin::new("US0378331005"), Isin::parse("US0378331005"));
+        }
     }
 
-    #[test]
-    fn rejects_wrong_check_digit() {
-        let err = validate(&candidate("US0378331006")).unwrap_err();
-        assert_eq!(
-            err,
-            IsinError::InvalidCheckDigit {
-                expected: 5,
-                found: 6,
-            }
-        );
+    mod accessors {
+        use super::*;
+
+        #[test]
+        fn country_code_and_nsin_partition_the_base() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert_eq!(isin.country_code(), "US");
+            assert_eq!(isin.nsin(), "037833100");
+        }
+
+        #[test]
+        fn country_resolves_a_known_country() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert!(isin.country().is_some());
+        }
+
+        #[test]
+        fn check_digit_matches_computed_check_digit() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert_eq!(isin.check_digit(), 5);
+            assert_eq!(isin.check_digit(), isin.computed_check_digit());
+        }
     }
 
-    #[test]
-    fn rejects_adjacent_transposition() {
-        // Luhn catches most single adjacent transpositions.
-        assert!(validate(&candidate("US3078331005")).is_err());
-    }
-}
+    mod comparisons {
+        use super::*;
+        use std::collections::HashSet;
 
-#[cfg(test)]
-mod tests_parser {
-    use super::*;
+        #[test]
+        fn compares_equal_to_matching_str() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert_eq!(isin, "US0378331005");
+            assert_eq!("US0378331005", isin);
+            assert_ne!(isin, "US0231351067");
+        }
 
-    #[test]
-    fn rejects_empty() {
-        assert_eq!(normalize(""), Err(IsinError::Empty));
-    }
+        #[test]
+        fn orders_the_same_as_the_underlying_bytes() {
+            let amzn = Isin::parse("US0231351067").unwrap();
+            let aapl = Isin::parse("US0378331005").unwrap();
+            assert!(amzn < aapl);
+        }
 
-    #[test]
-    fn trims_surrounding_whitespace() {
-        assert_eq!(normalize("  US0378331005 "), normalize("US0378331005"));
-    }
+        #[test]
+        fn hash_is_consistent_with_equality() {
+            let a = Isin::parse("US0378331005").unwrap();
+            let b = Isin::parse("us0378331005").unwrap();
+            let mut set = HashSet::new();
+            set.insert(a);
+            assert!(!set.insert(b), "equal Isins must hash to the same bucket");
+        }
 
-    #[test]
-    fn uppercases_letters() {
-        assert_eq!(normalize("us0378331005").unwrap(), *b"US0378331005");
-    }
-
-    #[test]
-    fn rejects_wrong_length() {
-        assert_eq!(
-            normalize("US037833100"),
-            Err(IsinError::InvalidLength { found: 11 })
-        );
-    }
-
-    #[test]
-    fn whitespace_only_is_a_length_error() {
-        assert_eq!(normalize("   "), Err(IsinError::InvalidLength { found: 0 }));
-    }
-
-    #[test]
-    fn keeps_interior_characters_for_validation() {
-        // An interior space survives normalization (count is still 12) and is left for
-        // `validation` to reject as a non-alphanumeric character.
-        assert_eq!(normalize("US 378331005").unwrap(), *b"US 378331005");
-    }
-
-    #[test]
-    fn rejects_non_ascii() {
-        let err = normalize("US03783310£5").unwrap_err();
-        assert!(matches!(
-            err,
-            IsinError::InvalidCharacter {
-                character: '£',
-                position: 11,
-                expected: CharacterClass::Alphanumeric,
-            }
-        ));
-    }
-
-    #[test]
-    fn reports_correct_expected_class_for_non_ascii() {
-        // Position 1 (Letter expected)
-        let err1 = normalize("£S0378331005").unwrap_err();
-        assert_eq!(
-            err1,
-            IsinError::InvalidCharacter {
-                character: '£',
-                position: 1,
-                expected: CharacterClass::Letter,
-            }
-        );
-
-        // Position 12 (Digit expected)
-        let err12 = normalize("US037833100£").unwrap_err();
-        assert_eq!(
-            err12,
-            IsinError::InvalidCharacter {
-                character: '£',
-                position: 12,
-                expected: CharacterClass::Digit,
-            }
-        );
+        #[test]
+        fn as_ref_bytes_matches_as_bytes() {
+            let isin = Isin::parse("US0378331005").unwrap();
+            assert_eq!(AsRef::<[u8]>::as_ref(&isin), isin.as_bytes());
+        }
     }
 }

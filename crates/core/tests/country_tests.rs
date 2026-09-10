@@ -2,7 +2,7 @@ const SAMPLE: &str = "US";
 
 mod construction {
     use crate::SAMPLE;
-    use valqeron_core::identifiers::{CountryCode, CountryCodeError};
+    use valqeron_core::identifiers::country_code::{CountryCode, CountryCodeError};
 
     #[test]
     fn parse_accepts_canonical_input() {
@@ -53,7 +53,7 @@ mod construction {
 
 mod accessors {
     use crate::SAMPLE;
-    use valqeron_core::identifiers::CountryCode;
+    use valqeron_core::identifiers::country_code::CountryCode;
 
     #[test]
     fn exposes_raw_forms() {
@@ -64,13 +64,15 @@ mod accessors {
 }
 
 mod membership_rejections {
-    use valqeron_core::identifiers::{CountryCode, CountryCodeError};
+    use valqeron_core::identifiers::country_code::{CountryCode, CountryCodeError};
 
     #[test]
     fn well_formed_but_unassigned() {
         assert_eq!(
             CountryCode::parse("ZZ"),
-            Err(CountryCodeError::Unassigned { code: "ZZ".to_string() })
+            Err(CountryCodeError::Unassigned {
+                code: "ZZ".to_string()
+            })
         );
     }
 
@@ -101,7 +103,7 @@ mod membership_rejections {
 
 mod traits {
     use crate::SAMPLE;
-    use valqeron_core::identifiers::{CountryCode, CountryCodeError};
+    use valqeron_core::identifiers::country_code::{CountryCode, CountryCodeError};
 
     #[test]
     fn from_str_matches_parse() {

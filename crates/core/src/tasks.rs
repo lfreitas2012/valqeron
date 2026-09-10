@@ -16,7 +16,7 @@ const BACKGROUND_TASK_NAME_MAX_CHARACTERS: usize = 100;
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BackgroundTaskName(String);
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum BackgroundTaskNameError {
     #[error("task name cannot be empty")]
     Empty,
@@ -26,6 +26,9 @@ pub enum BackgroundTaskNameError {
 }
 
 impl BackgroundTaskName {
+    /// # Errors
+    ///
+    /// Returns `BackgroundTaskNameError`.
     pub fn new(value: impl Into<String>) -> Result<Self, BackgroundTaskNameError> {
         let value = value.into();
         let trimmed = value.trim();
@@ -42,6 +45,7 @@ impl BackgroundTaskName {
         Ok(Self(trimmed.into()))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -50,8 +54,11 @@ impl BackgroundTaskName {
 impl FromStr for BackgroundTaskName {
     type Err = BackgroundTaskNameError;
 
+    /// # Errors
+    ///
+    /// Returns `BackgroundTaskNameError`
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(BackgroundTaskName::new(s)?)
+        Self::new(s)
     }
 }
 
@@ -94,24 +101,29 @@ pub struct ScheduledBackgroundTask<State> {
 }
 
 impl<S> ScheduledBackgroundTask<S> {
+    #[must_use]
     pub fn id(&self) -> &UniqueIdentifier {
         &self.id
     }
 
+    #[must_use]
     pub fn name(&self) -> &BackgroundTaskName {
         &self.name
     }
 
+    #[must_use]
     pub fn max_attempts(&self) -> u32 {
         self.attempts.max_attempts
     }
 
+    #[must_use]
     pub fn current_attempt(&self) -> u32 {
         self.attempts.current_attempt
     }
 }
 
 impl ScheduledBackgroundTask<Pending> {
+    #[must_use]
     pub fn start(self) -> ScheduledBackgroundTask<Running> {
         ScheduledBackgroundTask {
             id: self.id,
@@ -124,6 +136,7 @@ impl ScheduledBackgroundTask<Pending> {
         }
     }
 
+    #[must_use]
     pub fn cancel(self) -> ScheduledBackgroundTask<Cancelled> {
         ScheduledBackgroundTask {
             id: self.id,
@@ -135,6 +148,7 @@ impl ScheduledBackgroundTask<Pending> {
 }
 
 impl ScheduledBackgroundTask<Running> {
+    #[must_use]
     pub fn complete(self, output: impl Into<String>) -> ScheduledBackgroundTask<Success> {
         ScheduledBackgroundTask {
             id: self.id,
@@ -146,6 +160,9 @@ impl ScheduledBackgroundTask<Running> {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns `Err(ScheduledBackgroundTask<Failed>)` if maximum attempts have been reached.
     pub fn fail(
         self,
         error: impl Into<String>,
@@ -168,6 +185,7 @@ impl ScheduledBackgroundTask<Running> {
         }
     }
 
+    #[must_use]
     pub fn cancel(self) -> ScheduledBackgroundTask<Cancelled> {
         ScheduledBackgroundTask {
             id: self.id,
@@ -179,10 +197,12 @@ impl ScheduledBackgroundTask<Running> {
 }
 
 impl ScheduledBackgroundTask<Retrying> {
+    #[must_use]
     pub fn last_error(&self) -> &str {
         &self.state.last_error
     }
 
+    #[must_use]
     pub fn start(self) -> ScheduledBackgroundTask<Running> {
         ScheduledBackgroundTask {
             id: self.id,
@@ -195,6 +215,7 @@ impl ScheduledBackgroundTask<Retrying> {
         }
     }
 
+    #[must_use]
     pub fn cancel(self) -> ScheduledBackgroundTask<Cancelled> {
         ScheduledBackgroundTask {
             id: self.id,
@@ -206,18 +227,20 @@ impl ScheduledBackgroundTask<Retrying> {
 }
 
 impl ScheduledBackgroundTask<Success> {
+    #[must_use]
     pub fn output(&self) -> &str {
         &self.state.output
     }
 }
 
 impl ScheduledBackgroundTask<Failed> {
+    #[must_use]
     pub fn error(&self) -> &str {
         &self.state.error
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum TaskBuilderError {
     #[error("max_attempts must be at least 1")]
     ZeroMaxAttempts,
@@ -246,25 +269,32 @@ impl Default for BackgroundTaskBuilder {
 }
 
 impl BackgroundTaskBuilder {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn id(mut self, id: UniqueIdentifier) -> Self {
         self.id = Some(id);
         self
     }
 
+    #[must_use]
     pub fn name(mut self, name: BackgroundTaskName) -> Self {
         self.name = Some(name);
         self
     }
 
+    #[must_use]
     pub fn max_attempts(mut self, max_attempts: u32) -> Self {
         self.max_attempts = max_attempts;
         self
     }
 
+    /// # Errors
+    ///
+    /// Returns `TaskBuilderError` if required fields are missing or validation fails.
     pub fn build(self) -> Result<ScheduledBackgroundTask<Pending>, TaskBuilderError> {
         if self.max_attempts == 0 {
             return Err(TaskBuilderError::ZeroMaxAttempts);
@@ -293,6 +323,7 @@ pub enum TaskOutcome {
 }
 
 impl TaskOutcome {
+    #[must_use]
     pub fn id(&self) -> &UniqueIdentifier {
         match self {
             Self::Success(t) => t.id(),
@@ -301,14 +332,17 @@ impl TaskOutcome {
         }
     }
 
+    #[must_use]
     pub fn is_success(&self) -> bool {
         matches!(self, Self::Success(_))
     }
 
+    #[must_use]
     pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed(_))
     }
 
+    #[must_use]
     pub fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled(_))
     }
@@ -339,14 +373,15 @@ impl fmt::Display for TaskStatus {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct BackgroundTaskManager {
     tasks: Vec<ScheduledBackgroundTask<Pending>>,
 }
 
 impl BackgroundTaskManager {
+    #[must_use]
     pub fn new() -> Self {
-        Self { tasks: Vec::new() }
+        Self::default()
     }
 }
 
@@ -361,7 +396,7 @@ pub struct BackgroundTask {
 
 impl BackgroundTask {
     #[must_use]
-    pub fn reconstitute(snapshot: BackgroundTaskSnapshot) -> Self {
+    pub fn reconstitute(snapshot: &BackgroundTaskSnapshot) -> Self {
         Self {
             id: snapshot.id,
             name: snapshot.name.clone(),
@@ -477,121 +512,144 @@ mod tests {
 
     #[test]
     fn test_task_name_max_length() {
-        let name = BackgroundTaskName::new(
-            "TEST_TASK_NAME".repeat(BACKGROUND_TASK_NAME_MAX_CHARACTERS + 1),
-        );
-        assert!(name.is_err());
-        assert_matches!(
-            name.unwrap_err(),
-            BackgroundTaskNameError::TooLong { max: _ }
-        )
+        let max_len = BACKGROUND_TASK_NAME_MAX_CHARACTERS.saturating_add(1);
+        let name = BackgroundTaskName::new("TEST_TASK_NAME".repeat(max_len));
+        assert_matches!(name, Err(BackgroundTaskNameError::TooLong { max: _ }));
     }
 
     #[test]
     fn test_task_name_empty() {
         let name = BackgroundTaskName::new("");
-        assert!(name.is_err());
-        assert_matches!(name.unwrap_err(), BackgroundTaskNameError::Empty);
+        assert_matches!(name, Err(BackgroundTaskNameError::Empty));
     }
 
     #[test]
     fn test_task_name_trim_spaces() {
-        let name = BackgroundTaskName::new(format!("  {}  ", TEST_TASK_NAME));
-        assert!(name.is_ok());
-        assert_eq!(name.unwrap().as_str(), TEST_TASK_NAME);
+        let name = BackgroundTaskName::new(format!("  {TEST_TASK_NAME}  "));
+        assert_eq!(
+            name.as_ref().map(BackgroundTaskName::as_str),
+            Ok(TEST_TASK_NAME)
+        );
     }
 
     #[test]
     fn test_task_name_trim_newlines() {
-        let name = BackgroundTaskName::new(format!("\n{}\n", TEST_TASK_NAME));
-        assert!(name.is_ok());
-        assert_eq!(name.unwrap().as_str(), TEST_TASK_NAME);
+        let name = BackgroundTaskName::new(format!("\n{TEST_TASK_NAME}\n"));
+        assert_eq!(
+            name.as_ref().map(BackgroundTaskName::as_str),
+            Ok(TEST_TASK_NAME)
+        );
     }
 
     #[test]
     fn test_task_name_trim_tabs() {
-        let name = BackgroundTaskName::new(format!("\t{}\t", TEST_TASK_NAME));
-        assert!(name.is_ok());
-        assert_eq!(name.unwrap().as_str(), TEST_TASK_NAME);
+        let name = BackgroundTaskName::new(format!("\t{TEST_TASK_NAME}\t"));
+        assert_eq!(
+            name.as_ref().map(BackgroundTaskName::as_str),
+            Ok(TEST_TASK_NAME)
+        );
     }
 
     #[test]
     fn test_task_builder_builds_successfully() {
         let id = UniqueIdentifier::new();
-        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+        let name_res = BackgroundTaskName::new(TEST_TASK_NAME);
+        assert_matches!(name_res, Ok(_));
 
-        let task_1 = BackgroundTaskBuilder::new()
-            .id(id)
-            .name(name)
-            .build()
-            .unwrap();
+        if let Ok(name) = name_res {
+            let task_res = BackgroundTaskBuilder::new().id(id).name(name).build();
 
-        assert_eq!(task_1.name.as_str(), TEST_TASK_NAME);
-        assert_eq!(task_1.id, id);
+            assert_matches!(
+                task_res,
+                Ok(ref task_1) if task_1.name.as_str() == TEST_TASK_NAME && task_1.id == id
+            );
+        }
     }
 
     #[test]
     fn test_task_builder_zero_attempts_fails() {
         let id = UniqueIdentifier::new();
-        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+        let name_res = BackgroundTaskName::new(TEST_TASK_NAME);
+        assert_matches!(name_res, Ok(_));
 
-        let res = BackgroundTaskBuilder::new()
-            .id(id)
-            .name(name)
-            .max_attempts(0)
-            .build();
+        if let Ok(name) = name_res {
+            let res = BackgroundTaskBuilder::new()
+                .id(id)
+                .name(name)
+                .max_attempts(0)
+                .build();
 
-        assert_matches!(res.unwrap_err(), TaskBuilderError::ZeroMaxAttempts);
+            assert_matches!(res, Err(TaskBuilderError::ZeroMaxAttempts));
+        }
     }
 
     #[test]
     fn test_task_successful_lifecycle() {
         let id = UniqueIdentifier::new();
-        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+        let name_res = BackgroundTaskName::new(TEST_TASK_NAME);
+        assert_matches!(name_res, Ok(_));
 
-        let task: ScheduledBackgroundTask<Pending> = BackgroundTaskBuilder::new()
-            .id(id)
-            .name(name)
-            .max_attempts(3)
-            .build()
-            .unwrap();
+        if let Ok(name) = name_res {
+            let task_res = BackgroundTaskBuilder::new()
+                .id(id)
+                .name(name)
+                .max_attempts(3)
+                .build();
 
-        assert_eq!(task.current_attempt(), 0);
+            assert_matches!(task_res, Ok(_));
 
-        let task: ScheduledBackgroundTask<Running> = task.start();
-        assert_eq!(task.current_attempt(), 1);
+            if let Ok(task) = task_res {
+                assert_eq!(task.current_attempt(), 0);
 
-        let task: ScheduledBackgroundTask<Success> = task.complete("done");
-        assert_eq!(task.output(), "done");
+                let task: ScheduledBackgroundTask<Running> = task.start();
+                assert_eq!(task.current_attempt(), 1);
+
+                let task: ScheduledBackgroundTask<Success> = task.complete("done");
+                assert_eq!(task.output(), "done");
+            }
+        }
     }
 
     #[test]
     fn test_task_retry_and_fail_lifecycle() {
         let id = UniqueIdentifier::new();
-        let name = BackgroundTaskName::new(TEST_TASK_NAME).unwrap();
+        let name_res = BackgroundTaskName::new(TEST_TASK_NAME);
+        assert_matches!(name_res, Ok(_));
 
-        // 2 maximum execution attempts total
-        let task = BackgroundTaskBuilder::new()
-            .id(id)
-            .name(name)
-            .max_attempts(2)
-            .build()
-            .unwrap();
+        if let Ok(name) = name_res {
+            let task_res = BackgroundTaskBuilder::new()
+                .id(id)
+                .name(name)
+                .max_attempts(2)
+                .build();
 
-        // First attempt
-        let task = task.start();
-        assert_eq!(task.current_attempt(), 1);
+            assert_matches!(task_res, Ok(_));
 
-        // Fails but yields a Retrying state because max_attempts is 2
-        let task = task.fail("first failure").unwrap();
-        assert_eq!(task.last_error(), "first failure");
+            if let Ok(task) = task_res {
+                // First attempt
+                let task = task.start();
+                assert_eq!(task.current_attempt(), 1);
 
-        // Second attempt
-        let task = task.start();
-        assert_eq!(task.current_attempt(), 2);
+                // Fails but yields a Retrying state because max_attempts is 2
+                let retry_res = task.fail("first failure");
+                assert_matches!(retry_res, Ok(_));
 
-        // Fails completely because we reached max_attempts
-        let final_err = task.fail("second failure").unwrap_err();
-        assert_eq!(final_err.error(), "second failure");
+                if let Ok(task) = retry_res {
+                    assert_eq!(task.last_error(), "first failure");
+
+                    // Second attempt
+                    let task = task.start();
+                    assert_eq!(task.current_attempt(), 2);
+
+                    // Fails completely because we reached max_attempts
+                    let fail_res = task.fail("second failure");
+                    assert_matches!(fail_res, Err(_));
+
+                    if let Err(final_err) = fail_res {
+                        assert_eq!(final_err.error(), "second failure");
+                    }
+                }
+            }
+        }
     }
 }

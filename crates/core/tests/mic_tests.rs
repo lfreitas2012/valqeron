@@ -3,7 +3,7 @@ const SAMPLE: &str = "XNYS";
 
 mod construction {
     use crate::SAMPLE;
-    use valqeron_core::identifiers::{Mic, MicError};
+    use valqeron_core::identifiers::mic::{Mic, MicError};
 
     #[test]
     fn parse_accepts_canonical_input() {
@@ -68,7 +68,7 @@ mod construction {
 
 mod accessors {
     use crate::SAMPLE;
-    use valqeron_core::identifiers::Mic;
+    use valqeron_core::identifiers::mic::Mic;
 
     #[test]
     fn exposes_raw_forms() {
@@ -133,7 +133,7 @@ mod accessors {
 }
 
 mod membership_rejections {
-    use valqeron_core::identifiers::{Mic, MicError};
+    use valqeron_core::identifiers::mic::{Mic, MicError};
 
     #[test]
     fn well_formed_but_unregistered() {
@@ -163,7 +163,7 @@ mod membership_rejections {
 
 mod traits {
     use crate::SAMPLE;
-    use valqeron_core::identifiers::{Mic, MicError};
+    use valqeron_core::identifiers::mic::{Mic, MicError};
 
     #[test]
     fn from_str_matches_parse() {

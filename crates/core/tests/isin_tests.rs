@@ -3,7 +3,7 @@ const PETROBRAS: &str = "BRPETRACNOR9";
 
 mod construction {
     use super::*;
-    use valqeron_core::identifiers::{Isin, IsinError};
+    use valqeron_core::identifiers::isin::{Isin, IsinError};
 
     #[test]
     fn parse_accepts_numeric_nsin() {
@@ -65,7 +65,7 @@ mod construction {
 
 mod accessors {
     use super::*;
-    use valqeron_core::identifiers::Isin;
+    use valqeron_core::identifiers::isin::Isin;
 
     #[test]
     fn segments_are_split_correctly() {
@@ -94,8 +94,8 @@ mod accessors {
 }
 
 mod error_paths {
-    use std::string::ToString;
-    use valqeron_core::identifiers::{CharacterClass, Isin, IsinError};
+    use valqeron_core::identifiers::common::CharacterClass;
+    use valqeron_core::identifiers::isin::{Isin, IsinError};
 
     #[test]
     fn reports_invalid_length() {
@@ -146,7 +146,8 @@ mod error_paths {
 mod trait_impls {
     use super::*;
     use std::collections::{BTreeSet, HashSet};
-    use valqeron_core::identifiers::{CountryCode, Isin, IsinError};
+    use valqeron_core::identifiers::country_code::CountryCode;
+    use valqeron_core::identifiers::isin::{Isin, IsinError};
 
     #[test]
     fn from_str_delegates_to_parse() {

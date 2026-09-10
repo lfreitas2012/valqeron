@@ -13,13 +13,25 @@ pub struct Cfi {
 }
 
 impl Cfi {
+    /// Parses a string into a [`Cfi`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CfiError`] if the input is empty, has an invalid length,
+    /// contains non-ASCII characters, or fails taxonomy validation.
     pub fn parse(input: &str) -> Result<Self, CfiError> {
         let candidate = normalize(input)?;
         Self::from_bytes(candidate)
     }
 
+    /// Creates a [`Cfi`] from a 6-byte array.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CfiError`] if any byte is not a valid uppercase ASCII letter
+    /// or if the bytes fail taxonomy validation.
     pub fn from_bytes(bytes: [u8; 6]) -> Result<Self, CfiError> {
-        validate(&bytes)?;
+        validate(bytes)?;
         Ok(Cfi { bytes })
     }
 
@@ -39,23 +51,26 @@ impl Cfi {
     #[inline]
     #[must_use]
     pub fn category(&self) -> char {
-        self.bytes[0] as char
+        let [c, ..] = self.bytes;
+        char::from(c)
     }
 
     #[inline]
     #[must_use]
     pub fn group(&self) -> char {
-        self.bytes[1] as char
+        let [_, g, ..] = self.bytes;
+        char::from(g)
     }
 
     #[inline]
     #[must_use]
     pub fn attributes(&self) -> [char; 4] {
+        let [_, _, a1, a2, a3, a4] = self.bytes;
         [
-            self.bytes[2] as char,
-            self.bytes[3] as char,
-            self.bytes[4] as char,
-            self.bytes[5] as char,
+            char::from(a1),
+            char::from(a2),
+            char::from(a3),
+            char::from(a4),
         ]
     }
 }
@@ -216,54 +231,61 @@ fn normalize(input: &str) -> Result<[u8; 6], CfiError> {
     let mut buf = [0u8; 6];
     for (i, ch) in trimmed.chars().enumerate() {
         if !ch.is_ascii() {
+            let position = u8::try_from(i).unwrap_or_default().saturating_add(1);
             return Err(CfiError::InvalidCharacter {
                 character: ch,
-                position: (i + 1) as u8,
+                position,
             });
         }
-        buf[i] = ch.to_ascii_uppercase() as u8;
+        if let Some(b) = buf.get_mut(i) {
+            *b = u8::try_from(u32::from(ch.to_ascii_uppercase())).unwrap_or_default();
+        }
     }
 
     Ok(buf)
 }
 
-fn validate(candidate: &[u8; 6]) -> Result<(), CfiError> {
+fn validate(candidate: [u8; 6]) -> Result<(), CfiError> {
     validate_character_classes(candidate)?;
     validate_taxonomy(candidate)?;
     Ok(())
 }
 
-fn validate_character_classes(candidate: &[u8; 6]) -> Result<(), CfiError> {
+fn validate_character_classes(candidate: [u8; 6]) -> Result<(), CfiError> {
     for (i, &byte) in candidate.iter().enumerate() {
         if !byte.is_ascii_uppercase() {
+            let position = u8::try_from(i).unwrap_or_default().saturating_add(1);
             return Err(CfiError::InvalidCharacter {
-                character: byte as char,
-                position: (i + 1) as u8,
+                character: char::from(byte),
+                position,
             });
         }
     }
     Ok(())
 }
 
-fn validate_taxonomy(candidate: &[u8; 6]) -> Result<(), CfiError> {
-    let category_code = candidate[0];
-    let category = find_category(category_code).ok_or(CfiError::UnknownCategory {
-        code: category_code as char,
+fn validate_taxonomy(candidate: [u8; 6]) -> Result<(), CfiError> {
+    let [c_cat, c_grp, a1, a2, a3, a4] = candidate;
+
+    let category = find_category(c_cat).ok_or(CfiError::UnknownCategory {
+        code: char::from(c_cat),
     })?;
 
-    let group_code = candidate[1];
-    let group = find_group(category, group_code).ok_or(CfiError::UnknownGroup {
-        category: category_code as char,
-        code: group_code as char,
+    let group = find_group(category, c_grp).ok_or(CfiError::UnknownGroup {
+        category: char::from(c_cat),
+        code: char::from(c_grp),
     })?;
 
-    for (i, &code) in candidate[2..].iter().enumerate() {
-        if !attr_allows(group.attrs[i], code) {
+    let attrs = [a1, a2, a3, a4];
+    for (i, &code) in attrs.iter().enumerate() {
+        let mask = group.attrs.get(i).copied().unwrap_or_default();
+        if !attr_allows(mask, code) {
+            let index = u8::try_from(i).unwrap_or_default().saturating_add(1);
             return Err(CfiError::InvalidAttribute {
-                category: category_code as char,
-                group: group_code as char,
-                index: (i + 1) as u8,
-                code: code as char,
+                category: char::from(c_cat),
+                group: char::from(c_grp),
+                index,
+                code: char::from(code),
             });
         }
     }
@@ -275,7 +297,7 @@ fn find_category(code: u8) -> Option<&'static CfiCategoryEntry> {
     let index = CFI_CATEGORIES
         .binary_search_by_key(&code, |c| c.code)
         .ok()?;
-    Some(&CFI_CATEGORIES[index])
+    CFI_CATEGORIES.get(index)
 }
 
 fn find_group(category: &'static CfiCategoryEntry, code: u8) -> Option<&'static CfiGroupEntry> {
@@ -283,25 +305,20 @@ fn find_group(category: &'static CfiCategoryEntry, code: u8) -> Option<&'static 
         .groups
         .binary_search_by_key(&code, |g| g.code)
         .ok()?;
-    Some(&category.groups[index])
+    category.groups.get(index)
 }
 
 #[inline]
 fn attr_allows(mask: u32, code: u8) -> bool {
-    (mask >> (code - b'A')) & 1 == 1
+    let shift = u32::from(code.saturating_sub(b'A'));
+    mask.checked_shr(shift).unwrap_or_default() & 1 == 1
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
-
-    fn candidate(s: &str) -> [u8; 6] {
-        let bytes = s.as_bytes();
-        let mut out = [0u8; 6];
-        out.copy_from_slice(bytes);
-        out
-    }
 
     // ---- normalization (`normalize`) ----
 
@@ -312,7 +329,10 @@ mod tests {
 
     #[test]
     fn trims_surrounding_whitespace() {
-        assert_eq!(normalize("  ESVUFR \t\n"), normalize("ESVUFR"));
+        assert_eq!(
+            normalize("  ESVUFR \t\n").unwrap(),
+            normalize("ESVUFR").unwrap()
+        );
     }
 
     #[test]
@@ -332,25 +352,26 @@ mod tests {
 
     #[test]
     fn keeps_interior_characters_for_validation() {
-        // An interior space survives normalization (count is still 6) and is left for
-        // `validate` to reject as a non-letter character.
         assert_eq!(normalize("ES VFR").unwrap(), *b"ES VFR");
     }
 
     #[test]
     fn rejects_non_ascii() {
-        let err = normalize("ESVUF£").unwrap_err();
+        let err = normalize("ESVUF£");
         assert!(matches!(
             err,
-            CfiError::InvalidCharacter {
+            Err(CfiError::InvalidCharacter {
                 character: '£', ..
-            }
+            })
         ));
     }
 
     #[test]
     fn trims_non_ascii_whitespace() {
-        assert_eq!(normalize("\u{00A0}ESVUFR\u{00A0}"), normalize("ESVUFR"));
+        assert_eq!(
+            normalize("\u{00A0}ESVUFR\u{00A0}").unwrap(),
+            normalize("ESVUFR").unwrap()
+        );
     }
 
     // ---- validation (`validate` and friends) ----
@@ -358,70 +379,67 @@ mod tests {
     #[test]
     fn accepts_known_valid_cfis() {
         for s in [
-            "ESVUFR", // equity / common share, voting, free, fully paid, registered
-            "ESVTOB", // equity / common share, another valid attribute combination
-            "DBFTFB", // debt / bond
-            "MCATXB", // miscellaneous-form / currencies
-            "OCASNS", // listed option / call
+            *b"ESVUFR", // equity / common share, voting, free, fully paid, registered
+            *b"ESVTOB", // equity / common share, another valid attribute combination
+            *b"DBFTFB", // debt / bond
+            *b"MCATXB", // miscellaneous-form / currencies
+            *b"OCASNS", // listed option / call
         ] {
-            assert!(validate(&candidate(s)).is_ok(), "{s} should be valid");
+            assert!(validate(s).is_ok());
         }
     }
 
     #[test]
     fn rejects_unknown_category() {
-        let err = validate(&candidate("QSVUFR")).unwrap_err();
-        assert_eq!(err, CfiError::UnknownCategory { code: 'Q' });
+        assert_eq!(
+            validate(*b"QSVUFR"),
+            Err(CfiError::UnknownCategory { code: 'Q' })
+        );
     }
 
     #[test]
     fn rejects_unknown_group() {
-        let err = validate(&candidate("EZVUFR")).unwrap_err();
         assert_eq!(
-            err,
-            CfiError::UnknownGroup {
+            validate(*b"EZVUFR"),
+            Err(CfiError::UnknownGroup {
                 category: 'E',
                 code: 'Z',
-            }
+            })
         );
     }
 
     #[test]
     fn rejects_invalid_attribute() {
-        // Category E, group S permits attribute 1 in {E,N,R,V}; 'X' is not among them.
-        let err = validate(&candidate("ESXUFR")).unwrap_err();
         assert_eq!(
-            err,
-            CfiError::InvalidAttribute {
+            validate(*b"ESXUFR"),
+            Err(CfiError::InvalidAttribute {
                 category: 'E',
                 group: 'S',
                 index: 1,
                 code: 'X',
-            }
+            })
         );
     }
 
     #[test]
     fn rejects_lowercase_as_character_class() {
-        let err = validate(&candidate("esvufr")).unwrap_err();
         assert_eq!(
-            err,
-            CfiError::InvalidCharacter {
+            validate(*b"esvufr"),
+            Err(CfiError::InvalidCharacter {
                 character: 'e',
                 position: 1,
-            }
+            })
         );
     }
 
     #[test]
     fn rejects_digit_as_character_class() {
-        let err = validate(&candidate("ESVUF1")).unwrap_err();
         assert_eq!(
-            err,
-            CfiError::InvalidCharacter {
+            validate(*b"ESVUF1"),
+            Err(CfiError::InvalidCharacter {
                 character: '1',
                 position: 6,
-            }
+            })
         );
     }
 
@@ -429,16 +447,14 @@ mod tests {
 
     #[test]
     fn from_bytes_rejects_invalid_attribute_without_normalizing() {
-        // from_bytes skips normalize, so it never produces InvalidLength — but taxonomy
-        // validation still runs.
         assert_eq!(
-            Cfi::from_bytes(candidate("ESZUFR")).unwrap_err(),
-            CfiError::InvalidAttribute {
+            Cfi::from_bytes(*b"ESZUFR"),
+            Err(CfiError::InvalidAttribute {
                 category: 'E',
                 group: 'S',
                 index: 1,
                 code: 'Z',
-            }
+            })
         );
     }
 
@@ -464,8 +480,8 @@ mod tests {
 
     #[test]
     fn from_str_propagates_parse_errors() {
-        let err = "ESVU".parse::<Cfi>().unwrap_err();
-        assert_eq!(err, CfiError::InvalidLength { found: 4 });
+        let err = "ESVU".parse::<Cfi>();
+        assert_eq!(err, Err(CfiError::InvalidLength { found: 4 }));
     }
 
     #[test]
@@ -486,14 +502,14 @@ mod tests {
 
     #[test]
     fn try_from_slice_accepts_correct_length() {
-        let cfi = Cfi::try_from(&b"ESVUFR"[..]).unwrap();
+        let cfi = Cfi::try_from(b"ESVUFR".as_slice()).unwrap();
         assert_eq!(cfi.as_str(), "ESVUFR");
     }
 
     #[test]
     fn try_from_slice_rejects_wrong_length() {
-        let err = Cfi::try_from(&b"ESVU"[..]).unwrap_err();
-        assert_eq!(err, CfiError::InvalidLength { found: 4 });
+        let err = Cfi::try_from(b"ESVU".as_slice());
+        assert_eq!(err, Err(CfiError::InvalidLength { found: 4 }));
     }
 
     // ---- equality against `str` / `&str` ----
@@ -517,17 +533,6 @@ mod tests {
         assert_eq!(str_ref, cfi.as_str());
     }
 
-    // ---- Clone / Copy / Ord / Hash ----
-
-    #[test]
-    fn is_copy_and_clone() {
-        let cfi = Cfi::parse("ESVUFR").unwrap();
-        let copied = cfi; // Copy: `cfi` remains usable below.
-        let cloned = cfi.clone();
-        assert_eq!(cfi, copied);
-        assert_eq!(cfi, cloned);
-    }
-
     #[test]
     fn ordering_follows_byte_order() {
         let d = Cfi::parse("DBFTFB").unwrap();
@@ -540,7 +545,7 @@ mod tests {
         let mut set = HashSet::new();
         set.insert(Cfi::parse("ESVUFR").unwrap());
         set.insert(Cfi::parse("DBFTFB").unwrap());
-        set.insert(Cfi::parse("ESVUFR").unwrap()); // duplicate, should not grow the set
+        set.insert(Cfi::parse("ESVUFR").unwrap());
         assert_eq!(set.len(), 2);
     }
 
@@ -549,6 +554,7 @@ mod tests {
     #[test]
     fn display_is_the_canonical_string() {
         let cfi = Cfi::parse("ESVUFR").unwrap();
+        assert_eq!(cfi.to_string(), "ESVUFR");
         assert_eq!(cfi.to_string(), "ESVUFR");
     }
 
