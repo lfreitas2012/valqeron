@@ -44,15 +44,21 @@ pub struct CountryCode {
 }
 
 impl CountryCode {
-    #[must_use]
+    /// # Errors
+    ///
+    /// Returns [`CountryCodeError`] if the input is empty, is not exactly
+    /// two characters long, contains a character that isn't an uppercase
+    /// ASCII letter, or is well-formed but not assigned by ISO 3166-1.
     pub fn parse(input: &str) -> Result<Self, CountryCodeError> {
         let candidate = normalize(input)?;
         Self::from_bytes(candidate)
     }
 
-    #[must_use]
+    /// # Errors
+    ///
+    /// See [`CountryCode::parse`].
     pub fn from_bytes(bytes: [u8; 2]) -> Result<Self, CountryCodeError> {
-        validate(&bytes)?;
+        validate(bytes)?;
         Ok(Self { bytes })
     }
 
@@ -192,13 +198,13 @@ impl<'de> Deserialize<'de> for CountryCode {
     }
 }
 
-fn validate(candidate: &[u8; 2]) -> Result<(), CountryCodeError> {
+fn validate(candidate: [u8; 2]) -> Result<(), CountryCodeError> {
     validate_character_classes(candidate)?;
     validate_membership(candidate)
 }
 
-fn validate_character_classes(candidate: &[u8; 2]) -> Result<(), CountryCodeError> {
-    let [first, second] = *candidate;
+fn validate_character_classes(candidate: [u8; 2]) -> Result<(), CountryCodeError> {
+    let [first, second] = candidate;
     validate_character(first, 1)?;
     validate_character(second, 2)?;
     Ok(())
@@ -215,8 +221,8 @@ fn validate_character(byte: u8, position: u8) -> Result<(), CountryCodeError> {
     }
 }
 
-fn validate_membership(candidate: &[u8; 2]) -> Result<(), CountryCodeError> {
-    let [first, second] = *candidate;
+fn validate_membership(candidate: [u8; 2]) -> Result<(), CountryCodeError> {
+    let [first, second] = candidate;
 
     if is_assigned(candidate) {
         Ok(())
@@ -227,8 +233,8 @@ fn validate_membership(candidate: &[u8; 2]) -> Result<(), CountryCodeError> {
 }
 
 #[inline]
-fn is_assigned(candidate: &[u8; 2]) -> bool {
-    let [first, second] = *candidate;
+fn is_assigned(candidate: [u8; 2]) -> bool {
+    let [first, second] = candidate;
     debug_assert!(first.is_ascii_uppercase() && second.is_ascii_uppercase());
 
     let index = bit_index([first, second]);
@@ -243,9 +249,12 @@ fn is_assigned(candidate: &[u8; 2]) -> bool {
 #[inline]
 #[allow(clippy::as_conversions)]
 const fn bit_index(code: [u8; 2]) -> usize {
-    (code[0] - b'A') as usize * 26 + (code[1] - b'A') as usize
+    let first = code[0].wrapping_sub(b'A') as usize;
+    let second = code[1].wrapping_sub(b'A') as usize;
+    first.wrapping_mul(26).wrapping_add(second)
 }
 
+#[allow(clippy::indexing_slicing)]
 const fn build_bitmap(codes: &[[u8; 2]]) -> [u64; WORDS] {
     let mut bits = [0u64; WORDS];
     let mut i = 0;
@@ -253,7 +262,7 @@ const fn build_bitmap(codes: &[[u8; 2]]) -> [u64; WORDS] {
     while i < codes.len() {
         let index = bit_index(codes[i]);
         bits[index / 64] |= 1u64 << (index % 64);
-        i += 1;
+        i = i.wrapping_add(1);
     }
 
     bits
@@ -261,6 +270,7 @@ const fn build_bitmap(codes: &[[u8; 2]]) -> [u64; WORDS] {
 
 const _: () = check_table(ASSIGNED_CODES);
 
+#[allow(clippy::indexing_slicing)]
 const fn check_table(codes: &[[u8; 2]]) {
     let mut previous: Option<[u8; 2]> = None;
     let mut i = 0;
@@ -281,7 +291,7 @@ const fn check_table(codes: &[[u8; 2]]) {
         }
 
         previous = Some([a, b]);
-        i += 1;
+        i = i.wrapping_add(1);
     }
 }
 
@@ -325,228 +335,293 @@ fn normalize_character(ch: char, position: u8) -> Result<u8, CountryCodeError> {
 }
 
 #[cfg(test)]
-mod tests_formatting {
+#[allow(clippy::unwrap_used, clippy::as_conversions)]
+mod tests {
     use super::*;
 
-    #[test]
-    fn display_is_the_canonical_string() {
-        assert_eq!(
-            CountryCode::parse("US").map(|code| code.to_string()),
-            Ok("US".to_string())
-        );
-    }
+    mod formatting {
+        use super::*;
 
-    #[test]
-    fn debug_is_readable() {
-        assert_eq!(
-            CountryCode::parse("US").map(|code| format!("{code:?}")),
-            Ok("CountryCode(\"US\")".to_string())
-        );
-    }
+        #[test]
+        fn display_is_the_canonical_string() {
+            assert_eq!(
+                CountryCode::parse("US").map(|code| code.to_string()),
+                Ok("US".to_string())
+            );
+        }
 
-    #[test]
-    fn as_str_and_as_bytes_are_canonical() {
-        let result = CountryCode::parse("US");
+        #[test]
+        fn debug_is_readable() {
+            assert_eq!(
+                CountryCode::parse("US").map(|code| format!("{code:?}")),
+                Ok("CountryCode(\"US\")".to_string())
+            );
+        }
 
-        assert_eq!(result.as_ref().map(CountryCode::as_str), Ok("US"));
-        assert_eq!(result.as_ref().map(CountryCode::as_bytes), Ok(b"US"));
-    }
+        #[test]
+        fn as_str_and_as_bytes_are_canonical() {
+            let result = CountryCode::parse("US");
 
-    #[test]
-    fn as_ref_implementations_match_accessors() {
-        let result = CountryCode::parse("US");
+            assert_eq!(result.as_ref().map(CountryCode::as_str), Ok("US"));
+            assert_eq!(result.as_ref().map(CountryCode::as_bytes), Ok(b"US"));
+        }
 
-        assert_eq!(
-            result
-                .as_ref()
-                .map(|code| <CountryCode as AsRef<[u8]>>::as_ref(code)),
-            Ok(b"US" as &[u8])
-        );
-        assert_eq!(
-            result
-                .as_ref()
-                .map(|code| <CountryCode as AsRef<str>>::as_ref(code)),
-            Ok("US")
-        );
-    }
+        #[test]
+        fn as_ref_implementations_match_accessors() {
+            let result = CountryCode::parse("US");
 
-    #[test]
-    fn string_equality_is_symmetric() {
-        let result = CountryCode::parse("US");
+            assert_eq!(
+                result.as_ref().map(<CountryCode as AsRef<[u8]>>::as_ref),
+                Ok(b"US" as &[u8])
+            );
+            assert_eq!(
+                result.as_ref().map(<CountryCode as AsRef<str>>::as_ref),
+                Ok("US")
+            );
+        }
 
-        assert_eq!(result.as_ref().map(|code| code == "US"), Ok(true));
-        assert_eq!(result.as_ref().map(|code| "US" == *code), Ok(true));
-        assert_eq!(result.as_ref().map(|code| code != "GB"), Ok(true));
-        assert_eq!(result.as_ref().map(|code| "GB" != *code), Ok(true));
-    }
-}
+        #[test]
+        fn string_equality_is_symmetric() {
+            let result = CountryCode::parse("US");
 
-#[cfg(test)]
-mod tests_validation {
-    use super::*;
+            assert_eq!(result.as_ref().map(|code| code == "US"), Ok(true));
+            assert_eq!(result.as_ref().map(|code| "US" == *code), Ok(true));
+            assert_eq!(result.as_ref().map(|code| code != "GB"), Ok(true));
+            assert_eq!(result.as_ref().map(|code| "GB" != *code), Ok(true));
+        }
 
-    #[test]
-    fn every_assigned_code_is_accepted_by_the_bitmap() {
-        for code in ASSIGNED_CODES {
-            assert!(validate(code).is_ok(), "{code:?} should be valid");
+        #[test]
+        fn error_messages_are_human_readable() {
+            assert_eq!(
+                CountryCodeError::Empty.to_string(),
+                "country code cannot be empty"
+            );
+            assert_eq!(
+                CountryCodeError::Unassigned {
+                    code: "ZZ".to_string()
+                }
+                .to_string(),
+                "country code 'ZZ' is not assigned by ISO 3166-1"
+            );
         }
     }
 
-    #[test]
-    fn accepts_representative_assigned_codes() {
-        for code in [
-            *b"US", *b"BR", *b"GB", *b"DE", *b"SS", *b"CW", *b"AD", *b"ZW",
-        ] {
-            assert!(validate(&code).is_ok(), "{code:?} should be valid");
+    mod validation {
+        use super::*;
+
+        #[test]
+        fn every_assigned_code_is_accepted_by_the_bitmap() {
+            for code in ASSIGNED_CODES {
+                assert!(validate(*code).is_ok(), "{code:?} should be valid");
+            }
+        }
+
+        #[test]
+        fn accepts_representative_assigned_codes() {
+            for code in [
+                *b"US", *b"BR", *b"GB", *b"DE", *b"SS", *b"CW", *b"AD", *b"ZW",
+            ] {
+                assert!(validate(code).is_ok(), "{code:?} should be valid");
+            }
+        }
+
+        #[test]
+        fn rejects_unassigned_but_well_formed_codes() {
+            for code in [*b"AA", *b"EU", *b"UK", *b"ZZ"] {
+                assert!(matches!(
+                    validate(code),
+                    Err(CountryCodeError::Unassigned { .. })
+                ));
+            }
+        }
+
+        #[test]
+        fn reports_the_first_invalid_character_position() {
+            assert_eq!(
+                validate(*b"us"),
+                Err(CountryCodeError::InvalidCharacter {
+                    character: 'u',
+                    position: 1,
+                })
+            );
+
+            assert_eq!(
+                validate(*b"U1"),
+                Err(CountryCodeError::InvalidCharacter {
+                    character: '1',
+                    position: 2,
+                })
+            );
+        }
+
+        #[test]
+        fn rejects_non_ascii_bytes_before_membership_lookup() {
+            assert_eq!(
+                validate(*b"\x80A"),
+                Err(CountryCodeError::InvalidCharacter {
+                    character: '\u{80}',
+                    position: 1,
+                })
+            );
+        }
+
+        #[test]
+        fn bitmap_matches_a_linear_scan_over_every_possible_code() {
+            for first in b'A'..=b'Z' {
+                for second in b'A'..=b'Z' {
+                    let code = [first, second];
+                    let expected = ASSIGNED_CODES.contains(&code);
+                    assert_eq!(is_assigned(code), expected, "{code:?}");
+                }
+            }
+        }
+
+        #[test]
+        fn try_from_slice_rejects_wrong_length() {
+            assert_eq!(
+                CountryCode::try_from(b"USA" as &[u8]),
+                Err(CountryCodeError::InvalidLength { found: 3 })
+            );
+        }
+
+        #[test]
+        fn try_from_array_matches_from_bytes() {
+            assert_eq!(
+                CountryCode::try_from(*b"US"),
+                CountryCode::from_bytes(*b"US")
+            );
         }
     }
 
-    #[test]
-    fn rejects_unassigned_but_well_formed_codes() {
-        for code in [*b"AA", *b"EU", *b"UK", *b"ZZ"] {
-            assert!(matches!(
-                validate(&code),
-                Err(CountryCodeError::Unassigned { .. })
-            ));
+    mod parsing {
+        use super::*;
+
+        #[test]
+        fn rejects_empty() {
+            assert_eq!(normalize(""), Err(CountryCodeError::Empty));
+            assert_eq!(CountryCode::parse(""), Err(CountryCodeError::Empty));
+        }
+
+        #[test]
+        fn trims_surrounding_whitespace() {
+            assert_eq!(normalize("  US "), normalize("US"));
+            assert_eq!(
+                CountryCode::parse("  US ").map(|code| code.to_string()),
+                Ok("US".to_string())
+            );
+        }
+
+        #[test]
+        fn uppercases_letters() {
+            assert_eq!(normalize("us"), Ok(*b"US"));
+            assert_eq!(
+                CountryCode::parse("br").map(|code| code.to_string()),
+                Ok("BR".to_string())
+            );
+        }
+
+        #[test]
+        fn preserves_current_length_error_semantics() {
+            assert_eq!(
+                normalize("USA"),
+                Err(CountryCodeError::InvalidLength { found: 3 })
+            );
+
+            assert_eq!(
+                normalize("   "),
+                Err(CountryCodeError::InvalidLength { found: 0 })
+            );
+        }
+
+        #[test]
+        fn non_letter_ascii_is_rejected_by_validation() {
+            assert_eq!(normalize("U."), Ok(*b"U."));
+            assert_eq!(
+                CountryCode::parse("U."),
+                Err(CountryCodeError::InvalidCharacter {
+                    character: '.',
+                    position: 2,
+                })
+            );
+        }
+
+        #[test]
+        fn rejects_non_ascii_input_with_the_original_character() {
+            assert_eq!(
+                CountryCode::parse("U£"),
+                Err(CountryCodeError::InvalidCharacter {
+                    character: '£',
+                    position: 2,
+                })
+            );
+        }
+
+        #[test]
+        fn supports_from_str_and_try_from_string() {
+            let from_str = "US".parse::<CountryCode>();
+            let try_from = CountryCode::try_from("US");
+
+            assert_eq!(
+                from_str.map(|code| code.to_string()),
+                try_from.map(|code| code.to_string())
+            );
+        }
+
+        #[test]
+        fn supports_try_from_fixed_array() {
+            assert_eq!(
+                CountryCode::try_from(*b"US").map(|code| code.to_string()),
+                Ok("US".to_string())
+            );
+
+            assert_eq!(
+                CountryCode::try_from(*b"ZZ"),
+                Err(CountryCodeError::Unassigned {
+                    code: "ZZ".to_string()
+                })
+            );
+        }
+
+        #[test]
+        fn supports_try_from_slice_and_reports_slice_length() {
+            assert_eq!(
+                CountryCode::try_from(b"US" as &[u8]).map(|code| code.to_string()),
+                Ok("US".to_string())
+            );
+
+            assert_eq!(
+                CountryCode::try_from(b"USA" as &[u8]),
+                Err(CountryCodeError::InvalidLength { found: 3 })
+            );
+
+            assert_eq!(
+                CountryCode::try_from(b"" as &[u8]),
+                Err(CountryCodeError::InvalidLength { found: 0 })
+            );
         }
     }
 
-    #[test]
-    fn reports_the_first_invalid_character_position() {
-        assert_eq!(
-            validate(b"us"),
-            Err(CountryCodeError::InvalidCharacter {
-                character: 'u',
-                position: 1,
-            })
-        );
+    mod comparisons {
+        use super::*;
+        use std::collections::HashSet;
 
-        assert_eq!(
-            validate(b"U1"),
-            Err(CountryCodeError::InvalidCharacter {
-                character: '1',
-                position: 2,
-            })
-        );
-    }
+        #[test]
+        fn orders_the_same_as_the_underlying_bytes() {
+            let br = CountryCode::parse("BR").unwrap();
+            let us = CountryCode::parse("US").unwrap();
+            assert!(br < us);
+        }
 
-    #[test]
-    fn rejects_non_ascii_bytes_before_membership_lookup() {
-        assert_eq!(
-            validate(b"\x80A"),
-            Err(CountryCodeError::InvalidCharacter {
-                character: '\u{80}',
-                position: 1,
-            })
-        );
-    }
-}
-
-#[cfg(test)]
-mod tests_parser {
-    use super::*;
-
-    #[test]
-    fn rejects_empty() {
-        assert_eq!(normalize(""), Err(CountryCodeError::Empty));
-        assert_eq!(CountryCode::parse(""), Err(CountryCodeError::Empty));
-    }
-
-    #[test]
-    fn trims_surrounding_whitespace() {
-        assert_eq!(normalize("  US "), normalize("US"));
-        assert_eq!(
-            CountryCode::parse("  US ").map(|code| code.to_string()),
-            Ok("US".to_string())
-        );
-    }
-
-    #[test]
-    fn uppercases_letters() {
-        assert_eq!(normalize("us"), Ok(*b"US"));
-        assert_eq!(
-            CountryCode::parse("br").map(|code| code.to_string()),
-            Ok("BR".to_string())
-        );
-    }
-
-    #[test]
-    fn preserves_current_length_error_semantics() {
-        assert_eq!(
-            normalize("USA"),
-            Err(CountryCodeError::InvalidLength { found: 3 })
-        );
-
-        assert_eq!(
-            normalize("   "),
-            Err(CountryCodeError::InvalidLength { found: 0 })
-        );
-    }
-
-    #[test]
-    fn non_letter_ascii_is_rejected_by_validation() {
-        assert_eq!(normalize("U."), Ok(*b"U."));
-        assert_eq!(
-            CountryCode::parse("U."),
-            Err(CountryCodeError::InvalidCharacter {
-                character: '.',
-                position: 2,
-            })
-        );
-    }
-
-    #[test]
-    fn rejects_non_ascii_input_with_the_original_character() {
-        assert_eq!(
-            CountryCode::parse("U£"),
-            Err(CountryCodeError::InvalidCharacter {
-                character: '£',
-                position: 2,
-            })
-        );
-    }
-
-    #[test]
-    fn supports_from_str_and_try_from_string() {
-        let from_str = "US".parse::<CountryCode>();
-        let try_from = CountryCode::try_from("US");
-
-        assert_eq!(
-            from_str.map(|code| code.to_string()),
-            try_from.map(|code| code.to_string())
-        );
-    }
-
-    #[test]
-    fn supports_try_from_fixed_array() {
-        assert_eq!(
-            CountryCode::try_from(*b"US").map(|code| code.to_string()),
-            Ok("US".to_string())
-        );
-
-        assert_eq!(
-            CountryCode::try_from(*b"ZZ"),
-            Err(CountryCodeError::Unassigned {
-                code: "ZZ".to_string()
-            })
-        );
-    }
-
-    #[test]
-    fn supports_try_from_slice_and_reports_slice_length() {
-        assert_eq!(
-            CountryCode::try_from(b"US" as &[u8]).map(|code| code.to_string()),
-            Ok("US".to_string())
-        );
-
-        assert_eq!(
-            CountryCode::try_from(b"USA" as &[u8]),
-            Err(CountryCodeError::InvalidLength { found: 3 })
-        );
-
-        assert_eq!(
-            CountryCode::try_from(b"" as &[u8]),
-            Err(CountryCodeError::InvalidLength { found: 0 })
-        );
+        #[test]
+        fn hash_is_consistent_with_equality() {
+            let a = CountryCode::parse("US").unwrap();
+            let b = CountryCode::parse("us").unwrap(); // normalizes to the same bytes
+            let mut set = HashSet::new();
+            set.insert(a);
+            assert!(
+                !set.insert(b),
+                "equal CountryCodes must hash to the same bucket"
+            );
+        }
     }
 }

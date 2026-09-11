@@ -9,7 +9,8 @@ use uuid::Uuid;
 use valqeron_core::common::Versioned;
 use valqeron_core::domain::issuer::{Issuer, IssuerBuilder, IssuerId, IssuerName, IssuerStatus};
 use valqeron_core::identifiers::cnpj::Cnpj;
-use valqeron_core::identifiers::{CountryCode, Lei};
+use valqeron_core::identifiers::country_code::CountryCode;
+use valqeron_core::identifiers::lei::Lei;
 use valqeron_engine_client::{Client, RegisterIssuerRequest};
 
 #[derive(Subcommand, Debug)]

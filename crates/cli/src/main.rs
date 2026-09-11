@@ -1,13 +1,3 @@
-#![cfg_attr(
-    test,
-    allow(
-        clippy::as_conversions,
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::unwrap_used
-    )
-)]
-
 mod cli;
 mod commands;
 mod config;

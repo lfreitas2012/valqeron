@@ -182,7 +182,7 @@ impl LogFilePath {
         let project_data_dir =
             resolve_default_project_dir().map(|dirs| dirs.data_dir().to_path_buf());
 
-        Self::resolve_with(std::env::var_os(ENGINE_LOG_FILE_ENV), project_data_dir)
+        Self::resolve_with(env::var_os(ENGINE_LOG_FILE_ENV), project_data_dir)
     }
 
     /// Pure resolution core: env value and platform dir are injected so tests

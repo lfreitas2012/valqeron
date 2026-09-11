@@ -1,5 +1,6 @@
 use crate::identifiers::cnpj::Cnpj;
-use crate::identifiers::{CountryCode, CountryCodeError, Lei};
+use crate::identifiers::country_code::{CountryCode, CountryCodeError};
+use crate::identifiers::lei::Lei;
 use crate::{
     StorageFault,
     common::{Empty, LoadMode, Loading, NonEmpty, RepositoryResult, Versioned, WriteOutcome},

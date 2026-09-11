@@ -4,11 +4,11 @@ use crate::{
     domain::{issuer::IssuerId, issuer::IssuerRepository},
 };
 
-use crate::identifiers::Isin;
 use crate::identifiers::cfi::Cfi;
 use chrono::{DateTime, Utc};
 use std::{marker::PhantomData, num::NonZeroU32, rc::Rc, str::FromStr, sync::Arc};
 use uuid::Uuid;
+use crate::identifiers::isin::Isin;
 
 const SECURITY_NAME_MAX_LEN: usize = 200;
 

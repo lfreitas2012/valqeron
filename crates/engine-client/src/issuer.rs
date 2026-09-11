@@ -10,7 +10,8 @@ use valqeron_core::domain::issuer::{
     IssuerStatusError,
 };
 use valqeron_core::identifiers::cnpj::{Cnpj, CnpjError};
-use valqeron_core::identifiers::{CountryCode, CountryCodeError, Lei, LeiError};
+use valqeron_core::identifiers::country_code::{CountryCode, CountryCodeError};
+use valqeron_core::identifiers::lei::{Lei, LeiError};
 use valqeron_engine_proto::v1::rpc_issuer_service_client::RpcIssuerServiceClient;
 use valqeron_engine_proto::v1::write_outcome_proto::Outcome;
 use valqeron_engine_proto::v1::{
@@ -299,6 +300,8 @@ mod tests {
     use tokio::sync::Mutex;
     use tonic::{Request, Response, Status};
     use valqeron_core::identifiers::cnpj::Cnpj;
+    use valqeron_core::identifiers::country_code::CountryCode;
+    use valqeron_core::identifiers::lei::Lei;
     use valqeron_engine_proto::v1::rpc_issuer_service_server::{
         RpcIssuerService, RpcIssuerServiceServer,
     };

@@ -52,6 +52,9 @@ fn init_logging(
         .compact()
         .with_filter(stderr_filter);
 
+    // Spawn the tokio-console gRPC server on its default port (127.0.0.1:6669)
+    let console_layer = console_subscriber::ConsoleLayer::builder().spawn();
+
     let file = log_file.and_then(|path| match open_log_file(path) {
         Ok(handle) => Some(handle),
         Err(e) => {
@@ -71,13 +74,17 @@ fn init_logging(
                 .with_filter(file_filter);
 
             tracing_subscriber::registry()
+                .with(console_layer)
                 .with(stderr_layer)
                 .with(file_layer)
                 .init();
             Some(guard)
         }
         None => {
-            tracing_subscriber::registry().with(stderr_layer).init();
+            tracing_subscriber::registry()
+                .with(console_layer)
+                .with(stderr_layer)
+                .init();
             None
         }
     }

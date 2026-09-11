@@ -12,7 +12,8 @@ use valqeron_core::domain::issuer::{
     list_issuers, patch_issuer, register_issuer,
 };
 use valqeron_core::identifiers::cnpj::{Cnpj, CnpjError};
-use valqeron_core::identifiers::{CountryCode, CountryCodeError, Lei, LeiError};
+use valqeron_core::identifiers::country_code::{CountryCode, CountryCodeError};
+use valqeron_core::identifiers::lei::{Lei, LeiError};
 use valqeron_engine_proto::v1::rpc_issuer_service_server::RpcIssuerService;
 use valqeron_engine_proto::v1::write_outcome_proto::{Applied, Missing, Outcome, VersionMismatch};
 use valqeron_engine_proto::v1::{

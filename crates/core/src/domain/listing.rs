@@ -1286,7 +1286,6 @@ mod tests {
 #[cfg(test)]
 mod tests_service {
     use super::*;
-    use crate::identifiers::Mic;
     use crate::{
         common::Versioned,
         domain::{
@@ -1295,6 +1294,7 @@ mod tests_service {
             venue::{MockVenueRepository, Venue, VenueId, VenueStatus},
         },
     };
+    use crate::identifiers::mic::Mic;
 
     fn vale3_listing(role: ListingRole) -> Option<Listing> {
         let symbol = TickerSymbol::new("VALE3").ok()?;

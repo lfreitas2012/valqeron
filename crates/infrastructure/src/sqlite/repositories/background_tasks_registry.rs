@@ -52,7 +52,7 @@ impl SqliteBackgroundTasksRepository {
 fn reconstitute_lazy(row: BackgroundTasksRegistryRow) -> Versioned<BackgroundTask> {
     let Versioned { data, version } = row.into_inner();
     Versioned {
-        data: BackgroundTask::reconstitute(data),
+        data: BackgroundTask::reconstitute(&data),
         version,
     }
 }

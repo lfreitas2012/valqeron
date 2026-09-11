@@ -1,18 +1,7 @@
-//! Trading venue aggregate: the place where securities are admitted to
-//! trading, keyed by its ISO 10383 MIC (e.g. `BVMF` for B3, `XNYS` for NYSE).
-//!
-//! The MIC is registry-validated ([`Mic`]), so the ISO
-//! 10383 operating/segment hierarchy and the venue's country are **derived**
-//! from the embedded registry rather than stored: a segment venue (e.g.
-//! `XNGS`, Nasdaq Global Select) reports its market operator (`XNAS`) via
-//! [`Venue::operating_mic`], and country-level market grouping (US/BR) comes
-//! from [`Venue::country_code`]. The venue itself only records what the
-//! registry cannot know: our identity for it, a display name, and its
-//! lifecycle status within this system.
-
 use crate::StorageFault;
 use crate::common::{Empty, NonEmpty, RepositoryResult, Versioned, WriteOutcome};
-use crate::identifiers::{CountryCode, Mic};
+use crate::identifiers::country_code::CountryCode;
+use crate::identifiers::mic::Mic;
 use chrono::{DateTime, Utc};
 use std::{marker::PhantomData, rc::Rc, str::FromStr, sync::Arc};
 use uuid::Uuid;

@@ -17,7 +17,8 @@ use valqeron_core::domain::issuer::{
 };
 use valqeron_core::domain::security::Security;
 use valqeron_core::identifiers::cnpj::Cnpj;
-use valqeron_core::identifiers::{CountryCode, Lei};
+use valqeron_core::identifiers::country_code::CountryCode;
+use valqeron_core::identifiers::lei::Lei;
 
 // ======================== MODEL ========================
 /// One `issuer` row, mapped to a snapshot rather than the entity so the
@@ -466,7 +467,8 @@ mod tests {
     use valqeron_core::domain::security::{
         SecurityId, SecurityKind, SecurityName, SecurityRepository, SecurityStatus,
     };
-    use valqeron_core::identifiers::Isin;
+    use valqeron_core::identifiers::isin::Isin;
+    use valqeron_core::identifiers::lei::Lei;
 
     fn test_repo() -> (TempDatabase, SqliteIssuerRepository) {
         let db = Database::open_temp();
@@ -1191,7 +1193,7 @@ mod tests_models {
                 "INSERT INTO issuer (id, status, created_at) VALUES (?1, 'ACTIVE', ?2)",
                 rusqlite::params![id.as_bytes(), "2026-01-01T00:00:00+00:00"],
             )
-            .unwrap();
+                .unwrap();
         }
 
         let conn = handle.read();

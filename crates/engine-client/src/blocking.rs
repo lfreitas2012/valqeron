@@ -1,8 +1,3 @@
-//! One mirror struct per service, each a thin `runtime.block_on(...)`
-//! wrapper around the matching async service in `admin`/`issuer`/etc. Only
-//! `Client` (the blocking facade) constructs these — `AsyncClient` calls the
-//! async services directly and never sees this module.
-
 use crate::admin::AdminService;
 use crate::issuer::{
     DeleteIssuerRequest, IssuerService, PatchIssuerRequest, RegisterIssuerRequest,

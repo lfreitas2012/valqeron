@@ -1,7 +1,3 @@
-//! Write-path helpers shared by the SQLite repositories: busy/locked retry
-//! with linear backoff, and disambiguation of guarded writes that affected
-//! zero rows.
-
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -69,6 +65,7 @@ pub(crate) fn write_outcome(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::cell::Cell;
