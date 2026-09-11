@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use valqeron_core::identifiers::CountryCode;
+use valqeron_core::identifiers::country_code::CountryCode;
 
 const US: &str = "US";
 const BRAZIL: &str = "BR";

@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use valqeron_core::identifiers::cfi::Cfi;

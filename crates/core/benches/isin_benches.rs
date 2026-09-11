@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use valqeron_core::identifiers::Isin;
+use valqeron_core::identifiers::isin::Isin;
 
 const NUMERIC_NSIN: &str = "US0231351067";
 const ALPHANUMERIC_NSIN: &str = "BRPETRACNOR9";

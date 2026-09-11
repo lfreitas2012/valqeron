@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use valqeron_core::identifiers::Mic;
+use valqeron_core::identifiers::mic::Mic;
 
 const NYSE: &str = "XNYS";
 const SEGMENT: &str = "ARCX";
